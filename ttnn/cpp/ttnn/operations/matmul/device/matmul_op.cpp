@@ -894,6 +894,43 @@ void add_stagger_defines_if_needed(
     }
 }
 
+void add_mm_throttle_defines_if_needed(const tt::ARCH arch, MathFidelity fidelity, std::map<string, string>& mm_kernel_defines) {
+
+    constexpr uint32_t stallwait_nops_equ = 6;
+    const bool enable_throttle_mm_pct = std::getenv("TT_MM_THROTTLE_PCT");
+    const uint32_t mm_throttle_pct = enable_throttle_mm_pct ? std::stoi( std::getenv("TT_MM_THROTTLE_PCT") ) : 0;
+    if (mm_throttle_pct > 0) {
+        uint32_t add_stallwait;
+        uint32_t num_nops_count;
+        float achieved_mm_throttle_pct;
+        if (fidelity == MathFidelity::LoFi) {
+            constexpr float min_allowed_pct = 9.0;
+            constexpr float max_allowed_pct = 82.0;
+            constexpr uint32_t max_allowed_nops = 16;
+            constexpr float nop_step = (max_allowed_pct - min_allowed_pct) / max_allowed_nops;
+            add_stallwait = 1;
+            num_nops_count = std::round(((float)mm_throttle_pct - min_allowed_pct) / nop_step);
+            achieved_mm_throttle_pct = (float)num_nops_count * nop_step + min_allowed_pct;
+        } else {
+            constexpr float min_allowed_pct = 9.375;
+            constexpr float max_allowed_pct = 75.0;
+            constexpr uint32_t max_allowed_eff_nops = 21;
+            constexpr float nop_step = (max_allowed_pct - min_allowed_pct) / max_allowed_eff_nops;
+            uint32_t num_nops_count_eff = std::round(((float)mm_throttle_pct - min_allowed_pct) / nop_step + 1.0);
+            add_stallwait = (num_nops_count_eff >= 6) ? 1 : 0;
+            num_nops_count = num_nops_count_eff - add_stallwait*stallwait_nops_equ;
+            achieved_mm_throttle_pct = (float)(num_nops_count_eff-1) * nop_step + min_allowed_pct;
+            tt::log_info(tt::LogOp, "Throttle matmul: num_nops_count_eff = {}, nop_step = {}, add_stallwait = {},  num_nops_count = {}", num_nops_count_eff, nop_step, add_stallwait,  num_nops_count);
+        }
+        tt::log_info(tt::LogOp, "Throttle matmul: requested {}%, achieved {}% => added {} STALLWAITs and {} NOPs per tile", (float)mm_throttle_pct, achieved_mm_throttle_pct, add_stallwait, num_nops_count);
+
+        mm_kernel_defines["MM_THROTTLE_COMPUTE"] = "1";
+        mm_kernel_defines["MM_THROTTLE_COMPUTE_STALLWAIT"] = std::to_string(add_stallwait);
+        mm_kernel_defines["MM_THROTTLE_COMPUTE_NOP_COUNTS"] = std::to_string(num_nops_count);
+    }
+
+}
+
 }  // namespace bmm_op_utils
 
 namespace ttnn {
