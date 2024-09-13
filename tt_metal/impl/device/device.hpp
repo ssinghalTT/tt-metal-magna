@@ -242,6 +242,7 @@ class Device {
     void init_command_queue_host();
     void init_command_queue_device();
     void initialize_synchronous_sw_cmd_queue();
+    void allocate_dram_debug_buffer();
     void configure_kernel_variant(Program& program, string path, std::vector<uint32_t> compile_args, CoreCoord kernel_core, CoreCoord Kernel_physical_core,
                                   CoreType dispatch_core_type, CoreCoord upstream_physical_core, CoreCoord downstream_physical_core, std::map<string, string> defines_in, NOC my_noc_index, NOC upstream_noc_index, NOC downstream_noc_index, bool is_active_eth_core = false);
     void compile_command_queue_programs();
@@ -339,6 +340,7 @@ class Device {
     void DisableAllocs();
     void EnableAllocs();
     std::unordered_map<uint32_t, std::shared_ptr<TraceBuffer>> trace_buffer_pool_;
+    std::shared_ptr<Buffer> dram_debug_buffer_;
 };
 
 inline HalProgrammableCoreType Device::get_programmable_core_type(CoreCoord phys_core) const {
