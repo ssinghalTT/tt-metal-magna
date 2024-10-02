@@ -90,6 +90,7 @@ def main():
             doReport, captureProcess = run_report_setup(options.verbose, port)
 
         if not doReport:
+            code = None
             if options.module:
                 import runpy
 
@@ -99,18 +100,24 @@ def main():
                     "modname": args[0],
                 }
             else:
-                progname = args[0]
-                sys.path.insert(0, os.path.dirname(progname))
-                with io.open_code(progname) as fp:
-                    code = compile(fp.read(), progname, "exec")
-                spec = importlib.machinery.ModuleSpec(name="__main__", loader=None, origin=progname)
-                globs = {
-                    "__spec__": spec,
-                    "__file__": spec.origin,
-                    "__name__": spec.name,
-                    "__package__": None,
-                    "__cached__": None,
-                }
+                trySystem = False
+                try:
+                    progname = args[0]
+                    sys.path.insert(0, os.path.dirname(progname))
+                    with io.open_code(progname) as fp:
+                        code = compile(fp.read(), progname, "exec")
+                    spec = importlib.machinery.ModuleSpec(name="__main__", loader=None, origin=progname)
+                    globs = {
+                        "__spec__": spec,
+                        "__file__": spec.origin,
+                        "__name__": spec.name,
+                        "__package__": None,
+                        "__cached__": None,
+                    }
+                except ValueError as exc:
+                    trySystem = True
+                if trySystem:
+                    subprocess.run(progname, shell=True, check=True)
 
             if options.partial:
                 tracy_state.doPartial = True
@@ -119,7 +126,8 @@ def main():
                 tracy_state.doLine = True
 
             try:
-                runctx(code, globs, None, options.partial)
+                if code:
+                    runctx(code, globs, None, options.partial)
             except BrokenPipeError as exc:
                 # Prevent "Exception ignored" during interpreter shutdown.
                 sys.stdout = None
