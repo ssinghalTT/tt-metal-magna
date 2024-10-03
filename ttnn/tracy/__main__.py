@@ -2,6 +2,8 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
+from pathlib import Path
+
 from tracy import *
 
 
@@ -20,7 +22,7 @@ def main():
         "--no-device", dest="device", action="store_false", help="Do not include device data", default=True
     )
     parser.add_option(
-        "-o", "--output-folder", action="store", help="Artifact output folder", type="string", dest="output_folder"
+        "-o", "--output-folder", action="store", help="Profiler artifacts folder", type="string", dest="output_folder"
     )
     parser.add_option(
         "-n",
@@ -64,8 +66,16 @@ def main():
     (options, args) = parser.parse_args()
     sys.argv[:] = args
 
+    outputFolderEnvStr = "TT_METAL_PROFILER_DIR"
+    outputFolder = PROFILER_ARTIFACTS_DIR
+    if options.output_folder:
+        logger.info(f"Setting profiler artifacts folder to {options.output_folder}")
+        Path(options.output_folder).mkdir(parents=True, exist_ok=True)
+        os.environ["TT_METAL_PROFILER_DIR"] = options.output_folder
+        outputFolder = Path(options.output_folder)
+
     if options.processLogsOnly:
-        generate_report("generated/profiler/.log/", "", None)
+        generate_report(generate_logs_folder(outputFolder), "", None)
         sys.exit(0)
 
     if options.port:
@@ -87,7 +97,7 @@ def main():
                 logger.error("No available port found")
                 sys.exit(1)
             logger.info(f"Using port {port}")
-            doReport, captureProcess = run_report_setup(options.verbose, port)
+            doReport, captureProcess = run_report_setup(options.verbose, outputFolder, port)
 
         if not doReport:
             code = None
@@ -166,7 +176,7 @@ def main():
 
             try:
                 captureProcess.communicate(timeout=15)
-                generate_report(options.output_folder, options.name_append, options.child_functions)
+                generate_report(outputFolder, options.name_append, options.child_functions)
             except subprocess.TimeoutExpired as e:
                 captureProcess.terminate()
                 captureProcess.communicate()
