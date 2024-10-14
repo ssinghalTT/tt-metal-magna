@@ -369,6 +369,11 @@ operation::ProgramWithCallbacks create_program_mcast_in0_in1(
         (std::uint32_t)in1_mcast_receiver_semaphore_id,
         (std::uint32_t)(num_blocks_y - 1),  // in1_mcast_num_dests
         (std::uint32_t)(num_blocks_y - 1),  // in1_mcast_num_cores
+        // in1 sync args
+        (std::uint32_t)0,
+        (std::uint32_t)0,
+        (std::uint32_t)0,
+        (std::uint32_t)0,
         // batch args
         (std::uint32_t)K * N,        // KtNt
         (std::uint32_t)B,            // batch
@@ -953,6 +958,11 @@ operation::ProgramWithCallbacks create_program_mcast_in0_in1(
                     (std::uint32_t)in1_mcast_start.y,  // in1_mcast_dest_noc_start_y
                     (std::uint32_t)in1_mcast_end.x,    // in1_mcast_dest_noc_end_x
                     (std::uint32_t)in1_mcast_end.y,    // in1_mcast_dest_noc_end_y
+                    // in1 sync args
+                    (std::uint32_t)0,
+                    (std::uint32_t)0,
+                    (std::uint32_t)0,
+                    (std::uint32_t)0,
 
                     // WRITER
                     // out tensor args

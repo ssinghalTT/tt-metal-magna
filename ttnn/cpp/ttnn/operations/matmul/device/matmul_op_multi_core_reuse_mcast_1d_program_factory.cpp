@@ -189,9 +189,22 @@ operation::ProgramWithCallbacks create_program_mcast_in0(
         }
     }
 
+    const bool sync_after_in1_dram = bmm_op_utils::should_sync_after_in1_dram(device->arch());
+
     // Mcast args
     auto in0_mcast_sender_semaphore_id = tt_metal::CreateSemaphore(program, all_cores, INVALID);
     auto in0_mcast_receiver_semaphore_id = tt_metal::CreateSemaphore(program, all_cores, INVALID);
+
+    auto in1_sync_sender_semaphore_id = 0;
+    auto in1_sync_receiver_semaphore_id = 0;
+    int in1_sync_num_dests = 0;
+    int in1_sync_num_cores = 0;
+    if (sync_after_in1_dram) {
+        in1_sync_sender_semaphore_id = tt_metal::CreateSemaphore(program, all_cores, INVALID);
+        in1_sync_receiver_semaphore_id = tt_metal::CreateSemaphore(program, all_cores, INVALID);
+        in1_sync_num_dests = num_cores - 1;
+        in1_sync_num_cores = num_cores - 1;
+    }
 
     CoreCoord top_left_core = in0_mcast_receiver_cores_bounding_box.start_coord;
     CoreCoord bottom_right_core = in0_mcast_receiver_cores_bounding_box.end_coord;
@@ -285,6 +298,11 @@ operation::ProgramWithCallbacks create_program_mcast_in0(
         (std::uint32_t)0,
         (std::uint32_t)0,  // in1_mcast_num_dests
         (std::uint32_t)0,  // in1_mcast_num_cores
+        // in1 sync args
+        (std::uint32_t)in1_sync_sender_semaphore_id,
+        (std::uint32_t)in1_sync_receiver_semaphore_id,
+        (std::uint32_t)in1_sync_num_dests,
+        (std::uint32_t)in1_sync_num_cores,
         // batch args
         (std::uint32_t)K * N,        // KtNt
         (std::uint32_t)B,            // batch
@@ -351,6 +369,7 @@ operation::ProgramWithCallbacks create_program_mcast_in0(
     bmm_op_utils::add_stagger_defines_if_needed(device->arch(), num_cores, mm_kernel_defines);
     bmm_op_utils::add_mm_throttle_defines_if_needed(device->arch(), math_fidelity, mm_kernel_defines);
     bmm_op_utils::add_precision_defines_if_needed(device->arch(), mm_kernel_defines);
+    bmm_op_utils::add_dram_skip_defines_if_needed(device->arch(), mm_kernel_in1_sender_writer_defines);
 
     if (output_is_sharded) {
         mm_kernel_in1_sender_writer_defines["OUT_SHARDED"] = "1";
@@ -363,6 +382,10 @@ operation::ProgramWithCallbacks create_program_mcast_in0(
     }
 
     mm_kernel_in1_sender_writer_defines["SKIP_MCAST"] = "1";
+
+    if (sync_after_in1_dram) {
+        mm_kernel_in1_sender_writer_defines["SYNC_AFTER_IN1_DRAM"] = "1";
+    }
 
     // in1 is the reader of weights/output writer, and we choose to make it use the optimized reader noc
     tt_metal::NOC in0_noc = detail::GetPreferredNOCForDRAMWrite(device->arch());
@@ -624,6 +647,12 @@ operation::ProgramWithCallbacks create_program_mcast_in0(
         std::swap(start_core_noc, end_core_noc);
     }
 
+    CoreCoord in1_sync_start = bottom_right_core_physical;
+    CoreCoord in1_sync_end = top_left_core_physical;
+    if (in1_noc == NOC::NOC_0) {
+        std::swap(in1_sync_start, in1_sync_end);
+    }
+
     const auto& cores = corerange_to_cores(all_cores, std::nullopt, row_major);
     for (uint32_t i = 0; i < num_cores; ++i) {
         const auto& core = cores[i];
@@ -702,6 +731,15 @@ operation::ProgramWithCallbacks create_program_mcast_in0(
                 program, mm_kernel_in0_receiver_id, core, mm_in0_receiver_args);  // RISCV_1_default
         }
         if (i < num_cores_with_work) {
+            // empirically determined delays between cores due to semaphore multicast
+            constexpr int first_core_delay = 240;
+            constexpr int total_mcast_delay = 140;
+            constexpr int per_core_mcast_delay = 10;
+            uint32_t in1_sync_wait_time = total_mcast_delay - (core.x + core.y) * per_core_mcast_delay;
+            if (i == 0) {
+                in1_sync_wait_time += first_core_delay;
+            }
+
             std::vector<uint32_t> mm_in1_sender_writer_args = {
                 // READER
                 // in1 tensor args
@@ -712,6 +750,13 @@ operation::ProgramWithCallbacks create_program_mcast_in0(
                 (std::uint32_t)0,  // in1_mcast_dest_noc_start_y
                 (std::uint32_t)0,  // in1_mcast_dest_noc_end_x
                 (std::uint32_t)0,  // in1_mcast_dest_noc_end_y
+                // in1 sync args
+                (std::uint32_t)in1_sync_start.x,
+                (std::uint32_t)in1_sync_start.y,
+                (std::uint32_t)in1_sync_end.x,
+                (std::uint32_t)in1_sync_end.y,
+                (std::uint32_t)i, // core id
+                (std::uint32_t)in1_sync_wait_time,
 
                 // WRITER
                 // out tensor args
@@ -1008,6 +1053,11 @@ operation::ProgramWithCallbacks create_program_mcast_in1(
         (std::uint32_t)in1_mcast_receiver_semaphore_id,
         (std::uint32_t)num_cores - 1,                     // in1_mcast_num_dests
         (std::uint32_t)in1_mcast_receiver_num_cores - 1,  // in1_mcast_num_cores
+        // in1 sync args
+        (std::uint32_t)0,
+        (std::uint32_t)0,
+        (std::uint32_t)0,
+        (std::uint32_t)0,
         // batch args
         (std::uint32_t)K * N,        // KtNt
         (std::uint32_t)B,            // batch
@@ -1349,6 +1399,11 @@ operation::ProgramWithCallbacks create_program_mcast_in1(
                 (std::uint32_t)start_core_noc.y,  // in1_mcast_dest_noc_start_y
                 (std::uint32_t)end_core_noc.x,    // in1_mcast_dest_noc_end_x
                 (std::uint32_t)end_core_noc.y,    // in1_mcast_dest_noc_end_y
+                // in1 sync args
+                (std::uint32_t)0,
+                (std::uint32_t)0,
+                (std::uint32_t)0,
+                (std::uint32_t)0,
 
                 // WRITER
                 // out tensor args
