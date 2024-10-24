@@ -73,9 +73,15 @@ SECTIONS
     ASSERT(SIZEOF(.init.fini) == 0, ".init/.fini sections have contents");
   } > REGION_CODE :text
 
+  .text.end (READONLY (TYPE = SHT_PROGBITS)) :
+  {
+    /* Place in a text-segment section so that these symbols are recognized
+       as text-based, which is important for XIP.  */
   . = ALIGN(. + MEM_PAD, MEM_ALIGN);
+  } > REGION_CODE :text
 
 #if defined(TYPE_FIRMWARE)
+  /* Kernels will start their text at this point. */
   __fw_export_end_text = .;
 #if defined(TARGET_NCRISC)
   PROVIDE (KERNEL_ENTRY_SYMBOL = __fw_export_end_text);
@@ -86,8 +92,20 @@ SECTIONS
   __kernel_init_local_l1_base = .;
 #endif
 
+  .text.end2 (READONLY (TYPE = SHT_PROGBITS)) :
+  {
+#if defined(TYPE_KERNEL)
+    /* Kernel's initalized data image will start at this point -- abutting the kernel's text. */
+    __kernel_data_lma = .;
+#endif
+  } > REGION_CODE :text
+
   PROVIDE(__global_pointer$ = ORIGIN(REGION_DATA) + 0x7f0);
-  .data DATA_START : ALIGN(4)
+  .data DATA_START :
+#if defined (TYPE_KERNEL)
+        AT(__kernel_data_lma)
+#endif
+        ALIGN(4)
   {
      . = .; /* Force section emission.  */
      __ldm_data_start = .;
