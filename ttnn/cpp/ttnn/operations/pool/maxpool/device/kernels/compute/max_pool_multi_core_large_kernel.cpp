@@ -31,14 +31,14 @@ inline void print_tile_rows(uint32_t cb_id, uint32_t rows = 32, uint32_t tile_id
     // UNPACK(( DPRINT << "++++++" << ENDL() ));
 }
 
-inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
-    UNPACK((DPRINT << "======" << ENDL()));
-    for (uint16_t r = 0; r < 32; ++r) {
-        SliceRange sr = SliceRange{.h0 = r, .h1 = (uint16_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
-        UNPACK((DPRINT << (uint)r << " : " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL()));
-    }
-    UNPACK((DPRINT << "++++++" << ENDL()));
-}
+// inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
+//     UNPACK((DPRINT << "======" << ENDL()));
+//     for (uint16_t r = 0; r < 32; ++r) {
+//         SliceRange sr = SliceRange{.h0 = r, .h1 = (uint16_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
+//         UNPACK((DPRINT << (uint)r << " : " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL()));
+//     }
+//     UNPACK((DPRINT << "++++++" << ENDL()));
+// }
 
 // inline void print_cb_details(uint32_t cb_id) {
 //     DPRINT << "cb_id " << cb_id << ": { "
@@ -137,21 +137,20 @@ void MAIN {
 
     uint32_t interm_reduction_chunks = window_size_hw / MAX_ROWS_FOR_REDUCTION;
     cb_wait_front(in_scalar_cb_id, 1);
-    cb_wait_front(interm_reduction_cb_id, 1);
+    //cb_wait_front(interm_reduction_cb_id, 1);
     cb_reserve_back(out_cb_id, 1);
-    DPRINT << "n_sticks_per_core_by_nblocks: " << nsticks_per_core_by_nblocks << ENDL();
-    DPRINT << "num_8_tiles_blocks: " << num_8_tiles_blocks << ENDL();
-    DPRINT << "num_tiles_for_reduction: " << num_tiles_for_reduction << ENDL();
-    DPRINT << "interm_reduction_chunks: " << interm_reduction_chunks << ENDL();
-    DPRINT << "num_output_tiles: " << num_output_tiles << ENDL();
-    DPRINT << "num_faces_in_tile: " << num_faces_in_tile << ENDL();
-    DPRINT << "num_out_rows: " << num_out_rows << ENDL();
+    // DPRINT << "n_sticks_per_core_by_nblocks: " << nsticks_per_core_by_nblocks << ENDL();
+    // DPRINT << "num_8_tiles_blocks: " << num_8_tiles_blocks << ENDL();
+    // DPRINT << "num_tiles_for_reduction: " << num_tiles_for_reduction << ENDL();
+    // DPRINT << "interm_reduction_chunks: " << interm_reduction_chunks << ENDL();
+    // DPRINT << "num_output_tiles: " << num_output_tiles << ENDL();
+    // DPRINT << "num_faces_in_tile: " << num_faces_in_tile << ENDL();
+    // DPRINT << "num_out_rows: " << num_out_rows << ENDL();
     for (uint32_t i = 0; i < nsticks_per_core_by_nblocks; ++i) {
         for (uint32_t j = 0; j < num_8_tiles_blocks; j++) {
             // NOTE: Assuming in_ntiles_hw < 8 for now.
             // TODO: subblocking to support this.
             uint32_t out_write_idx = i * num_8_tiles_blocks + j;
-
             pack_untilize_dst_init_short<num_tiles_for_reduction, num_output_tiles>(
                 interm_reduction_cb_id, num_out_rows, num_faces_in_tile);
             cb_reserve_back(interm_reduction_cb_id, 1);
@@ -165,8 +164,8 @@ void MAIN {
                     i,
                     interm_reduction_cb_id,
                     MAX_ROWS_FOR_REDUCTION);
-                tile_regs_commit();
                 tile_regs_wait();
+                tile_regs_commit();
                 pack_untilize_dst<num_tiles_for_reduction, num_output_tiles>(
                     interm_reduction_cb_id,
                     1 /*out_subblock_h*/,
@@ -178,6 +177,7 @@ void MAIN {
             cb_push_back(interm_reduction_cb_id, 1);
             pack_untilize_uninit(interm_reduction_cb_id);
             cb_wait_front(interm_reduction_cb_id, 1);
+
             pack_untilize_dst_init_short<num_tiles_for_reduction, num_output_tiles>(
                 out_cb_id, num_out_rows, num_faces_in_tile);
 
@@ -193,8 +193,8 @@ void MAIN {
                 reduce_tile_math(c_i, num_faces_in_tile /* reduce 1 or 2 faces */);
             }
 
-            tile_regs_commit();
             tile_regs_wait();
+            tile_regs_commit();
 
             //print_tile_rows(out_cb_id, 1);
 
@@ -209,9 +209,10 @@ void MAIN {
             pack_untilize_uninit(out_cb_id);
         }
     }
-    // print_full_tile(out_cb_id);
     cb_push_back(out_cb_id, 1);
+    //print_full_tile(out_cb_id);
     cb_pop_front(in_scalar_cb_id, 1);
+    //cb_pop_front(interm_reduction_cb_id, 1);
 }
 
 }  // namespace NAMESPACE

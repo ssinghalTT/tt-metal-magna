@@ -9,7 +9,7 @@
 
 #include "dataflow_api.h"
 
-#define ENABLE_DEBUG_PRINT 0
+#define ENABLE_DEBUG_PRINT 1
 
 #if ENABLE_DEBUG_PRINT == 1
 #include "debug/dprint.h"
@@ -66,6 +66,7 @@ void kernel_main() {
     // compile time args
     // value of 1 in bf16 in a uin32_t
     constexpr uint32_t bf16_one_u32 = get_compile_time_arg_val(12);
+    constexpr uint32_t in_cb_sz = get_compile_time_arg_val(14);
 
     // static_assert(0 == reader_nindices%2, "reader_nindices must be multiple of 2");
 
@@ -82,20 +83,22 @@ void kernel_main() {
 
     constexpr uint32_t ROW_HW = 64;
 
+    DPRINT << "device in_cb_sz: " << in_cb_sz << ENDL();
+
     // minus infinity for bfp16
     uint16_t minus_inf = 63487;
     // Reduce scalar = 1
     if (reader_id == 0) {
         cb_reserve_back(in_scalar_cb_id, 1);
-        cb_reserve_back(interm_reduction_cb_id, 1);
+        //cb_reserve_back(interm_reduction_cb_id, 1);
 
         uint32_t bf16_one_u16 = bf16_one_u32 >> 16;
+        // fill interm buffer with minus_inf
+        fill_with_val(get_write_ptr(interm_reduction_cb_id), in_cb_sz, minus_inf);
         // fill 1 row w/ scalar
         fill_with_val(get_write_ptr(in_scalar_cb_id), ROW_HW, bf16_one_u16);
-        // fill interm buffer with minus_inf
-        fill_with_val(get_write_ptr(interm_reduction_cb_id), TILE_SIZE * MAX_TILES_PER_REDUCTION, minus_inf);
         cb_push_back(in_scalar_cb_id, 1);
-        cb_push_back(interm_reduction_cb_id, 1);
+        //cb_push_back(interm_reduction_cb_id, 1);
     }
 
     uint32_t in_l1_read_base_addr = get_read_ptr(in_shard_cb_id);

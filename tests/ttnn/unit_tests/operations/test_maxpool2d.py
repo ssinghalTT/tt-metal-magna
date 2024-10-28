@@ -431,7 +431,7 @@ def test_run_max_pool_block_shard(
         dilation,
         device,
         dtype,
-        shard_scheme=ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+        shard_scheme=ttnn.TensorMemoryLayout.WIDTH_SHARDED,
     )
 
 

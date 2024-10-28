@@ -163,6 +163,7 @@ MaxPool2D::MultiCore::cached_program_t max_pool_2d_multi_core_sharded_with_halo_
         }
     }
     printf("in_cb_sz: %d\n", in_cb_sz); // same for large and normal
+    printf("in_nbytes_c: %d\n", in_nbytes_c);
     // reader output == input to tilize
     uint32_t in_cb_id_0 = tt::CB::c_in0;  // input rows for "multiple (out_nelems)" output pixels
     uint32_t in_cb_id_1 = tt::CB::c_in1;  // input rows for "multiple (out_nelems)" output pixels
@@ -295,7 +296,8 @@ MaxPool2D::MultiCore::cached_program_t max_pool_2d_multi_core_sharded_with_halo_
         split_reader,  // enable split reader
         0,             // split reader id
         bf16_one_u32,
-        in_nblocks_c};
+        in_nblocks_c,
+        in_cb_sz};
 
     std::vector<uint32_t> reader1_ct_args = {
         out_nhw_per_core,
@@ -311,7 +313,8 @@ MaxPool2D::MultiCore::cached_program_t max_pool_2d_multi_core_sharded_with_halo_
         split_reader,  // enable split reader
         1,             // split reader id
         bf16_one_u32,
-        in_nblocks_c};
+        in_nblocks_c,
+        in_cb_sz};
 
     std::string reader_kernel_fname;
     if (is_large_kernel) {
