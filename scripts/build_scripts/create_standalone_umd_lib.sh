@@ -26,5 +26,5 @@ cp -r ../../_deps/libuv-build/*.so* lib/
 cp -r ../../../device/bin/ device/
 cp -r ../../../tests/soc_descs/ tests/
 
-cd ../../../
+cd ../../../../../../
 mv tt_metal/third_party/umd/build/test/umd _umd
