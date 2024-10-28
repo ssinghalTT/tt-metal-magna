@@ -34,7 +34,7 @@ from models.utility_functions import (
 @pytest.mark.models_device_performance_bare_metal
 @pytest.mark.parametrize(
     "batch, groups, expected_device_perf_fps",
-    ((2, 1, 773.0),),
+    ((1, 2, 773.0),),
 )
 def test_unet_perf_device(batch: int, groups: int, expected_device_perf_fps: float):
     command = f"pytest models/experimental/functional_unet/tests/test_unet_model.py::test_unet_model[device_params0-{groups}-{batch}]"
@@ -62,7 +62,7 @@ def test_unet_perf_device(batch: int, groups: int, expected_device_perf_fps: flo
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 79104}], indirect=True)
 @pytest.mark.parametrize(
     "batch, groups, iterations, expected_compile_time, expected_inference_time_ms",
-    ((2, 1, 16, 25.0, 39.0),),
+    ((1, 2, 16, 25.0, 39.0),),
 )
 def test_unet_perf_e2e(
     batch: int,
@@ -76,10 +76,10 @@ def test_unet_perf_e2e(
 ):
     profiler.clear()
 
-    torch_input, ttnn_input = create_unet_input_tensors(device, batch, groups, pad_input=True)
+    torch_input, ttnn_input = create_unet_input_tensors(batch, groups, pad_input=True)
 
     profiler.start(f"initialize_ref_model")
-    model = unet_shallow_torch.UNet.from_random_weights(groups=1)
+    model = unet_shallow_torch.UNet.from_random_weights(groups=groups)
     profiler.end(f"initialize_ref_model")
 
     profiler.start(f"initialize_model")
@@ -137,7 +137,7 @@ def test_unet_perf_e2e(
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 79104}], indirect=True)
 @pytest.mark.parametrize(
     "batch, groups, iterations, expected_compile_time, expected_inference_time_ms",
-    ((2, 1, 16, 25.0, 61.0),),
+    ((1, 2, 16, 25.0, 61.0),),
 )
 def test_unet_data_parallel_perf_e2e(
     batch: int,
@@ -159,7 +159,7 @@ def test_unet_data_parallel_perf_e2e(
     weights_mesh_mapper = ttnn.ReplicateTensorToMesh(mesh_device)
     output_mesh_composer = ttnn.ConcatMeshToTensor(mesh_device, dim=0)
 
-    torch_input, ttnn_input = create_unet_input_tensors(mesh_device, batch, groups, pad_input=True)
+    torch_input, ttnn_input = create_unet_input_tensors(batch, groups, pad_input=True)
 
     profiler.start(f"initialize_ref_model")
     model = unet_shallow_torch.UNet.from_random_weights(groups=groups)
@@ -173,7 +173,7 @@ def test_unet_data_parallel_perf_e2e(
     num_devices = len(mesh_device.get_device_ids())
     total_batch = num_devices * batch
     torch_input, ttnn_input = create_unet_input_tensors(
-        mesh_device, total_batch, groups, pad_input=True, mesh_mapper=inputs_mesh_mapper
+        total_batch, groups, pad_input=True, mesh_mapper=inputs_mesh_mapper
     )
     logger.info(f"Created reference input tensors: {list(torch_input.shape)}")
     logger.info(
