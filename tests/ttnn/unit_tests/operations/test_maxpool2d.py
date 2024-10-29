@@ -71,7 +71,7 @@ def run_max_pool(
             pytest.skip("Block sharding requires large enough channels to shard (at least 16 per core)")
 
     torch.manual_seed(0)
-    torch.set_printoptions(precision=3, sci_mode=False, linewidth=500, threshold=10000, edgeitems=32)
+    torch.set_printoptions(precision=3, sci_mode=True, linewidth=500, threshold=10000, edgeitems=32)
 
     ## construct the tensor in NCHW shape
     # act = torch.randn(act_shape, dtype=torch.bfloat16)
@@ -163,6 +163,10 @@ def run_max_pool(
     output_pytorch = output_pytorch.reshape(golden_shape[0], golden_shape[2], golden_shape[3], golden_shape[1])
 
     output_pytorch = torch.permute(output_pytorch, (0, 3, 1, 2))  ## N, C, H, W
+
+    print("output_pytorch", output_pytorch[0][0])
+    print("golden_pytorch", golden_pytorch[0][0])
+
     passing, pcc = assert_with_pcc(output_pytorch, golden_pytorch)
 
     logger.debug(f"Passing: {passing}, PCC: {pcc}")
@@ -380,8 +384,8 @@ def test_run_max_pool_width_shard(
 @pytest.mark.parametrize(
     "kernel_size",
     (
-        # (2, 2),
-        # (3, 3),
+        (2, 2),
+        (3, 3),
         (5, 5),
         (9, 9),
         (13, 13),
@@ -390,8 +394,8 @@ def test_run_max_pool_width_shard(
 @pytest.mark.parametrize(
     "padding",
     (
-        # (0, 0),
-        # (1, 1),
+        (0, 0),
+        (1, 1),
         (2, 2),
         (4, 4),
         (6, 6),
@@ -431,7 +435,7 @@ def test_run_max_pool_block_shard(
         dilation,
         device,
         dtype,
-        shard_scheme=ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        shard_scheme=ttnn.TensorMemoryLayout.BLOCK_SHARDED,
     )
 
 

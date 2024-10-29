@@ -31,14 +31,14 @@ inline void print_tile_rows(uint32_t cb_id, uint32_t rows = 32, uint32_t tile_id
     // UNPACK(( DPRINT << "++++++" << ENDL() ));
 }
 
-// inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
-//     UNPACK((DPRINT << "======" << ENDL()));
-//     for (uint16_t r = 0; r < 32; ++r) {
-//         SliceRange sr = SliceRange{.h0 = r, .h1 = (uint16_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
-//         UNPACK((DPRINT << (uint)r << " : " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL()));
-//     }
-//     UNPACK((DPRINT << "++++++" << ENDL()));
-// }
+inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
+    UNPACK((DPRINT << "======" << ENDL()));
+    for (uint16_t r = 0; r < 32; ++r) {
+        SliceRange sr = SliceRange{.h0 = r, .h1 = (uint16_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
+        UNPACK((DPRINT << (uint)r << " : " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL()));
+    }
+    UNPACK((DPRINT << "++++++" << ENDL()));
+}
 
 // inline void print_cb_details(uint32_t cb_id) {
 //     DPRINT << "cb_id " << cb_id << ": { "
@@ -80,6 +80,7 @@ inline void reduce_h_fused(
             0 /*tile idx for Src b is 0 because only 1 tile of constants is loaded*/,
             num_faces_in_tile /* unpack 1 or 2 faces ) */,
             unpA_face_r_dim);
+        //print_full_tile(curr_in_cb_id);
         for (uint32_t c_i = 0; c_i < num_tiles_for_reduction; ++c_i) {
             reduce_tile_math(in_ntiles_c * out_elem_i + c_i, num_faces_in_tile /* reduce 1 or 2 faces */);
         }
@@ -210,7 +211,6 @@ void MAIN {
         }
     }
     cb_push_back(out_cb_id, 1);
-    //print_full_tile(out_cb_id);
     cb_pop_front(in_scalar_cb_id, 1);
     //cb_pop_front(interm_reduction_cb_id, 1);
 }
