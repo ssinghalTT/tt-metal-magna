@@ -3236,6 +3236,7 @@ bool Device::using_slow_dispatch() const {
 }
 
 void Device::begin_trace(const uint8_t cq_id, const uint32_t tid) {
+    log_info(tt::LogMetal, "KCM Begin trace for tid {} on CQ {}", tid, (uint32_t)cq_id);
     TT_FATAL(this->trace_buffer_pool_.count(tid) == 0, "Trace already exists for tid {} on device", tid);
     TT_FATAL(!this->hw_command_queues_[cq_id]->tid.has_value(), "CQ {} is already being used for tracing tid {}", (uint32_t)cq_id, tid);
     this->EnableAllocs();
@@ -3244,11 +3245,78 @@ void Device::begin_trace(const uint8_t cq_id, const uint32_t tid) {
     this->hw_command_queues_[cq_id]->record_begin(tid, this->trace_buffer_pool_[tid]->desc);
 }
 
+// Function to serialize a vector<uint32_t> to a binary file
+void serialize(const std::vector<uint32_t>& data, const std::string& filename) {
+    std::ofstream ofs(filename, std::ios::binary);
+    if (!ofs) {
+        std::cerr << "Error opening file for writing: " << filename << std::endl;
+        return;
+    }
+
+    // Write the size of the vector
+    uint32_t size = data.size();
+    ofs.write(reinterpret_cast<const char*>(&size), sizeof(size));
+
+    // Write the vector data
+    ofs.write(reinterpret_cast<const char*>(data.data()), size * sizeof(uint32_t));
+
+    ofs.close();
+    if (!ofs) {
+        std::cerr << "Error writing to file: " << filename << std::endl;
+    }
+
+    log_info(tt::LogMetal, "KCM Trace Buffer Size: {} serialized to {}", data.size(), filename);
+
+    // Dump it for debug purposes
+    bool debug = parse_env("DEBUG_TRACE", false);
+    if (debug) {
+        for (int i=0; i<data.size(); i++) {
+            auto d = data.at(i);
+            log_info(tt::LogMetal, "KCM Serialize i: {} DATA: 0x{:x}", i, d);
+        }
+    }
+}
+
+// Function to deserialize a vector<uint32_t> from a binary file
+std::vector<uint32_t> deserialize(const std::string& filename) {
+    std::ifstream ifs(filename, std::ios::binary);
+    if (!ifs) {
+        std::cerr << "Error opening file for reading: " << filename << std::endl;
+        return {};
+    }
+
+    // Read the size of the vector
+    uint32_t size;
+    ifs.read(reinterpret_cast<char*>(&size), sizeof(size));
+
+    // Read the vector data
+    std::vector<uint32_t> data(size);
+    ifs.read(reinterpret_cast<char*>(data.data()), size * sizeof(uint32_t));
+
+    ifs.close();
+    if (!ifs) {
+        std::cerr << "Error reading from file: " << filename << std::endl;
+    }
+    log_info(tt::LogMetal, "KCM Trace Buffer Size: {} deserialized from {}", data.size(), filename);
+
+    bool debug = parse_env("DEBUG_TRACE", false);
+    if (debug) {
+        for (int i=0; i<data.size(); i++) {
+            auto d = data.at(i);
+            log_info(tt::LogMetal, "KCM Deserialize i: {} DATA: 0x{:x}", i, d);
+        }
+    }
+
+    return data;
+}
+
 void Device::end_trace(const uint8_t cq_id, const uint32_t tid) {
+    log_info(tt::LogMetal, "KCM End trace for tid {} on CQ {}", tid, (uint32_t)cq_id);
     TT_FATAL(this->hw_command_queues_[cq_id]->tid == tid, "CQ {} is not being used for tracing tid {}", (uint32_t)cq_id, tid);
     TT_FATAL(this->trace_buffer_pool_.count(tid) > 0, "Trace instance {} must exist on device", tid);
     this->hw_command_queues_[cq_id]->record_end();
     auto &trace_data = this->trace_buffer_pool_[tid]->desc->data;
+    log_info(tt::LogMetal, "KCM {} trace_data_size: {} before assignment.", __FUNCTION__, trace_data.size());
     trace_data = std::move(this->sysmem_manager().get_bypass_data());
     // Add command to terminate the trace buffer
     DeviceCommand command_sequence(CQ_PREFETCH_CMD_BARE_MIN_SIZE);
@@ -3256,8 +3324,102 @@ void Device::end_trace(const uint8_t cq_id, const uint32_t tid) {
     for (int i = 0; i < command_sequence.size_bytes() / sizeof(uint32_t); i++) {
         trace_data.push_back(((uint32_t*)command_sequence.data())[i]);
     }
-    Trace::initialize_buffer(this->command_queue(cq_id), this->trace_buffer_pool_[tid]);
+    log_info(tt::LogMetal, "KCM {} trace_data_size: {} after assignment.", __FUNCTION__, trace_data.size());
+
+    // KCM - Serialize TraceBuffer to Disk Here instead of writing to device.
+    //       OR, Load it back.
+    bool serialize_trace = parse_env("TT_METAL_SERIALIZE_TRACE", false);
+    bool deserialize_trace = parse_env("TT_METAL_DESERIALIZE_TRACE", false);
+
+    log_info(tt::LogMetal, "KCM Trace Buffer Size: {} serialize: {} deserialize: {}", trace_data.size(), serialize_trace, deserialize_trace);
+
+    std::string trace_bin_path = "/tmp/trace_" + std::to_string(tid) + ".bin";
+
+    if (serialize_trace) {
+        serialize(trace_data, trace_bin_path);
+        this->DisableAllocs();
+        // Skipped initialize_buffer call here, since we are not writing to device
+    } else if (deserialize_trace) {
+
+        // Temp hack. It works okay.
+        std::string trace_bin_path_curr = "/tmp/trace_" + std::to_string(tid) + "_curr.bin";
+        serialize(trace_data, trace_bin_path_curr);
+
+        auto trace_data_binary = deserialize(trace_bin_path);
+
+        assert(trace_data_binary.size() == trace_data.size());
+
+        log_info(tt::LogMetal, "KCM Trace Buffer Orig Size: {} Deserialized Size: {} deserialized from {}",
+        trace_data.size(), trace_data_binary.size(), trace_bin_path);
+
+        for (int i=0; i<trace_data.size(); i++) {
+            auto d = trace_data.at(i);
+            auto d_bin = trace_data_binary.at(i);
+            if (d == d_bin) {
+                log_info(tt::LogMetal, "KCM Match at i: {} DATA: 0x{:x} BIN: 0x{:x}", i, d, d_bin);
+            } else {
+                log_info(tt::LogMetal, "KCM Mismatch at i: {} DATA: 0x{:x} BIN: 0x{:x}", i, d, d_bin);
+            }
+        }
+
+
+        // KCM - Hack - write with original data.
+        Trace::initialize_buffer(this->command_queue(cq_id), this->trace_buffer_pool_[tid]);
+
+
+        trace_data = trace_data_binary;
+
+        // TODO - Compare Current with De-serialized version. We know they are different.
+        // Theory: Current and Previous binarized Trace have different addresses slightly.
+
+        // Theory2 : But maybe not because this path I am adjusting right now worked okay.
+        // it was only when I skipped capturing that things broke. Which gives me imperssion
+        // issue is outside somewhere.
+
+        // TODO - Double check values written to device.
+
+
+        // KCM - Hack since begin_trace would normally do this. Need more hacks too beyond this.
+        // this->trace_buffer_pool_.insert({tid, Trace::create_empty_trace_buffer()});
+
+        Trace::initialize_buffer(this->command_queue(cq_id), this->trace_buffer_pool_[tid]);
+        this->DisableAllocs();
+    } else {
+        Trace::initialize_buffer(this->command_queue(cq_id), this->trace_buffer_pool_[tid]);
+        this->DisableAllocs();
+    }
+}
+
+// KCM FIXME - Initial WIP de-serialize function.
+void Device::load_trace_binary(const uint8_t cq_id, const uint32_t tid) {
+    log_info(tt::LogMetal, "KCM Inside {} for cq: {} tid: {}", __FUNCTION__, (uint32_t)cq_id, tid);\
+
+    // KCM - intiialize_buffer wants to work on trace_buffer_pool.
+    this->trace_buffer_pool_.insert({tid, Trace::create_empty_trace_buffer()});
+    // log_info(tt::LogMetal, "KCM Buffer address: {} after create", this->trace_buffer_pool_[tid]->buffer->address());
+
+    // TT_FATAL(this->hw_command_queues_[cq_id]->tid == tid, "CQ {} is not being used for tracing tid {}", (uint32_t)cq_id, tid);
+    TT_FATAL(this->trace_buffer_pool_.count(tid) > 0, "Trace instance {} must exist on device", tid);
+
+    auto &trace_buffer = this->trace_buffer_pool_[tid];
+    auto &trace_data = trace_buffer->desc->data;
+
+    std::string trace_bin_path = "/tmp/trace_" + std::to_string(tid) + ".bin";
+    trace_data = deserialize(trace_bin_path);
+
+    // FIXME - Set other fields too, should be serialized as well.
+    trace_buffer->desc->num_completion_worker_cores = 336;
+    trace_buffer->desc->num_traced_programs_needing_go_signal_multicast = 6;
+    trace_buffer->desc->num_traced_programs_needing_go_signal_unicast = 0;
+
+    // KCM FIXME - Theory: TraceBuffer passed to initialize_buffer is not fully populated. Binarize more stuff.
+    // CQ probably populates the Desc.  Actually, I don't think so, desc is pretty limited (mostly just data vec)
+    // TODO - Compare write of existing trace and hanging "skip capture" version.
+
+    Trace::initialize_buffer(this->command_queue(cq_id), trace_buffer);
     this->DisableAllocs();
+
+
 }
 
 void Device::replay_trace(const uint8_t cq_id, const uint32_t tid, const bool blocking) {

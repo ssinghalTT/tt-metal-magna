@@ -154,6 +154,10 @@ void end_trace_capture(Device* device, const uint32_t tid, const uint8_t cq_id) 
     device->push_work([device, cq_id, tid]() mutable { device->end_trace(cq_id, tid); });
 }
 
+void load_trace_binary(Device* device, const uint32_t tid, const uint8_t cq_id) {
+    device->push_work([device, cq_id, tid]() mutable { device->load_trace_binary(cq_id, tid); });
+}
+
 void execute_trace(Device* device, const uint32_t tid, const uint8_t cq_id, bool blocking) {
     // If blocking, ensure that worker thread blocks until trace is completed
     device->push_work([device, cq_id, tid, blocking]() mutable { device->replay_trace(cq_id, tid, blocking); });

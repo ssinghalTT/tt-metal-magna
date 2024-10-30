@@ -80,6 +80,8 @@ uint32_t begin_trace_capture(Device* device, const uint8_t cq_id);
 
 void end_trace_capture(Device* device, const uint32_t tid, const uint8_t cq_id);
 
+void load_trace_binary(Device* device, const uint32_t tid, const uint8_t cq_id);
+
 void execute_trace(Device* device, const uint32_t tid, const uint8_t cq_id, bool blocking);
 
 void release_trace(Device* device, const uint32_t tid);

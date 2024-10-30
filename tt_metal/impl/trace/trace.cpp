@@ -72,6 +72,8 @@ std::shared_ptr<TraceBuffer> Trace::create_empty_trace_buffer() {
 
 void Trace::initialize_buffer(CommandQueue& cq, std::shared_ptr<TraceBuffer> trace_buffer) {
     vector<uint32_t>& trace_data = trace_buffer->desc->data;
+
+    // KCM - trace_data is the data on host, which is written to trace_buffer on device DRAM.
     uint64_t unpadded_size = trace_data.size() * sizeof(uint32_t);
     size_t page_size = interleaved_page_size(
         unpadded_size, cq.device()->num_banks(BufferType::DRAM), kExecBufPageMin, kExecBufPageMax);
@@ -90,10 +92,23 @@ void Trace::initialize_buffer(CommandQueue& cq, std::shared_ptr<TraceBuffer> tra
     EnqueueWriteBuffer(cq, trace_buffer->buffer, trace_data, kBlocking);
     log_trace(
         LogMetalTrace,
-        "Trace issue buffer unpadded size={}, padded size={}, num_pages={}",
+        "KCM Trace issue buffer unpadded size={}, padded size={}, num_pages={} address={} worker_cores={} multicast={} unicast={}",
         unpadded_size,
         padded_size,
-        trace_buffer->buffer->num_pages());
+        trace_buffer->buffer->num_pages(),
+        trace_buffer->buffer->address(),
+        trace_buffer->desc->num_completion_worker_cores,
+        trace_buffer->desc->num_traced_programs_needing_go_signal_multicast,
+        trace_buffer->desc->num_traced_programs_needing_go_signal_unicast);
+
+    bool debug = parse_env("DEBUG_TRACE", false);
+    if (debug) {
+        for (int i=0; i<trace_data.size(); i++) {
+            auto d = trace_data.at(i);
+            log_info(tt::LogMetal, "KCM Write Trace Data i: {} DATA: 0x{:x}", i, d);
+        }
+    }
+
 }
 
 // there is a cost to validation, please use it judiciously

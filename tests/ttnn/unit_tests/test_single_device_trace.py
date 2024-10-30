@@ -9,12 +9,23 @@ import ttnn
 import tempfile
 from loguru import logger
 from tests.ttnn.utils_for_testing import assert_with_pcc
+import os
 
 
-@pytest.mark.parametrize("shape", [[1, 3, 1024, 1024], (1, 1, 512, 512), (1, 3, 512, 512), (1, 3, 32, 32)])
-@pytest.mark.parametrize("enable_async", [True, False])
-@pytest.mark.parametrize("blocking", [True, False])
+# @pytest.mark.parametrize("shape", [[1, 3, 1024, 1024], (1, 1, 512, 512), (1, 3, 512, 512), (1, 3, 32, 32)])
+# @pytest.mark.parametrize("enable_async", [True, False])
+# @pytest.mark.parametrize("blocking", [True, False])
+# @pytest.mark.parametrize("device_params", [{"trace_region_size": 200000}], indirect=True)
+
+
+# KCM - Simplify test.
+@pytest.mark.parametrize("shape", [(1, 1, 32, 32)])
+@pytest.mark.parametrize("enable_async", [True])
+@pytest.mark.parametrize("blocking", [True])
 @pytest.mark.parametrize("device_params", [{"trace_region_size": 200000}], indirect=True)
+# @pytest.mark.parametrize("device_params", [{"trace_region_size": 0}], indirect=True)
+
+
 def test_single_device_single_trace(device, shape, enable_async, blocking):
     device.enable_async(enable_async)
     device.enable_program_cache()
@@ -28,15 +39,41 @@ def test_single_device_single_trace(device, shape, enable_async, blocking):
         return ttnn.neg(ttnn.add(ttnn.mul(input_1, ttnn.neg(ttnn.gelu(input_0))), ttnn.relu(input_1)))
 
     # Compile program binaries
-    run_op_chain(input_0_dev, input_1_dev)
+    # KCM - Move capture output up here so we can have a copy to compare to on rerun with deserialize.
+    output_tensor = run_op_chain(input_0_dev, input_1_dev)
+
+    serialize_trace = True if "TT_METAL_SERIALIZE_TRACE" in os.environ else False
+    deserialize_trace = True if "TT_METAL_DESERIALIZE_TRACE" in os.environ else False
+    logger.info("KCM Test. Serialize Trace: {}, Deserialize Trace: {}".format(serialize_trace, deserialize_trace))
+
+    # Under debug. Skips capturing trace, hangs.
+    skip_capture = True if "SKIP_CAPTURE" in os.environ else False
 
     # Capture Trace
-    logger.info("Capture Trace")
-    tid = ttnn.begin_trace_capture(device, cq_id=0)
-    output_tensor = run_op_chain(input_0_dev, input_1_dev)
-    ttnn.end_trace_capture(device, tid, cq_id=0)
+    if skip_capture and deserialize_trace:
+        logger.info("KCM Deserialize Trace, skipping capture. Going to call load_trace_binary")
+        tid = 0
+        ttnn.load_trace_binary(device, tid, cq_id=0)
+        logger.info("KCM Deserialize Trace, done calling load_trace_binary")
+    else:
+        logger.info("KCM Capture Trace start")
+        tid = ttnn.begin_trace_capture(device, cq_id=0)
+        output_tensor = run_op_chain(input_0_dev, input_1_dev)
+        ttnn.end_trace_capture(device, tid, cq_id=0)
+        logger.info("KCM Capture Trace end for tid: {}", tid)
 
-    for i in range(50):
+    # KCM TODO - Temp Hack / Bringup - Call new Deserialize API here and skip capture on rerun.
+    # Wire down through TTNN API python -> CPP -> Metal
+
+    # Run 1 - Serialize Trace to Disk Here, and exit.
+    # Run 2 - Skip capture Trace, reload from disk and write to device.
+
+    if serialize_trace:
+        logger.info("KCM Serialized trace, early exit")
+        return
+
+    for i in range(10):
+        logger.info(f"KCM Run {i}")
         # Create torch inputs
         torch_input_tensor_0 = torch.rand(shape, dtype=torch.bfloat16)
         torch_input_tensor_1 = torch.rand(shape, dtype=torch.bfloat16)
@@ -53,17 +90,17 @@ def test_single_device_single_trace(device, shape, enable_async, blocking):
         ttnn_input_tensor_1 = ttnn.from_torch(torch_input_tensor_1, layout=ttnn.TILE_LAYOUT)
 
         # Copy TTNN host tensors into preallocated Mult-Device tensors
-        logger.info("Send Inputs to Device")
+        logger.info(f"Send Inputs to Device for run {i}")
         ttnn.copy_host_to_device_tensor(ttnn_input_tensor_0, input_0_dev)
         ttnn.copy_host_to_device_tensor(ttnn_input_tensor_1, input_1_dev)
 
         if blocking:
             ttnn.synchronize_device(device)
-        logger.info("Execute Trace")
+        logger.info(f"Execute Trace for run {i}")
         # Execute trace
         ttnn.execute_trace(device, tid, cq_id=0, blocking=blocking)
         # Readback data
-        logger.info("Read Back Trace Outputs")
+        logger.info(f"Read Back Trace Outputs for run {i}")
         ttnn_torch_output_tensor = ttnn.to_torch(output_tensor)
         assert_with_pcc(ttnn_torch_output_tensor, torch_output_golden, pcc=0.99)
 

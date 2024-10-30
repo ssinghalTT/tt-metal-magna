@@ -288,6 +288,14 @@ void py_module(py::module& module) {
         py::arg("cq_id") = ttnn::DefaultQueueId);
 
     module.def(
+        "load_trace_binary",
+        py::overload_cast<Device*, const uint32_t, const uint8_t>(&ttnn::operations::core::load_trace_binary),
+        py::arg("device"),
+        py::arg("trace_id"),
+        py::kw_only(),
+        py::arg("cq_id") = ttnn::DefaultQueueId);
+
+    module.def(
         "execute_trace",
         py::overload_cast<Device*, const uint32_t, const uint8_t, bool>(&ttnn::operations::core::execute_trace),
         py::arg("device"),

@@ -221,6 +221,7 @@ import ttnn.database
 
 begin_trace_capture = ttnn._ttnn.operations.core.begin_trace_capture
 end_trace_capture = ttnn._ttnn.operations.core.end_trace_capture
+load_trace_binary = ttnn._ttnn.operations.core.load_trace_binary
 execute_trace = ttnn._ttnn.operations.core.execute_trace
 release_trace = ttnn._ttnn.operations.core.release_trace
 
