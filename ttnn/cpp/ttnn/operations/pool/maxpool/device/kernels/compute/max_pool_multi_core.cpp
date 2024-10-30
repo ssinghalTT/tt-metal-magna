@@ -107,7 +107,7 @@ void MAIN {
 
     cb_wait_front(in_scalar_cb_id, 1);
     for (uint32_t i = 0; i < nsticks_per_core; ++ i) {
-        reduce_h_fused<in_ntiles_hw, in_ntiles_c, out_ntiles_c, is_partial_tile, split_reader, window_size_hw, in_nblocks_c>(in_cb_id, in_scalar_cb_id, in_ntiles_hwc_block, i, out_cb_id);
+        reduce_h_fused<out_ntiles_hw, in_ntiles_c, out_ntiles_c, is_partial_tile, split_reader, window_size_hw, in_nblocks_c>(in_cb_id, in_scalar_cb_id, in_ntiles_hwc_block, i, out_cb_id);
     }
     cb_pop_front(in_scalar_cb_id, 1);
 }

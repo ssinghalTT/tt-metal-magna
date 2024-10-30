@@ -153,6 +153,9 @@ MaxPool2D::MultiCore::cached_program_t max_pool_2d_multi_core_sharded_with_halo_
         in_cb_sz = (input_shape[3] / num_shards_c * kernel_size_hw_padded) > (tt::constants::TILE_HW * MAX_TILES_PER_REDUCTION)
             ? (tt::constants::TILE_HW * MAX_TILES_PER_REDUCTION)
             : input_shape[3] / num_shards_c * kernel_size_hw_padded;
+        if (is_wide_reduction) {
+            in_nblocks_c = in_ntiles_c / MAX_TILES_PER_REDUCTION;
+        }
     } else {
         if (is_wide_reduction) {
             in_cb_sz = MAX_TILES_PER_REDUCTION * tt::constants::TILE_WIDTH * kernel_size_hw_padded;
