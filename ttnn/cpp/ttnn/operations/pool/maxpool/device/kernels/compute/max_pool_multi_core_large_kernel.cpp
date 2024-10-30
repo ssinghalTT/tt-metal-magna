@@ -100,15 +100,12 @@ void MAIN {
     constexpr uint32_t out_h = get_compile_time_arg_val(4);
     constexpr uint32_t out_w = get_compile_time_arg_val(5);
     constexpr uint32_t out_ntiles_c = get_compile_time_arg_val(7);
-    constexpr uint32_t nblocks = get_compile_time_arg_val(8);
 
     constexpr uint32_t split_reader = get_compile_time_arg_val(12);
 
     constexpr uint32_t nsticks_per_core_by_nblocks = get_compile_time_arg_val(13);
     constexpr uint32_t in_c = get_compile_time_arg_val(14);
     constexpr uint32_t in_nblocks_c = get_compile_time_arg_val(15);
-
-    constexpr uint32_t num_output_tiles = out_ntiles_c * nblocks;
 
     constexpr uint32_t in_cb_id = tt::CB::c_in0;  // and tt::CB::c_in1 for split reader
     constexpr uint32_t in_scalar_cb_id = tt::CB::c_in4;
@@ -123,22 +120,6 @@ void MAIN {
     constexpr uint32_t MAX_ROWS_FOR_REDUCTION = 16;
     constexpr uint32_t MAX_TILES_PER_REDUCTION = 8;
 
-    dump_unpack(in_ntiles_hw);
-    dump_unpack(in_ntiles_c);
-    dump_unpack(in_ntiles_hwc);
-    dump_unpack(window_size_hw);
-    dump_unpack(out_h);
-    dump_unpack(out_w);
-    dump_unpack(out_ntiles_c);
-    dump_unpack(nblocks);
-    dump_unpack(split_reader);
-    dump_unpack(nsticks_per_core_by_nblocks);
-    dump_unpack(in_c);
-    uint32_t num_8_tiles_blocks = 1;
-    if (num_output_tiles > MAX_TILES_PER_REDUCTION) {
-        num_8_tiles_blocks =
-            num_output_tiles / MAX_TILES_PER_REDUCTION;  // For now, only pow of 2 number of channels are supported.
-    }
     DPRINT << "in_ntiles_c: " << in_ntiles_c << ENDL();
     DPRINT << "in_nblocks_c: " << in_nblocks_c << ENDL();
 
@@ -155,11 +136,11 @@ void MAIN {
     //cb_wait_front(interm_reduction_cb_id, 1);
     cb_reserve_back(out_cb_id, 1);
     for (uint32_t i = 0; i < nsticks_per_core_by_nblocks; ++i) {
-        for (uint32_t j = 0; j < num_8_tiles_blocks; j++) {
+        for (uint32_t b_i = 0; b_i < in_nblocks_c; b_i++) {
             // NOTE: Assuming in_ntiles_hw < 8 for now.
             // TODO: subblocking to support this.
-            uint32_t out_write_idx = i * num_8_tiles_blocks + j;
-            pack_untilize_dst_init_short<num_output_tiles>(
+            uint32_t out_write_idx = i * in_nblocks_c + b_i;
+            pack_untilize_dst_init_short<out_ntiles_c / in_nblocks_c>(
                 interm_reduction_cb_id, num_out_rows, num_faces_in_tile);
             cb_reserve_back(interm_reduction_cb_id, 1);
             for (uint32_t h = 0; h <= interm_reduction_chunks; h++) {
@@ -173,7 +154,7 @@ void MAIN {
                     MAX_ROWS_FOR_REDUCTION);
                 tile_regs_wait();
                 tile_regs_commit();
-                pack_untilize_dst<num_output_tiles>(
+                pack_untilize_dst<out_ntiles_c / in_nblocks_c>(
                     interm_reduction_cb_id,
                     1 /*out_subblock_h*/,
                     h,
@@ -185,7 +166,7 @@ void MAIN {
             pack_untilize_uninit(interm_reduction_cb_id);
             cb_wait_front(interm_reduction_cb_id, 1);
 
-            pack_untilize_dst_init_short<num_output_tiles>(
+            pack_untilize_dst_init_short<out_ntiles_c / in_nblocks_c>(
                 out_cb_id, num_out_rows, num_faces_in_tile);
 
             if(i == 0) {
@@ -209,7 +190,7 @@ void MAIN {
 
             //print_tile_rows(out_cb_id, 1);
 
-            pack_untilize_dst<num_output_tiles>(
+            pack_untilize_dst<out_ntiles_c / in_nblocks_c>(
                 out_cb_id,
                 1 /*out_subblock_h*/,
                 out_write_idx,

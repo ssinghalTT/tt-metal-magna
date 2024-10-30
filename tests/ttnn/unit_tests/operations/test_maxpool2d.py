@@ -376,8 +376,8 @@ def test_run_max_pool_width_shard(
             # [4, 16, 1056, 160],
             # [8, 16, 528, 80],
             # [16, 16, 528, 80],
-            [1, 256, 10, 10],
-            [1, 512, 10, 10],
+            [1, 2048, 10, 10],
+            [1, 4096, 10, 10],
         )
     ),
 )
@@ -386,28 +386,28 @@ def test_run_max_pool_width_shard(
     (
         # (2, 2),
         # (3, 3),
-        # (5, 5),
+        (5, 5),
         (9, 9),
-        # (13, 13),
+        (13, 13),
     ),
 )
 @pytest.mark.parametrize(
     "padding",
     (
-        # (0, 0),
-        # (1, 1),
-        # (2, 2),
+        (0, 0),
+        (1, 1),
+        (2, 2),
         (4, 4),
-        # (6, 6),
+        (6, 6),
     ),
 )
 @pytest.mark.parametrize(
     "stride",
     (
         (1, 1),
-        # (2, 2),
-        # (4, 4),
-        # (6, 6),
+        (2, 2),
+        (4, 4),
+        (6, 6),
     ),
 )
 @pytest.mark.parametrize("dilation", ((1, 1),))  ## default
@@ -435,7 +435,7 @@ def test_run_max_pool_block_shard(
         dilation,
         device,
         dtype,
-        shard_scheme=ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+        shard_scheme=ttnn.TensorMemoryLayout.BLOCK_SHARDED,
     )
 
 

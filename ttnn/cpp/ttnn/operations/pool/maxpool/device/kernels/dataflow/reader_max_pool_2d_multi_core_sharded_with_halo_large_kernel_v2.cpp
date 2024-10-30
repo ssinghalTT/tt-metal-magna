@@ -58,7 +58,6 @@ void kernel_main() {
     const uint32_t in_cb_nsticks = get_compile_time_arg_val(7);
 
     const uint32_t in_c = get_compile_time_arg_val(8);
-    const uint32_t nblocks = get_compile_time_arg_val(9);
 
     const uint32_t split_reader = get_compile_time_arg_val(10);
     const uint32_t reader_id = get_compile_time_arg_val(11);
@@ -114,7 +113,7 @@ void kernel_main() {
 
     uint32_t in_w_padded = in_w + 2 * pad_w;
 
-    uint32_t npages_to_reserve = nblocks;
+    uint32_t npages_to_reserve = 1;
     uint32_t num_8_tile_blocks = 1;
     uint32_t read_bytes = in_nbytes_c;
     if (in_nbytes_c > MAX_ELE_PER_REDUCTION) {
@@ -126,55 +125,53 @@ void kernel_main() {
     uint32_t remaining_elems = total_elems_to_reduce % MAX_ROWS_FOR_REDUCTION;
     while (counter < reader_nindices) {
         for (uint32_t j = 0; j < num_8_tile_blocks; j++) {
-            for (uint32_t i = 0; i < nblocks; ++i) {
-                uint16_t top_left_local_index = reader_indices_ptr[counter];
-                if (reader_id == 0) {
-                    /*DPRINT << "top_left_local_index: " << top_left_local_index << ENDL();*/
-                }
-                uint32_t h_multiples = 0;
-                uint32_t processed_rows = 0;
-                cb_reserve_back(in_cb_id, npages_to_reserve);
-                uint32_t out_l1_write_addr_base = get_write_ptr(in_cb_id);
-                uint32_t out_l1_write_addr = out_l1_write_addr_base;
-                if ((total_elems_to_reduce - processed_rows) < MAX_ROWS_FOR_REDUCTION)
-                    fill_with_val(out_l1_write_addr, in_cb_sz, minus_inf);
-                for (uint32_t h = 0; h < window_h; ++h, h_multiples += in_w_padded) {
-                    uint32_t stick_offset = top_left_local_index + h_multiples;
-                    uint32_t read_offset =
-                        j * MAX_ELE_PER_REDUCTION + in_l1_read_base_addr + (stick_offset << in_nbytes_c_log2);
-                    for (uint32_t w = 0; w < window_w; w++) {
-                        /* if (reader_id == 0) {
-                            DPRINT << "    h: " << h << " w: " << w << " stick_offset: " << stick_offset
-                                   << " read_offset: " << read_offset - in_l1_read_base_addr << ENDL();
-                        } */
-                        noc_async_read_one_packet(get_noc_addr(read_offset), out_l1_write_addr, read_bytes);
-                        out_l1_write_addr += read_bytes;
-                        read_offset += in_nbytes_c;
-                        processed_rows++;
-                        if ((processed_rows % MAX_ROWS_FOR_REDUCTION) == 0) {
-                            noc_async_read_barrier();
-                            if (reader_id == 1) {
-                                /*DPRINT << "out_l1: " << ENDL();*/
-                                /*print_pages(out_l1_write_addr_base, in_nbytes_c / 2, MAX_ROWS_FOR_REDUCTION);*/
-                            }
-                            cb_push_back(in_cb_id, npages_to_reserve);
-                            cb_reserve_back(in_cb_id, npages_to_reserve);
-                            out_l1_write_addr_base = get_write_ptr(in_cb_id);
-                            out_l1_write_addr = out_l1_write_addr_base;
-                            // If next is last chunk, fill whole buffer with -inf.
-                            if ((total_elems_to_reduce - processed_rows) < MAX_ROWS_FOR_REDUCTION)
-                                fill_with_val(out_l1_write_addr, in_cb_sz, minus_inf);
+            uint16_t top_left_local_index = reader_indices_ptr[counter];
+            if (reader_id == 0) {
+                /*DPRINT << "top_left_local_index: " << top_left_local_index << ENDL();*/
+            }
+            uint32_t h_multiples = 0;
+            uint32_t processed_rows = 0;
+            cb_reserve_back(in_cb_id, npages_to_reserve);
+            uint32_t out_l1_write_addr_base = get_write_ptr(in_cb_id);
+            uint32_t out_l1_write_addr = out_l1_write_addr_base;
+            if ((total_elems_to_reduce - processed_rows) < MAX_ROWS_FOR_REDUCTION)
+                fill_with_val(out_l1_write_addr, in_cb_sz, minus_inf);
+            for (uint32_t h = 0; h < window_h; ++h, h_multiples += in_w_padded) {
+                uint32_t stick_offset = top_left_local_index + h_multiples;
+                uint32_t read_offset =
+                    j * MAX_ELE_PER_REDUCTION + in_l1_read_base_addr + (stick_offset << in_nbytes_c_log2);
+                for (uint32_t w = 0; w < window_w; w++) {
+                    /* if (reader_id == 0) {
+                        DPRINT << "    h: " << h << " w: " << w << " stick_offset: " << stick_offset
+                                << " read_offset: " << read_offset - in_l1_read_base_addr << ENDL();
+                    } */
+                    noc_async_read_one_packet(get_noc_addr(read_offset), out_l1_write_addr, read_bytes);
+                    out_l1_write_addr += read_bytes;
+                    read_offset += in_nbytes_c;
+                    processed_rows++;
+                    if ((processed_rows % MAX_ROWS_FOR_REDUCTION) == 0) {
+                        noc_async_read_barrier();
+                        if (reader_id == 1) {
+                            /*DPRINT << "out_l1: " << ENDL();*/
+                            /*print_pages(out_l1_write_addr_base, in_nbytes_c / 2, MAX_ROWS_FOR_REDUCTION);*/
                         }
+                        cb_push_back(in_cb_id, npages_to_reserve);
+                        cb_reserve_back(in_cb_id, npages_to_reserve);
+                        out_l1_write_addr_base = get_write_ptr(in_cb_id);
+                        out_l1_write_addr = out_l1_write_addr_base;
+                        // If next is last chunk, fill whole buffer with -inf.
+                        if ((total_elems_to_reduce - processed_rows) < MAX_ROWS_FOR_REDUCTION)
+                            fill_with_val(out_l1_write_addr, in_cb_sz, minus_inf);
                     }
                 }
-                if (remaining_elems) {
-                    noc_async_read_barrier();
-                    if (reader_id == 1) {
-                        /*DPRINT << "out_l1: " << ENDL();*/
-                        /*print_pages(out_l1_write_addr_base, in_nbytes_c / 2, (window_h * window_w) % MAX_ROWS_FOR_REDUCTION);*/
-                    }
-                    cb_push_back(in_cb_id, npages_to_reserve);
+            }
+            if (remaining_elems) {
+                noc_async_read_barrier();
+                if (reader_id == 1) {
+                    /*DPRINT << "out_l1: " << ENDL();*/
+                    /*print_pages(out_l1_write_addr_base, in_nbytes_c / 2, (window_h * window_w) % MAX_ROWS_FOR_REDUCTION);*/
                 }
+                cb_push_back(in_cb_id, npages_to_reserve);
             }
         }
         counter++;
