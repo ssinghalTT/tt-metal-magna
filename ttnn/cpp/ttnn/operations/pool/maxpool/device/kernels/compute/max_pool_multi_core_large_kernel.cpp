@@ -67,7 +67,6 @@ template <
 inline void reduce_h_fused(
     const uint32_t in_cb_id,
     const uint32_t in_scalar_cb_id,
-    const uint32_t num_tiles_for_reduction,
     const uint32_t in_stick_index,
     const uint32_t out_cb_id,
     const uint32_t unpA_face_r_dim) {
@@ -135,16 +134,11 @@ void MAIN {
     dump_unpack(split_reader);
     dump_unpack(nsticks_per_core_by_nblocks);
     dump_unpack(in_c);
-    uint32_t num_tiles_for_reduction =
-        in_ntiles_hwc > MAX_TILES_PER_REDUCTION ? MAX_TILES_PER_REDUCTION : in_ntiles_hwc;
     uint32_t num_8_tiles_blocks = 1;
-    num_tiles_for_reduction = num_output_tiles;
     if (num_output_tiles > MAX_TILES_PER_REDUCTION) {
         num_8_tiles_blocks =
             num_output_tiles / MAX_TILES_PER_REDUCTION;  // For now, only pow of 2 number of channels are supported.
     }
-
-    DPRINT << "num_tiles_for_reduction: " << num_tiles_for_reduction << ENDL();
     DPRINT << "in_ntiles_c: " << in_ntiles_c << ENDL();
     DPRINT << "in_nblocks_c: " << in_nblocks_c << ENDL();
 
@@ -174,7 +168,6 @@ void MAIN {
                 reduce_h_fused<in_ntiles_hw, in_ntiles_c, out_ntiles_c, in_nblocks_c, is_partial_tile, split_reader>(
                     in_cb_id,
                     in_scalar_cb_id,
-                    in_ntiles_c / in_nblocks_c,
                     i,
                     interm_reduction_cb_id,
                     MAX_ROWS_FOR_REDUCTION);
