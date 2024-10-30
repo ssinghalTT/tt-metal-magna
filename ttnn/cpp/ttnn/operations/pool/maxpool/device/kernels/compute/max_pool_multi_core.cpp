@@ -54,7 +54,7 @@ inline void reduce_h_fused(
     constexpr uint32_t num_output_tiles = out_ntiles_c / in_nblocks_c;
     constexpr uint32_t num_faces_in_tile = is_partial_tile ? 1 : 2;
     constexpr uint32_t num_out_rows = 1;
-    for (uint32_t c_i = 0; c_i < in_nblocks_c; ++ c_i) {
+    for (uint32_t b_i = 0; b_i < in_nblocks_c; ++ b_i) {
         cb_reserve_back(out_cb_id, 1);
         const uint32_t curr_in_cb_id = split_reader ? (in_cb_id + (in_stick_index & 0x1)) : in_cb_id;
         cb_wait_front(curr_in_cb_id, 1);
@@ -91,8 +91,6 @@ void MAIN {
     constexpr uint32_t in_c = get_compile_time_arg_val(14);
     constexpr uint32_t in_nblocks_c = get_compile_time_arg_val(15);
 
-    constexpr uint32_t num_output_tiles = out_ntiles_c;
-
     constexpr uint32_t in_cb_id = tt::CB::c_in0; // and tt::CB::c_in1 for split reader
     constexpr uint32_t in_scalar_cb_id = tt::CB::c_in4;
     constexpr uint32_t in_tiled_cb_id = tt::CB::c_intermed0;
@@ -105,7 +103,7 @@ void MAIN {
 
     constexpr uint32_t in_ntiles_hwc_block = in_ntiles_hwc / in_nblocks_c;
     tilizeA_B_reduce_init<true>(in_cb_id, in_scalar_cb_id, in_ntiles_hwc_block, out_cb_id, num_faces_in_tile, window_size_hw);
-    pack_untilize_dst_init_short<num_output_tiles>(out_cb_id, num_out_rows, num_faces_in_tile); /* pack 1 row (1x16 or 1x32) */
+    pack_untilize_dst_init_short<in_ntiles_c>(out_cb_id, num_out_rows, num_faces_in_tile); /* pack 1 row (1x16 or 1x32) */
 
     cb_wait_front(in_scalar_cb_id, 1);
     for (uint32_t i = 0; i < nsticks_per_core; ++ i) {
