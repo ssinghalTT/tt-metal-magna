@@ -26,24 +26,24 @@
 // SliceRange srr1 = SliceRange{.h0 = 1, .h1 = 2, .hs = 8, .w0 = 0, .w1 = 32, .ws = 1};
 // SliceRange src = SliceRange{.h0 = 0, .h1 = 32, .hs = 1, .w0 = 0, .w1 = 1, .ws = 1};
 
-inline void print_tile_rows(uint32_t cb_id, uint32_t rows = 32, uint32_t tile_id = 0, bool untilize = false) {
-    // UNPACK(( DPRINT << "======" << ENDL() ));
-    for (uint16_t r = 0; r < rows; ++r) {
-        SliceRange sr = SliceRange{.h0 = r, .h1 = (uint16_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
-        // UNPACK(( DPRINT << (uint)r << " :: " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL() ));
-        UNPACK((DPRINT << (uint)r << " :: " << TileSlice(cb_id, tile_id, sr, true, untilize)));
-    }
-    // UNPACK(( DPRINT << "++++++" << ENDL() ));
-}
+// inline void print_tile_rows(uint32_t cb_id, uint32_t rows = 32, uint32_t tile_id = 0, bool untilize = false) {
+//     // UNPACK(( DPRINT << "======" << ENDL() ));
+//     for (uint16_t r = 0; r < rows; ++r) {
+//         SliceRange sr = SliceRange{.h0 = r, .h1 = (uint16_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
+//         // UNPACK(( DPRINT << (uint)r << " :: " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL() ));
+//         UNPACK((DPRINT << (uint)r << " :: " << TileSlice(cb_id, tile_id, sr, true, untilize)));
+//     }
+//     // UNPACK(( DPRINT << "++++++" << ENDL() ));
+// }
 
-inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
-    UNPACK((DPRINT << "======" << ENDL()));
-    for (uint16_t r = 0; r < 32; ++r) {
-        SliceRange sr = SliceRange{.h0 = r, .h1 = (uint16_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
-        UNPACK((DPRINT << (uint)r << " : " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL()));
-    }
-    UNPACK((DPRINT << "++++++" << ENDL()));
-}
+// inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
+//     UNPACK((DPRINT << "======" << ENDL()));
+//     for (uint16_t r = 0; r < 32; ++r) {
+//         SliceRange sr = SliceRange{.h0 = r, .h1 = (uint16_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
+//         UNPACK((DPRINT << (uint)r << " : " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL()));
+//     }
+//     UNPACK((DPRINT << "++++++" << ENDL()));
+// }
 
 // inline void print_cb_details(uint32_t cb_id) {
 //     DPRINT << "cb_id " << cb_id << ": { "
