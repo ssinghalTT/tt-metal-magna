@@ -17,44 +17,10 @@ on:
         required: false
         type: boolean
         default: true
-  workflow_dispatch:
-    inputs:
-      arch:
-        required: true
-        type: choice
-        options:
-          - grayskull
-          - wormhole_b0
-          - blackhole
-      runner-label:
-        required: true
-        type: choice
-        options:
-          - E150
-          - N150
-          - N300
-          - BH
-      timeout:
-        required: false
-        type: number
-        default: 5
-      build-artifact:
-        required: false
-        type: boolean
-        default: true
 
 jobs:
-  build-artifact:
-    uses: ./.github/workflows/build-artifact.yaml
-    if: ${{ inputs.build-artifact }}
-    secrets: inherit
-    with:
-      build-docker: true
-      arch: '["${{ inputs.arch }}"]'
   umd-unit-tests:
     name: ${{ inputs.arch }} ${{ inputs.runner-label }}
-    needs: build-artifact
-    if: always()
     runs-on:
       - ${{ inputs.runner-label }}
       - cloud-virtual-machine

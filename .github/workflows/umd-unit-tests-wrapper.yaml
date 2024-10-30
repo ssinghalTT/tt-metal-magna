@@ -4,6 +4,12 @@ on:
   workflow_dispatch:
 
 jobs:
+  build-artifact:
+    uses: ./.github/workflows/build-artifact.yaml
+    if: ${{ inputs.build-artifact }}
+    secrets: inherit
+    with:
+      build-docker: true
   umd-unit-tests:
     secrets: inherit
     strategy:
