@@ -25,6 +25,11 @@ on:
         type: boolean
         default: true
         description: "Build docker image"
+      build-umd-artifact:
+        required: false
+        type: boolean
+        default: false
+        description: "Build UMD artifact"
   workflow_dispatch:
     inputs:
       build-docker:
@@ -49,6 +54,11 @@ on:
         required: false
         type: string
         default: "ubuntu-20.04-amd64"
+      build-umd-artifact:
+        required: false
+        type: boolean
+        default: false
+        description: "Build UMD artifact"
 
 
 jobs:
@@ -158,7 +168,7 @@ jobs:
           path: ttm_${{ matrix.arch }}.tar
   build-umd-artifact:
     needs: build-docker-image
-    if: always()
+    if: ${{ inputs.build-umd-artifact }}
     timeout-minutes: 5
     strategy:
       matrix:
