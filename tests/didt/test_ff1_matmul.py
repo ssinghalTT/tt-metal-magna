@@ -9,7 +9,7 @@ import torch
 from tests.didt.matmul_test_base import MatmulTestBase
 import ttnn
 
-GELU_FIDELITY_PARAMETRIZATION = ((False, ttnn.MathFidelity.LoFi), (True, ttnn.MathFidelity.HiFi2))
+GELU_FIDELITY_PARAMETRIZATION = ((False, ttnn.MathFidelity.HiFi2), (True, ttnn.MathFidelity.HiFi2))
 GELU_FIDELITY_PARAMETRIZATION_IDS = ["without_gelu", "with_gelu"]
 
 
