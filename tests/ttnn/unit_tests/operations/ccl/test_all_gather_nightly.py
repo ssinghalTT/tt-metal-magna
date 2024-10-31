@@ -152,6 +152,7 @@ def run_line_all_gather_instances(
     function_level_defaults,
     enable_async,
     num_iters=1,
+    tile=(32, 32),
 ):
     if t3k_mesh_device.get_num_devices() != 8:
         pytest.skip("Not T3000!")
@@ -181,7 +182,7 @@ def run_line_all_gather_instances(
 
     input_tensor = torch.rand(input_shape).bfloat16()
 
-    ttnn_tensor = ttnn.from_torch(input_tensor, mesh_mapper=ShardTensorToMesh(t3k_mesh_device, dim=dim))
+    ttnn_tensor = ttnn.from_torch(input_tensor, tile=tile, mesh_mapper=ShardTensorToMesh(t3k_mesh_device, dim=dim))
     input_tensor_mesh = ttnn.to_device(ttnn_tensor, t3k_mesh_device)
 
     result_mesh_tensors = []

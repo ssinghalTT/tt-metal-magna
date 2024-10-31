@@ -63,6 +63,7 @@ def run_line_reduce_scatter_on_TG_with_mesh_tensor_along_rows(
     num_reduce_scatter_instances: int = 1,
     num_iters: int = 1,
     cluster_axis: int = 0,
+    tile=(32, 32),
 ):
     if len(mesh_device.get_devices()) != 32:
         pytest.skip("Not TG!")
@@ -139,6 +140,7 @@ def run_line_reduce_scatter_on_TG_with_mesh_tensor_along_rows(
         layout=layout,
         memory_config=input_mem_config,
         mesh_mapper=ShardTensor2dMesh(mesh_device, mesh_shape=mesh_shape, dims=shard_dims),
+        tile=tile,
     )
     ttnn_tensor = ttnn.to_device(ttnn_tensor, mesh_device)
 

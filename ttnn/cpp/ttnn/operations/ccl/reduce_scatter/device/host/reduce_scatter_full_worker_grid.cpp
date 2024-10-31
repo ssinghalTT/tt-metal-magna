@@ -613,7 +613,7 @@ operation::ProgramWithCallbacks reduce_scatter_with_workers(
     // // The input tensor is fractured by ring_size so we divi
     std::size_t input_tensor_n_elems_per_slice = input_tensor.volume() / ring_size;
     std::size_t input_tensor_num_units_per_tensor_slice =
-        input_tensor_n_elems_per_slice / (tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT);
+        input_tensor_n_elems_per_slice / (input_tensor.get_tile().get_tile_hw());
 
     TT_ASSERT(input_tensor_num_units_per_tensor_slice > 0);
     constexpr bool enable_bidirectional = true;

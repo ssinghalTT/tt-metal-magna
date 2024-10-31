@@ -162,3 +162,72 @@ def test_reduce_scatter_t3k_4chip_nightly(
         num_iters=num_iters,
         enable_async=enable_async,
     )
+
+
+@skip_for_grayskull("Requires eth connected devices to run")
+@pytest.mark.timeout(120)
+@pytest.mark.parametrize(
+    "num_devices, num_links",
+    [
+        (8, 1),
+    ],
+)
+@pytest.mark.parametrize(
+    "per_chip_output_shape, scatter_dim, layout",
+    [
+        ([1, 8, 1024, 1024], 3, ttnn.TILE_LAYOUT),
+        ([1, 4, 1024, 1024], 3, ttnn.TILE_LAYOUT),
+        ([1, 4, 2048, 1024], 3, ttnn.TILE_LAYOUT),
+    ],
+)
+@pytest.mark.parametrize(
+    "input_dtype",
+    [
+        ttnn.bfloat16,
+        # ttnn.bfloat8_b,   #TODO investigate why this causes an error
+    ],
+)
+@pytest.mark.parametrize(
+    "mem_config",
+    [
+        ttnn.MemoryConfig(buffer_type=ttnn.BufferType.DRAM),
+        ttnn.MemoryConfig(buffer_type=ttnn.BufferType.L1),
+    ],
+)
+@pytest.mark.parametrize("math_op", [ttnn.ReduceType.Sum])
+@pytest.mark.parametrize("enable_async", [True])
+@pytest.mark.parametrize("tile_h", [16, 32])
+@pytest.mark.parametrize("tile_w", [16, 32])
+def test_reduce_scatter_t3k_8chip_tiny_tile_nightly(
+    t3k_mesh_device,
+    num_devices,
+    per_chip_output_shape,
+    scatter_dim,
+    num_links,
+    math_op,
+    input_dtype,
+    layout,
+    mem_config,
+    use_program_cache,
+    function_level_defaults,
+    enable_async,
+    tile_h,
+    tile_w,
+    num_iters=1,
+):
+    run_reduce_scatter_test(
+        t3k_mesh_device,
+        num_devices,
+        per_chip_output_shape,
+        scatter_dim,
+        num_links,
+        math_op,
+        input_dtype,
+        layout,
+        mem_config,
+        use_program_cache,
+        function_level_defaults,
+        num_iters=num_iters,
+        enable_async=enable_async,
+        tile=(tile_h, tile_w),
+    )

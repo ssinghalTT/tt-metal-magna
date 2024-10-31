@@ -92,6 +92,7 @@ def run_reduce_scatter_test(
     enable_async=True,
     num_iters=1,
     topology=ttnn.Topology.Ring,
+    tile=(32, 32),
 ):
     if len(mesh_device.get_device_ids()) < num_devices:
         pytest.skip(
@@ -126,7 +127,7 @@ def run_reduce_scatter_test(
         input_tensors[-1] = torch.arange(numel).reshape(canonical_input_shape).bfloat16()
     for i, canonical_input_tensor in enumerate(input_tensors):
         tt_input_tensors.append(
-            ttnn.Tensor(canonical_input_tensor, input_dtype)
+            ttnn.Tensor(canonical_input_tensor, input_dtype, {}, tile)
             .to(layout)
             .to(mesh_device.get_device(mesh_device.get_device_ids()[i]), mem_config)
         )
@@ -134,6 +135,7 @@ def run_reduce_scatter_test(
     assert len(tt_input_tensors) == num_devices
 
     input_tensor_mesh = ttnn.aggregate_as_tensor(tt_input_tensors)
+    logger.info(f"mesh_shape: {input_tensor_mesh.get_tile()}")
     # Run the op
     for i in range(num_iters):
         output_tensor_mesh = ttnn.reduce_scatter(
@@ -405,6 +407,7 @@ def run_reduce_scatter_sharded_test(
     n_worker=None,
     n_buffer=None,
     trace_mode=False,
+    tile=(32, 32),
 ):
     if len(t3k_mesh_device.get_device_ids()) < num_devices:
         pytest.skip(
@@ -464,7 +467,7 @@ def run_reduce_scatter_sharded_test(
         input_tensors[-1] = torch.arange(numel).reshape(canonical_input_shape).bfloat16()
     for i, canonical_input_tensor in enumerate(input_tensors):
         tt_input_tensors.append(
-            ttnn.Tensor(canonical_input_tensor, input_dtype)
+            ttnn.Tensor(canonical_input_tensor, input_dtype, {}, tile)
             .to(tensor_layout)
             .to(t3k_mesh_device.get_device(t3k_mesh_device.get_device_ids()[i]), input_mem_config)
         )
