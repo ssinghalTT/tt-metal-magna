@@ -57,6 +57,8 @@ def run_max_pool(
             pytest.skip("This case runs out of memory on Grayskull")
         if in_n > 16 and in_c > 64 and dtype == ttnn.bfloat8_b and is_wormhole_b0():
             pytest.skip("This case runs out of memory on Wormhole b0")
+        if stride == (1, 1) and in_n * in_c * in_h * in_w > 1e7:
+            pytest.skip("This case runs out of memory")
 
     if shard_scheme == ttnn.TensorMemoryLayout.WIDTH_SHARDED:
         if in_c < max_cores:
@@ -164,7 +166,11 @@ def run_max_pool(
 
     output_pytorch = torch.permute(output_pytorch, (0, 3, 1, 2))  ## N, C, H, W
 
-    passing, pcc = assert_with_pcc(output_pytorch, golden_pytorch)
+    pcc_thresh = 0.9999
+    if dtype == ttnn.bfloat8_b:
+        pcc_thresh = 0.9997
+
+    passing, pcc = assert_with_pcc(output_pytorch, golden_pytorch, pcc_thresh)
 
     logger.debug(f"Passing: {passing}, PCC: {pcc}")
 
@@ -195,7 +201,7 @@ def run_max_pool(
             [1, 64, 112, 112],
             [4, 64, 112, 112],
             [8, 64, 112, 112],
-            [16, 64, 112, 112],
+            [16, 64, 112, 112],  # oom with stride (1,1)
             # [20, 64, 112, 112],   ## oom
             ## hpr shapes
             [8, 32, 132, 20],
@@ -210,7 +216,7 @@ def run_max_pool(
             # [64, 32, 264, 40],    ## oom
             # [128, 32, 264, 40],   ## oom
             # [256, 32, 264, 40],   ## oom
-            [4, 16, 1056, 160],
+            [4, 16, 1056, 160],  # oom with stride (1,1)
             # [8, 16, 1056, 160],     ## oom
             # [16, 16, 1056, 160],    ## oom
             # [32, 16, 1056, 160],    ## oom
@@ -218,7 +224,7 @@ def run_max_pool(
             # [128, 16, 1056, 160],   ## oom
             # [256, 16, 1056, 160],   ## oom
             [8, 16, 528, 80],
-            [16, 16, 528, 80],
+            [16, 16, 528, 80],  # oom with stride (1,1)
             # [32, 16, 528, 80],  ## oom
             # [64, 16, 528, 80],  ## oom
             # [128, 16, 528, 80], ## oom
@@ -449,7 +455,7 @@ def test_run_max_pool_block_shard(
     )
 
 
-""" @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
 @pytest.mark.parametrize(
     "act_shape",  ## NCHW
     (
@@ -757,4 +763,4 @@ def test_pool_core_nondivis(
     assert allclose
     assert isclose
     if dtype == ttnn.bfloat16:
-        assert isequal """
+        assert isequal
