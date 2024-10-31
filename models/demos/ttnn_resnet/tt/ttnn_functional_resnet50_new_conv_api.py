@@ -7,6 +7,7 @@ import torch
 from models.utility_functions import (
     is_grayskull,
     is_wormhole_b0,
+    is_blackhole,
     _nearest_y,
     pad_and_fold_conv_activation_for_unity_stride,
 )
@@ -153,7 +154,7 @@ class resnet50Bottleneck:
         reshard_if_not_optimal=False,
         height_sharding=None,
         transpose_shards=True,
-        packer_l1_accum_enabled=True if is_wormhole_b0() else False,
+        packer_l1_accum_enabled=True if not is_grayskull() else False,
         enable_act_double_buffer=False,
         enable_split_reader=False,
         enable_subblock_padding=False,
@@ -181,7 +182,7 @@ class resnet50Bottleneck:
                     if height_sharding
                     else ttnn.TensorMemoryLayout.BLOCK_SHARDED,
                     deallocate_activation=True,
-                    reallocate_halo_output=not (is_wormhole_b0() and batch_size == 16),
+                    reallocate_halo_output=not ((is_wormhole_b0() or is_blackhole()) and batch_size == 16),
                     reshard_if_not_optimal=reshard_if_not_optimal,
                     transpose_shards=transpose_shards,
                     packer_l1_accum_enabled=packer_l1_accum_enabled,
@@ -214,7 +215,7 @@ class resnet50Bottleneck:
         height_sharding=None,
         eltwise_binary_out_in_place=True,
         transpose_shards=True,
-        packer_l1_acc=True if is_wormhole_b0() else False,
+        packer_l1_acc=True if not is_grayskull() else False,
         enable_act_double_buffer=False,
         enable_split_reader=False,
         enable_subblock_padding=False,
@@ -258,7 +259,7 @@ class resnet50Bottleneck:
         if is_grayskull():
             if self.conv2_output_channels == 64 and input_height == 56 and batch_size == 20:
                 act_block_h_override = 320
-        elif is_wormhole_b0():
+        elif is_wormhole_b0() or is_blackhole():
             if (
                 self.conv2_input_channels == 128
                 and self.conv2_output_channels == 128
@@ -271,7 +272,7 @@ class resnet50Bottleneck:
         if not (input_height == 56 and self.conv1_input_channels == 64):
             run_downsample_before_conv2 = True
         if (
-            is_wormhole_b0()
+            (is_wormhole_b0() or is_blackhole())
             and batch_size == 16
             and (
                 (input_height == 56 and self.conv1_input_channels == 256 and self.conv1_output_channels == 128)
@@ -286,7 +287,7 @@ class resnet50Bottleneck:
             if input_height == 56 and self.conv1_input_channels == 256 and self.downsample:
                 x_rm = ttnn.to_layout(x, ttnn.ROW_MAJOR_LAYOUT)
                 ttnn.deallocate(x)
-                if is_wormhole_b0():
+                if is_wormhole_b0() or is_blackhole():
                     out = ttnn.reallocate(out)
                 x = ttnn.reallocate(x_rm)
             ds_out = self.run_downsample_if_req(
@@ -347,7 +348,7 @@ class resnet50Bottleneck:
         )
 
         if (
-            is_wormhole_b0()
+            (is_wormhole_b0() or is_blackhole())
             and batch_size == 20
             and input_height == 28
             and self.conv1_input_channels == 256
@@ -433,7 +434,9 @@ class resnet50Bottleneck:
                 memory_config=ttnn.L1_MEMORY_CONFIG,
             )  ## TODO: check why not out mem config???
         ttnn.deallocate(ds_out)
-        if batch_size == 20 and (is_wormhole_b0() or (module_input_height == 56 and self.conv1_input_channels == 64)):
+        if batch_size == 20 and (
+            is_blackhole() or is_wormhole_b0() or (module_input_height == 56 and self.conv1_input_channels == 64)
+        ):
             out = ttnn.reallocate(out)
         return out, input_height, input_width
 
@@ -550,7 +553,7 @@ class resnet50:
         self.transpose_shards = True
         act_block_h_override = 1568
 
-        if is_wormhole_b0():
+        if is_wormhole_b0() or is_blackhole():
             self.transpose_shards = False
             if batch_size == 16:
                 act_block_h_override = 1568
@@ -559,8 +562,8 @@ class resnet50:
         else:
             act_block_h_override = 0
         # input_channels_alignment = 16 if not is_wormhole_b0() else 32
-        whb0_and_b16 = is_wormhole_b0() and self.batch_size == 16
-        if not is_wormhole_b0():
+        whb0_and_b16 = (is_wormhole_b0() or is_blackhole()) and self.batch_size == 16
+        if is_grayskull():
             input_channels_alignment = 16
         elif whb0_and_b16:
             input_channels_alignment = 16
@@ -577,7 +580,7 @@ class resnet50:
             transpose_shards=self.transpose_shards,
             packer_l1_accum_enabled=True if whb0_and_b16 else False,
             enable_act_double_buffer=True if whb0_and_b16 else False,
-            enable_split_reader=True if whb0_and_b16 or not is_wormhole_b0() else False,
+            enable_split_reader=True if whb0_and_b16 or (not is_wormhole_b0() and not is_blackhole()) else False,
             enable_subblock_padding=False,
             shard_layout=ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
             reshard_if_not_optimal=False,
@@ -625,7 +628,7 @@ class resnet50:
             if is_grayskull():
                 num_cores_x = 10
                 num_cores_y = 8
-            elif is_wormhole_b0():  # untested due to unsupported batch20 on WH
+            elif is_wormhole_b0() or is_blackhole():  # untested due to unsupported batch20 on WH
                 num_cores_x = 8
                 num_cores_y = 5
         self.fold_compute_grid_size = (num_cores_x, num_cores_y)
@@ -752,7 +755,7 @@ class resnet50:
         x_width = 56
         x = ttnn.reshape(x, (1, 1, x_height * x_width * self.batch_size, 64))
 
-        if is_wormhole_b0():
+        if is_wormhole_b0() or is_blackhole():
             # TODO: fix the need to do the reshard here
             mem_config = ttnn.create_sharded_memory_config_(
                 ttnn.Shape([self.batch_size * x_height * x_width, 64]),
@@ -764,7 +767,7 @@ class resnet50:
             x = ttnn.to_memory_config(x, mem_config)
         x = ttnn.to_layout(x, ttnn.TILE_LAYOUT, dtype=self.model_config["ACTIVATIONS_DTYPE"])
 
-        if self.batch_size == 20 and not is_wormhole_b0():
+        if self.batch_size == 20 and not is_wormhole_b0() and not is_blackhole():
             x = ttnn.reallocate(x)
 
         logger.debug(f"==== Running layer 1 module 1")
@@ -772,14 +775,14 @@ class resnet50:
 
         reshard = False
         height_shard = False
-        if is_wormhole_b0() and self.batch_size == 20:
+        if (is_wormhole_b0() or is_blackhole()) and self.batch_size == 20:
             if is_first_run:
                 reshard = True
                 height_shard = True
             else:
                 x = ttnn.to_memory_config(x, ops_parallel_config["layer1_module1_input"])
 
-        whb0_and_b16 = is_wormhole_b0() and self.batch_size == 16
+        whb0_and_b16 = (is_wormhole_b0() or is_blackhole()) and self.batch_size == 16
 
         x, x_height, x_width = self.layer1_module1(
             x,
@@ -834,7 +837,7 @@ class resnet50:
             enable_subblock_padding=True if whb0_and_b16 else False,
         )
 
-        if self.batch_size == 20 and is_wormhole_b0():
+        if self.batch_size == 20 and (is_wormhole_b0() or is_blackhole()):
             x = ttnn.reallocate(x)
 
         layer2_module1_input_shape = ttnn.Shape(x.shape.with_tile_padding())
@@ -842,9 +845,9 @@ class resnet50:
         reshard = False
         height_shard = False
         is_gs = is_grayskull()
-        if is_wormhole_b0() and self.batch_size == 20:
+        if (is_wormhole_b0() or is_blackhole()) and self.batch_size == 20:
             if is_first_run:
-                reshard = True if not is_wormhole_b0() else False
+                reshard = False
                 height_shard = True
             else:
                 x = ttnn.to_memory_config(x, ops_parallel_config["layer2_module1_input"])
@@ -1024,7 +1027,7 @@ class resnet50:
             enable_subblock_padding=False,
         )
 
-        if is_wormhole_b0() and self.batch_size == 16:
+        if (is_wormhole_b0() or is_blackhole()) and self.batch_size == 16:
             xshape = x.shape
             x = ttnn.slice(
                 x, starts=(0, 0, 0, 0), ends=(xshape[0], xshape[1], xshape[2], xshape[3]), steps=(1, 1, 1, 1)
@@ -1032,7 +1035,7 @@ class resnet50:
 
         layer4_module1_input_shape = ttnn.Shape(x.shape.with_tile_padding())
 
-        if is_wormhole_b0():
+        if is_wormhole_b0() or is_blackhole():
             shard_config = ttnn.create_sharded_memory_config_(
                 layer4_module1_input_shape,
                 ttnn.CoreGrid(x=8, y=7),

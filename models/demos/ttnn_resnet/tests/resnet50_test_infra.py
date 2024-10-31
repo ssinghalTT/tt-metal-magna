@@ -15,6 +15,7 @@ from ttnn.model_preprocessing import (
 from models.utility_functions import (
     is_wormhole_b0,
     is_grayskull,
+    is_blackhole,
     divup,
 )
 
@@ -142,6 +143,7 @@ golden_pcc = {
 }
 
 golden_pcc = {
+    ttnn.device.Arch.BLACKHOLE: golden_pcc,
     ttnn.device.Arch.WORMHOLE_B0: golden_pcc,
     ttnn.device.Arch.GRAYSKULL: golden_pcc,
 }
@@ -254,7 +256,7 @@ class ResNet50TestInfra:
         elif self.batch_size == 20:
             if is_grayskull():
                 core_grid = ttnn.CoreGrid(y=8, x=10)
-            elif is_wormhole_b0():
+            elif is_wormhole_b0() or is_blackhole():
                 core_grid = ttnn.CoreGrid(y=5, x=6)  # untested due to unsupported batch20 on WH
         num_devices = 1 if isinstance(device, ttnn.Device) else device.get_num_devices()
         # torch tensor
