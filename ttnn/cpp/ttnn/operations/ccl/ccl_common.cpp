@@ -712,21 +712,23 @@ std::vector<tt_xy_pair> RingReduceScatterWrappedTensorSlicer::create_worker_slic
     std::size_t max_slice_size_in_tiles = max_slice_size_in_pages;
 
     // Assign slices by assuming that the input tensor is flattened into a 1D Shape
-    const std::size_t optim_worker_slice_len_tiles = ((total_num_tiles - 1) / num_workers) + 1;
+    // Make each worker have approximately the same number of tiles to process as the others
+    const std::size_t optim_worker_slice_len_tiles = total_num_tiles / num_workers;
 
-    const bool each_worker_has_max_size_slice = max_slice_size_in_tiles < optim_worker_slice_len_tiles;
-    if (each_worker_has_max_size_slice) { // Each worker will have a full slice
-        for (uint32_t w = 0; w < num_workers; ++w) {
-            worker_slice_shapes.emplace_back(max_slice_size_in_tiles, 1);
-        }
-    } else { // Each worker will only have one slice
-        const size_t base_tiles_per_worker = total_num_tiles / num_workers;
-        const size_t total_extra_tiles = total_num_tiles - (base_tiles_per_worker * num_workers);
+    const bool truncate_each_worker_to_max_slice_size = max_slice_size_in_tiles < optim_worker_slice_len_tiles;
+    if (truncate_each_worker_to_max_slice_size) {
+        // Each worker will have potentially multiple slices, but each capped at the max slice size
+        // In this case, workers stride through the tensor slice after completing their worker slice
+        auto const& slice = tt_xy_pair(max_slice_size_in_tiles, 1);
+        std::fill_n(std::back_inserter(worker_slice_shapes), num_workers, slice);
+    } else {
+        const size_t total_extra_tiles = total_num_tiles - (optim_worker_slice_len_tiles * num_workers);
         for (uint32_t w = 0; w < num_workers; ++w) {
             const bool add_extra_tile = w < total_extra_tiles;
-            const size_t remainder_tiles = add_extra_tile ? 1 : 0;
-            const size_t num_tiles_this_worker = base_tiles_per_worker + remainder_tiles;
-            worker_slice_shapes.emplace_back(optim_worker_slice_len_tiles, 1);
+            const size_t remainder_tiles = add_extra_tile;
+            const size_t num_tiles_this_worker = optim_worker_slice_len_tiles + remainder_tiles;
+            log_info(tt::LogOp, "Worker {} has {} tiles", w, num_tiles_this_worker);
+            worker_slice_shapes.emplace_back(num_tiles_this_worker, 1);
         }
     }
 
