@@ -165,8 +165,6 @@ MaxPool2D::MultiCore::cached_program_t max_pool_2d_multi_core_sharded_with_halo_
             in_cb_sz = input_shape[3] / num_shards_c * kernel_size_hw_padded;
         }
     }
-    printf("in_cb_sz: %d\n", in_cb_sz); // same for large and normal
-    printf("in_nbytes_c: %d\n", in_nbytes_c);
     // reader output == input to tilize
     uint32_t in_cb_id_0 = tt::CB::c_in0;  // input rows for "multiple (out_nelems)" output pixels
     uint32_t in_cb_id_1 = tt::CB::c_in1;  // input rows for "multiple (out_nelems)" output pixels
@@ -215,8 +213,6 @@ MaxPool2D::MultiCore::cached_program_t max_pool_2d_multi_core_sharded_with_halo_
         uint32_t max_pool_partials_cb_id = tt::CB::c_intermed1;  // max_pool partials
         uint32_t max_pool_partials_cb_pagesize = out_cb_pagesize;
         uint32_t max_pool_partials_cb_npages = nblocks;
-        printf("max_pool_partials_cb_pagesize: %d\n", max_pool_partials_cb_pagesize);
-        printf("max_pool_partials_cb_npages: %d\n", max_pool_partials_cb_npages);
         CircularBufferConfig max_pool_partials_cb_config =
             CircularBufferConfig(
                 max_pool_partials_cb_npages * max_pool_partials_cb_pagesize, {{max_pool_partials_cb_id, out_df}})

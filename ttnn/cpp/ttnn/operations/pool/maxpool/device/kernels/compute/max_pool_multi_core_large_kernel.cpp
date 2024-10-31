@@ -10,7 +10,7 @@
 #include "compute_kernel_api/tilize.h"
 // #include "tools/profiler/kernel_profiler.hpp"
 
-#define DEBUG_PRINT 1
+#define DEBUG_PRINT 0
 
 #if DEBUG_PRINT == 1
 #include "debug/dprint.h"
@@ -78,7 +78,6 @@ inline void reduce_h_fused(
         0 /*tile idx for Src b is 0 because only 1 tile of constants is loaded*/,
         num_faces_in_tile /* unpack 1 or 2 faces ) */,
         unpA_face_r_dim);
-    //print_full_tile(curr_in_cb_id);
     for (uint32_t c_i = 0; c_i < num_output_tiles; ++c_i) {
         reduce_tile_math(c_i, num_faces_in_tile /* reduce 1 or 2 faces */);
     }
@@ -161,9 +160,6 @@ void MAIN {
             pack_untilize_dst_init_short<out_ntiles_c / in_nblocks_c>(
                 out_cb_id, num_out_rows, num_faces_in_tile);
 
-            if(i == 0) {
-                /*print_full_tile(interm_reduction_cb_id);*/
-            }
             tile_regs_acquire();
             unpack_tilizeA_B_block(
                 interm_reduction_cb_id,
@@ -176,11 +172,8 @@ void MAIN {
                 reduce_tile_math(c_i, num_faces_in_tile /* reduce 1 or 2 faces */);
             }
 
-            /*print_full_tile(out_cb_id);*/
             tile_regs_wait();
             tile_regs_commit();
-
-            //print_tile_rows(out_cb_id, 1);
 
             pack_untilize_dst<num_output_tiles>(
                 out_cb_id,
@@ -193,7 +186,6 @@ void MAIN {
             pack_untilize_uninit(out_cb_id);
         }
     }
-    /*print_full_tile(out_cb_id);*/
     cb_push_back(out_cb_id, 1);
     cb_pop_front(in_scalar_cb_id, 1);
     //cb_pop_front(interm_reduction_cb_id, 1);
