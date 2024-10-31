@@ -46,31 +46,23 @@ def test_single_device_single_trace(device, shape, enable_async, blocking):
     deserialize_trace = True if "TT_METAL_DESERIALIZE_TRACE" in os.environ else False
     logger.info("KCM Test. Serialize Trace: {}, Deserialize Trace: {}".format(serialize_trace, deserialize_trace))
 
-    # Under debug. Skips capturing trace, hangs.
-    skip_capture = True if "SKIP_CAPTURE" in os.environ else False
-
     # Capture Trace
-    if skip_capture and deserialize_trace:
+    if deserialize_trace:
         logger.info("KCM Deserialize Trace, skipping capture. Going to call load_trace_binary")
         tid = 0
         ttnn.load_trace_binary(device, tid, cq_id=0)
         logger.info("KCM Deserialize Trace, done calling load_trace_binary")
     else:
+        # KCM - This is unchanged from original test.
         logger.info("KCM Capture Trace start")
         tid = ttnn.begin_trace_capture(device, cq_id=0)
         output_tensor = run_op_chain(input_0_dev, input_1_dev)
         ttnn.end_trace_capture(device, tid, cq_id=0)
         logger.info("KCM Capture Trace end for tid: {}", tid)
 
-    # KCM TODO - Temp Hack / Bringup - Call new Deserialize API here and skip capture on rerun.
-    # Wire down through TTNN API python -> CPP -> Metal
-
-    # Run 1 - Serialize Trace to Disk Here, and exit.
-    # Run 2 - Skip capture Trace, reload from disk and write to device.
-
-    if serialize_trace:
-        logger.info("KCM Serialized trace, early exit")
-        return
+        if serialize_trace:
+            logger.info("KCM Serialized trace, early exit")
+            return
 
     for i in range(10):
         logger.info(f"KCM Run {i}")
