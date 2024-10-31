@@ -8,6 +8,16 @@
 #include "compute_kernel_api/tilize.h"
 #include "compute_kernel_api/untilize.h"
 
+#include "debug/dprint.h"
+#include "debug/dprint_tensix.h"
+inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
+    PACK((DPRINT << "======" << ENDL()));
+    for (int32_t r = 0; r < 32; ++r) {
+        SliceRange sr = SliceRange{.h0 = (uint8_t)r, .h1 = (uint8_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
+        PACK((DPRINT << (uint)r << " : " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL()));
+    }
+    PACK((DPRINT << "++++++" << ENDL()));
+}
 using std::uint32_t;
 
 // matmul C=A*B using dims MK*KN = MN (row major order)
@@ -82,6 +92,9 @@ void MAIN {
         // tilize CB::intermed2 and write to CB::c_out0
         tilize_init_short_with_dt(cb_in1, cb_intermed2, onetile);
         tilize_block(cb_intermed2, onetile, out_cb_id);
+        //print_full_tile(cb_intermed2);
+        //print_full_tile(out_cb_id);
+        dprint_tensix_dest_reg(0);
         cb_push_back(out_cb_id, onetile);
 
         cb_pop_front(cb_intermed2, onetile);
