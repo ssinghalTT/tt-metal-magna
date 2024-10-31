@@ -58,17 +58,13 @@
 #endif
 
 template <
-    uint32_t in_ntiles_hw,
-    uint32_t in_ntiles_c,
-    uint32_t out_ntiles_c,
-    uint32_t in_nblocks_c,
+    uint32_t num_output_tiles,
     bool is_partial_tile,
     uint32_t split_reader>
 inline void reduce_h_fused(
     const uint32_t in_cb_id,
     const uint32_t in_scalar_cb_id,
     const uint32_t in_stick_index,
-    const uint32_t out_cb_id,
     const uint32_t unpA_face_r_dim) {
     constexpr uint32_t num_faces_in_tile = is_partial_tile ? 1 : 2;
     constexpr uint32_t num_out_rows = 1;
@@ -78,12 +74,12 @@ inline void reduce_h_fused(
     unpack_tilizeA_B_block(
         curr_in_cb_id,
         in_scalar_cb_id,
-        in_ntiles_c / in_nblocks_c,
+        num_output_tiles,
         0 /*tile idx for Src b is 0 because only 1 tile of constants is loaded*/,
         num_faces_in_tile /* unpack 1 or 2 faces ) */,
         unpA_face_r_dim);
     //print_full_tile(curr_in_cb_id);
-    for (uint32_t c_i = 0; c_i < in_ntiles_c / in_nblocks_c; ++c_i) {
+    for (uint32_t c_i = 0; c_i < num_output_tiles; ++c_i) {
         reduce_tile_math(c_i, num_faces_in_tile /* reduce 1 or 2 faces */);
     }
     cb_pop_front(curr_in_cb_id, 1);
@@ -95,7 +91,6 @@ void MAIN {
     // NOTE: here it is assumed that in_ntiles_hw == 1. General cases not handled yet.
     constexpr uint32_t in_ntiles_hw = get_compile_time_arg_val(0);
     constexpr uint32_t in_ntiles_c = get_compile_time_arg_val(1);
-    constexpr uint32_t in_ntiles_hwc = get_compile_time_arg_val(2);
     constexpr uint32_t window_size_hw = get_compile_time_arg_val(3);
     constexpr uint32_t out_h = get_compile_time_arg_val(4);
     constexpr uint32_t out_w = get_compile_time_arg_val(5);
@@ -120,13 +115,11 @@ void MAIN {
     constexpr uint32_t MAX_ROWS_FOR_REDUCTION = 16;
     constexpr uint32_t MAX_TILES_PER_REDUCTION = 8;
 
-    DPRINT << "in_ntiles_c: " << in_ntiles_c << ENDL();
-    DPRINT << "in_nblocks_c: " << in_nblocks_c << ENDL();
-
+    constexpr uint32_t num_output_tiles = in_ntiles_c / in_nblocks_c;
     tilizeA_B_reduce_init<true>(
         in_cb_id,
         in_scalar_cb_id,
-        in_ntiles_c / in_nblocks_c,
+        num_output_tiles,
         interm_reduction_cb_id,
         num_faces_in_tile,
         MAX_ROWS_FOR_REDUCTION);
@@ -140,21 +133,20 @@ void MAIN {
             // NOTE: Assuming in_ntiles_hw < 8 for now.
             // TODO: subblocking to support this.
             uint32_t out_write_idx = i * in_nblocks_c + b_i;
-            pack_untilize_dst_init_short<out_ntiles_c / in_nblocks_c>(
+            pack_untilize_dst_init_short<num_output_tiles>(
                 interm_reduction_cb_id, num_out_rows, num_faces_in_tile);
             cb_reserve_back(interm_reduction_cb_id, 1);
             for (uint32_t h = 0; h <= interm_reduction_chunks; h++) {
                 tile_regs_acquire();
 
-                reduce_h_fused<in_ntiles_hw, in_ntiles_c, out_ntiles_c, in_nblocks_c, is_partial_tile, split_reader>(
+                reduce_h_fused<num_output_tiles, is_partial_tile, split_reader>(
                     in_cb_id,
                     in_scalar_cb_id,
                     i,
-                    interm_reduction_cb_id,
                     MAX_ROWS_FOR_REDUCTION);
                 tile_regs_wait();
                 tile_regs_commit();
-                pack_untilize_dst<out_ntiles_c / in_nblocks_c>(
+                pack_untilize_dst<num_output_tiles>(
                     interm_reduction_cb_id,
                     1 /*out_subblock_h*/,
                     h,
@@ -176,11 +168,11 @@ void MAIN {
             unpack_tilizeA_B_block(
                 interm_reduction_cb_id,
                 in_scalar_cb_id,
-                in_ntiles_c / in_nblocks_c,
+                num_output_tiles,
                 0 /*tile idx for Src b is 0 because only 1 tile of constants is loaded*/,
                 num_faces_in_tile /* unpack 1 or 2 faces ) */,
                 MAX_ROWS_FOR_REDUCTION);
-            for (uint32_t c_i = 0; c_i < in_ntiles_c / in_nblocks_c; ++c_i) {
+            for (uint32_t c_i = 0; c_i < num_output_tiles; ++c_i) {
                 reduce_tile_math(c_i, num_faces_in_tile /* reduce 1 or 2 faces */);
             }
 
@@ -190,7 +182,7 @@ void MAIN {
 
             //print_tile_rows(out_cb_id, 1);
 
-            pack_untilize_dst<out_ntiles_c / in_nblocks_c>(
+            pack_untilize_dst<num_output_tiles>(
                 out_cb_id,
                 1 /*out_subblock_h*/,
                 out_write_idx,
