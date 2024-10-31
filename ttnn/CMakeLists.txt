@@ -2,6 +2,7 @@ set(ALL_TTNN_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/async_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/config.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/core.cpp
+    cpp/ttnn/types.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/device.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/events.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/global_circular_buffer.cpp
@@ -711,4 +712,8 @@ set_target_properties(
             "default"
         ADDITIONAL_CLEAN_FILES
             "${PROJECT_SOURCE_DIR}/ttnn/ttnn/_ttnn.so;${PROJECT_SOURCE_DIR}/ttnn/ttnn.egg-info"
+        PUBLIC_HEADER
+            ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/types.hpp
 )
+
+install(TARGETS ttnn ARCHIVE COMPONENT fixme LIBRARY COMPONENT ttnn PUBLIC_HEADER COMPONENT ttnn-dev)

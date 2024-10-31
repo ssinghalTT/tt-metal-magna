@@ -259,6 +259,13 @@ if(ENABLE_TRACY)
     add_link_options(-rdynamic)
 endif()
 
+# Install for build artifacts that will upload build/lib
+#set(CMAKE_INSTALL_DOCDIR "foobar")
+include(GNUInstallDirs)
+# GNUInstallDirs takes PROJECT_DIR verbatim, but directories should always be lowercase
+string(TOLOWER ${PROJECT_NAME} PROJECT_NAME_LOWER)
+string(REPLACE ${PROJECT_NAME} ${PROJECT_NAME_LOWER} CMAKE_INSTALL_DOCDIR ${CMAKE_INSTALL_DOCDIR})
+
 ############################################################################################################################
 # Build subdirectories
 ############################################################################################################################
@@ -278,9 +285,8 @@ endif()
 #   If built with Tracy, cannot install 'all' since it will pick up install targets from Tracy
 # For top level install: cmake --build build --target install  or  make/ninja install -C build
 ############################################################################################################################
-# Install for build artifacts that will upload build/lib
-include(GNUInstallDirs)
 
+#[[
 install(
     TARGETS
         tt_metal
@@ -290,6 +296,8 @@ install(
         DESTINATION ${CMAKE_INSTALL_LIBDIR}
         COMPONENT dev
 )
+#]]
+#[[
 install(
     TARGETS
         ttnn
@@ -299,6 +307,7 @@ install(
         DESTINATION ${CMAKE_INSTALL_LIBDIR}
         COMPONENT dev
 )
+#]]
 if(WITH_PYTHON_BINDINGS)
     # Install .so into src files for pybinds implementation
     install(

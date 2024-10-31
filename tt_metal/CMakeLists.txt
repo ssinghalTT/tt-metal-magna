@@ -8,6 +8,17 @@ target_sources(
         graph/graph_tracking.cpp
 )
 
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.23)
+    target_sources(
+        tt_metal
+        PUBLIC
+            FILE_SET api
+            TYPE HEADERS
+            BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}
+            FILES host_api.hpp
+    )
+endif()
+
 target_link_libraries(
     tt_metal
     PUBLIC
@@ -20,6 +31,7 @@ target_link_libraries(
         span
         $<$<BOOL:${ENABLE_TRACY}>:TracyClient>
     PRIVATE
+        metal_header_directories
         profiler
         common
         jit_build
@@ -43,9 +55,10 @@ target_precompile_headers(
 target_include_directories(
     tt_metal
     PUBLIC
-        ${PROJECT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        include
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}> # FIXME: Should never reach out to a larger scope
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    PRIVATE
+        ${UMD_HOME}
 )
 target_compile_options(tt_metal PUBLIC -Wno-int-to-pointer-cast)
 add_dependencies(tt_metal hw_toolchain)
@@ -59,6 +72,13 @@ set_target_properties(
             "${PROJECT_BINARY_DIR}/lib;${PROJECT_BINARY_DIR}/obj"
 )
 
+install(TARGETS tt_metal EXPORT Metal LIBRARY COMPONENT metal FILE_SET api COMPONENT metal-dev)
+# install(EXPORT Metal
+#     NAMESPACE Metalium::
+#     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Metalium
+#     COMPONENT metal-dev
+# )
+
 add_subdirectory(hw)
 add_subdirectory(common)
 add_subdirectory(jit_build)
@@ -68,6 +88,7 @@ add_subdirectory(impl)
 add_subdirectory(detail)
 add_subdirectory(distributed)
 add_subdirectory(tt_stl)
+add_subdirectory(examples)
 
 if(BUILD_PROGRAMMING_EXAMPLES)
     add_subdirectory(programming_examples)
