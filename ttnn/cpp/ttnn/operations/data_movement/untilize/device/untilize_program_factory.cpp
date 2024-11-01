@@ -19,6 +19,12 @@ using namespace tt::constants;
 
 namespace ttnn::operations::data_movement::detail {
 
+constexpr bool debug_untilize = true;
+inline void db_print(const std::string& msg) {
+    if constexpr (debug_untilize) {
+        std::cout << "[DEBUG] " << msg << std::endl;
+    }
+}
 
 uint32_t get_largest_divisor(uint32_t dividend, uint32_t starting_divisor, uint32_t divisor_factor = 1) {
     for (uint32_t curr_div = starting_divisor; curr_div > 0; curr_div--) {
@@ -279,8 +285,13 @@ operation::ProgramWithCallbacks untilize_multi_core(
 
     tt::DataFormat input_cb_data_format = tt::tt_metal::datatype_to_dataformat_converter(a.get_dtype());
     uint32_t input_single_tile_size = tt::tt_metal::detail::TileSize(input_cb_data_format);
+
+    db_print(std::format("input_single_tile_size: {}", input_single_tile_size));
+
     tt::DataFormat output_cb_data_format = tt::tt_metal::datatype_to_dataformat_converter(output.get_dtype());
     uint32_t output_single_tile_size = tt::tt_metal::detail::TileSize(output_cb_data_format);
+
+    db_print(std::format("output_single_tile_size: {}", output_single_tile_size));
 
     Device* device = a.device();
 
@@ -289,6 +300,12 @@ operation::ProgramWithCallbacks untilize_multi_core(
     uint32_t ntiles_per_block = a.get_legacy_shape()[-1] / TILE_WIDTH;
     uint32_t nblocks = ceil((float)ntiles / ntiles_per_block);
     uint32_t block_size_nbytes = a.get_legacy_shape()[-1] * output.element_size();
+
+    db_print(std::format("stick_s: {}", stick_s));
+    db_print(std::format("ntiles: {}", ntiles));
+    db_print(std::format("ntiles_per_block: {}", ntiles_per_block));
+    db_print(std::format("nblocks: {}", nblocks));
+    db_print(std::format("block_size_nbytes: {}", block_size_nbytes));
 
     uint32_t max_l1_size = a.device()->l1_size_per_core() / 2 - a.device()->get_base_allocator_addr(HalMemType::L1);
     uint32_t max_tiles = (max_l1_size / (input_single_tile_size + output_single_tile_size));  // 2 CBs, double buffering each
@@ -299,9 +316,11 @@ operation::ProgramWithCallbacks untilize_multi_core(
         if(!src_sharded and !out_sharded) {
             uint32_t ntiles_height = ntiles / ntiles_per_block;
             if(ntiles_height == 1) {
+                db_print("Using column parallel untilize");
                 return untilize_multi_core_parallelize_column(a, output, use_pack_untilize, fp32_dest_acc_en);
             }
             else {
+                db_print("Using single core untilize");
                 return untilize_single_core(a, output, use_pack_untilize, fp32_dest_acc_en);
             }
         }
@@ -376,7 +395,7 @@ operation::ProgramWithCallbacks untilize_multi_core(
 
     if (src_sharded) {
         std::vector<uint32_t> reader_ct_args = {(std::uint32_t)src0_cb_index};
-
+        db_print("using reader_unary_sharded kernel");
         unary_reader_kernel_id = tt::tt_metal::CreateKernel(
             program,
             "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/dataflow/reader_unary_sharded.cpp",
@@ -386,6 +405,7 @@ operation::ProgramWithCallbacks untilize_multi_core(
         bool src0_is_dram = src0_buffer->buffer_type() == BufferType::DRAM ? 1 : 0;
         vector<uint32_t> reader_ct_args = {(uint32_t)src0_is_dram};
 
+        db_print("using reader_unary_interleaved_start_id kernel");
         unary_reader_kernel_id = CreateKernel(
             program,
             "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/dataflow/reader_unary_interleaved_start_id.cpp",
@@ -397,6 +417,7 @@ operation::ProgramWithCallbacks untilize_multi_core(
      */
     KernelHandle unary_writer_kernel_id;
     if (out_sharded) {
+        db_print("using writer_unary_sharded kernel");
         std::vector<uint32_t> writer_ct_args = {(std::uint32_t)output_cb_index};
         unary_writer_kernel_id = tt::tt_metal::CreateKernel(
             program,
@@ -406,6 +427,7 @@ operation::ProgramWithCallbacks untilize_multi_core(
     } else {
         bool out_is_dram = dst_buffer->buffer_type() == BufferType::DRAM ? 1 : 0;
         if (src_block_sharded) {
+            db_print("using writer_unary_stick_layout_split_rows_interleaved kernel");
             vector<uint32_t> writer_ct_args = {
                 (uint32_t)out_is_dram, (uint32_t)(input_cb_data_format == tt::DataFormat::Float32)};
             unary_writer_kernel_id = CreateKernel(
@@ -422,6 +444,7 @@ operation::ProgramWithCallbacks untilize_multi_core(
                 (uint32_t)log2_stick_size,
             };
 
+            db_print("using writer_unary_stick_layout_split_rows_interleaved kernel");
             unary_writer_kernel_id = CreateKernel(
                 program,
                 "ttnn/cpp/ttnn/operations/data_movement/untilize/device/kernels/dataflow/"
@@ -431,6 +454,7 @@ operation::ProgramWithCallbacks untilize_multi_core(
         }
     }
 
+    db_print(std::format("nblocks_per_core: {}", nblocks_per_core));
     /** compute
      */
     vector<uint32_t> compute_args = {
@@ -444,9 +468,11 @@ operation::ProgramWithCallbacks untilize_multi_core(
 
     std::string compute_kernel("ttnn/cpp/ttnn/operations/data_movement/untilize/device/kernels/compute/pack_untilize.cpp");
     if (ntiles_per_block > MAX_PACK_UNTILIZE_WIDTH || !use_pack_untilize) {
+        db_print("Using slow untilize kernel.");
         log_debug(tt::LogOp, "Using slow untilize.");
         compute_kernel = std::string("ttnn/cpp/ttnn/operations/data_movement/untilize/device/kernels/compute/untilize.cpp");
     } else {
+        db_print("Using fast pack untilize kernel.");
         log_debug(tt::LogOp, "Using fast pack untilize.");
     }
 
@@ -749,18 +775,6 @@ operation::ProgramWithCallbacks untilize_single_core(
                                 .set_page_size(output_cb_index, output_single_tile_size);
     auto cb_output = tt::tt_metal::CreateCircularBuffer(program, core, cb_output_config);
 
-    // Writer compile-time args
-    const std::array writer_kernel_args = {
-        dst_buffer->address(),
-        num_sticks,
-        stick_size,
-        num_tiles_per_block,
-        block_width_size,
-        num_full_blocks_in_row,
-        num_leftover_tiles,
-        leftover_width_in_row,
-        std::uint32_t{0}};
-
     bool src0_is_dram = src0_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0;
     std::vector<uint32_t> reader_compile_time_args = {(std::uint32_t)src0_is_dram};
 
@@ -809,7 +823,18 @@ operation::ProgramWithCallbacks untilize_single_core(
     tt::tt_metal::SetRuntimeArgs(
         program, unary_reader_kernel_id, core, {src0_buffer->address(), uint32_t(num_tiles), 0});
 
-    tt::tt_metal::SetRuntimeArgs(program, unary_writer_kernel_id, core, writer_kernel_args);
+    const std::array writer_runtime_args = {
+        dst_buffer->address(),
+        num_sticks,
+        stick_size,
+        num_tiles_per_block,
+        block_width_size,
+        num_full_blocks_in_row,
+        num_leftover_tiles,
+        leftover_width_in_row,
+        std::uint32_t{0}};
+
+    tt::tt_metal::SetRuntimeArgs(program, unary_writer_kernel_id, core, writer_runtime_args);
 
     auto override_runtime_args_callback = [reader_kernel_id = unary_reader_kernel_id,
                                            writer_kernel_id = unary_writer_kernel_id](
