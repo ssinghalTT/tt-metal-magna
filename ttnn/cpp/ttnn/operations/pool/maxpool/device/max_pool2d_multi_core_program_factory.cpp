@@ -201,6 +201,9 @@ MaxPool2D::MultiCore::cached_program_t max_pool_2d_multi_core_sharded_with_halo_
     // after reduction
     uint32_t out_cb_pagesize = output.shard_spec().value().shape[1] * out_nbytes / in_nblocks_c;  // there is just one row of channels after each reduction (or 1 block of c if its greater than 8 tiles)
     uint32_t out_cb_npages = output.shard_spec().value().shape[0] * in_nblocks_c;
+    if (is_wide_reduction) {
+        out_cb_pagesize = ceil_multiple_of(out_cb_pagesize, MAX_TILES_PER_REDUCTION * tt::constants::TILE_WIDTH * out_nbytes);
+    }
 
     printf("shard 0: %d, shard 1: %d\n", output.shard_spec().value().shape[0], output.shard_spec().value().shape[1]);
     printf("out_nbytes: %d, in_nblocks_c: %d\n", out_nbytes, in_nblocks_c);
