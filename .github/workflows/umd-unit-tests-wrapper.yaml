@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-artifact:
-    uses: ./.github/workflows/build-artifact.yaml
+  build-umd-artifact:
+    uses: ./.github/workflows/build-umd-artifact.yaml
     secrets: inherit
     with:
       build-docker: true

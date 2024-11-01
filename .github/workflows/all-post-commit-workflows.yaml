@@ -65,7 +65,6 @@ jobs:
     with:
       build-docker: false
       build-type: ${{ inputs.build-type || 'Release' }}
-      build-umd-artifact: true
   build-artifact-profiler:
     needs: build-docker-image-2004
     uses: ./.github/workflows/build-artifact.yaml
@@ -73,12 +72,17 @@ jobs:
       tracy: true
       build-docker: false
       build-type: ${{ inputs.build-type || 'Release' }}
-      build-umd-artifact: false
     secrets: inherit
+  build-umd-artifact:
+    needs: build-docker-image-2004
+    uses: ./.github/workflows/build-umd-artifact.yaml
+    secrets: inherit
+    with:
+      build-docker: false
   # UMD Unit Tests
   umd-unit-tests:
     secrets: inherit
-    needs: build-artifact
+    needs: build-umd-artifact
     strategy:
       fail-fast: false
       matrix:
