@@ -10,7 +10,7 @@ jobs:
     with:
       build-docker: true
   umd-unit-tests:
-    needs: build-artifact
+    needs: build-umd-artifact
     secrets: inherit
     strategy:
       fail-fast: false
