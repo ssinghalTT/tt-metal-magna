@@ -49,9 +49,6 @@ MaxPool2D::MultiCore::cached_program_t max_pool_2d_multi_core_sharded_with_halo_
 
     uint32_t in_nbytes_c = input_shape[3] / num_shards_c * in_nbytes;                                      // row of input (channels)
     uint32_t out_nbytes_c = output_shape[3] / num_shards_c * out_nbytes;                                // row of output (channels)
-    TT_ASSERT((in_nbytes_c & (in_nbytes_c - 1)) == 0, "in_nbytes_c should be power of 2");  // in_nbytes_c is power of 2
-    TT_ASSERT(
-        (out_nbytes_c & (out_nbytes_c - 1)) == 0, "out_nbytes_c should be power of 2");  // out_nbytes_c is power of 2
 
     tt::DataFormat indices_df = tt::DataFormat::RawUInt16;  // datatype_to_dataformat_converter(reader_indices.get_dtype());
     uint32_t indices_nbytes = datum_size(indices_df);
@@ -62,6 +59,7 @@ MaxPool2D::MultiCore::cached_program_t max_pool_2d_multi_core_sharded_with_halo_
     uint32_t in_ntiles_c = (uint32_t) std::ceil((float) input_shape[3] / num_shards_c / tt::constants::TILE_WIDTH);
     uint32_t out_ntiles_c = (uint32_t) std::ceil((float) output_shape[3] / num_shards_c / tt::constants::TILE_WIDTH);
 
+    printf("in_tiles_c: %d\n", in_ntiles_c);
 
     uint32_t max_rows_for_reduction = 16;
     // TODO temporarily disable 32 row reductions due to issues in large kernels
@@ -156,13 +154,12 @@ MaxPool2D::MultiCore::cached_program_t max_pool_2d_multi_core_sharded_with_halo_
             ? (tt::constants::TILE_HW * MAX_TILES_PER_REDUCTION)
             : input_shape[3] / num_shards_c * kernel_size_hw_padded;
         if (is_wide_reduction) {
-            in_nblocks_c = in_ntiles_c / MAX_TILES_PER_REDUCTION;
+            in_nblocks_c = std::ceil((float)in_ntiles_c / MAX_TILES_PER_REDUCTION);
         }
     } else {
         if (is_wide_reduction) {
             in_cb_sz = MAX_TILES_PER_REDUCTION * tt::constants::TILE_WIDTH * kernel_size_hw_padded;
-            TT_FATAL(in_ntiles_c % MAX_TILES_PER_REDUCTION == 0, "input channels should be multiple of {} tiles. General case TODO.", MAX_TILES_PER_REDUCTION);
-            in_nblocks_c = in_ntiles_c / MAX_TILES_PER_REDUCTION;
+            in_nblocks_c = std::ceil((float)in_ntiles_c / MAX_TILES_PER_REDUCTION);
         } else {
             in_cb_sz = input_shape[3] / num_shards_c * kernel_size_hw_padded;
         }
@@ -204,6 +201,11 @@ MaxPool2D::MultiCore::cached_program_t max_pool_2d_multi_core_sharded_with_halo_
     // after reduction
     uint32_t out_cb_pagesize = output.shard_spec().value().shape[1] * out_nbytes / in_nblocks_c;  // there is just one row of channels after each reduction (or 1 block of c if its greater than 8 tiles)
     uint32_t out_cb_npages = output.shard_spec().value().shape[0] * in_nblocks_c;
+
+    printf("shard 0: %d, shard 1: %d\n", output.shard_spec().value().shape[0], output.shard_spec().value().shape[1]);
+    printf("out_nbytes: %d, in_nblocks_c: %d\n", out_nbytes, in_nblocks_c);
+    printf("out_cb_pagesize: %d, out_cb_npages: %d\n", out_cb_pagesize, out_cb_npages);
+
     CircularBufferConfig cb_out_config = CircularBufferConfig(out_cb_npages * out_cb_pagesize, {{out_cb_id, out_df}})
                                              .set_page_size(out_cb_id, out_cb_pagesize)
                                              .set_globally_allocated_address(*output.buffer());
