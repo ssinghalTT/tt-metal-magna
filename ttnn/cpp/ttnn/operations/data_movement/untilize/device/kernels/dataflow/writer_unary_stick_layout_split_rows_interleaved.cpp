@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 #include "dataflow_api.h"
+#include "debug/dprint.h"
 
 void kernel_main() {
 
@@ -23,6 +24,11 @@ void kernel_main() {
 
     constexpr bool dst_is_dram          = get_compile_time_arg_val(0) == 1;
     #define stick_size_is_power_of_two get_compile_time_arg_val(1) == 1
+
+
+    DPRINT << "stick size: " << stick_size << ENDL();
+    DPRINT << "dst_is_dram: " << static_cast<int>(dst_is_dram) << ENDL();
+    DPRINT << "num_sticks: " << num_sticks << ENDL();
 
     #if (stick_size_is_power_of_two)
     constexpr uint32_t log_base_2_of_page_size = get_compile_time_arg_val(2);
@@ -45,6 +51,11 @@ void kernel_main() {
         for (uint32_t k = 0; k < tile_height; k++) {
             uint64_t dst_noc_addr = base_dst_noc_addr[k];
             noc_async_write(l1_read_addr, dst_noc_addr, width_size);
+            if (l1_read_addr % 64 != 0
+                || dst_noc_addr % 64 != 0) {
+                DPRINT << "MISALIGNED addrs! ";
+                DPRINT << "l1_read_addr: " << l1_read_addr << " dst_noc_addr: " << dst_noc_addr << " width_size: " << width_size << ENDL();
+            }
             l1_read_addr += width_size;
             base_dst_noc_addr[k] += width_size;
         }
@@ -52,10 +63,12 @@ void kernel_main() {
         cb_pop_front(cb_id_out0, num_tiles);
     };
 
+    DPRINT << "block_width_size: " << block_width_size << ENDL();
     uint32_t stick_id = start_stick_id;
     for (uint32_t i = 0; i < num_sticks / tile_height; i++) {
         // Get Base Addresses
         for (uint32_t j = 0; j < tile_height; j++) {
+            DPRINT << "stick_id: " << stick_id << ENDL();
             base_dst_noc_addr[j] = get_noc_addr(stick_id, s);
             stick_id++;
         }
