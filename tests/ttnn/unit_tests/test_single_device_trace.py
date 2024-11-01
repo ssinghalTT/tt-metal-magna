@@ -38,32 +38,31 @@ def test_single_device_single_trace(device, shape, enable_async, blocking):
     def run_op_chain(input_0, input_1):
         return ttnn.neg(ttnn.add(ttnn.mul(input_1, ttnn.neg(ttnn.gelu(input_0))), ttnn.relu(input_1)))
 
-    # Compile program binaries
-    run_op_chain(input_0_dev, input_1_dev)
-
     serialize_trace = True if "TT_METAL_SERIALIZE_TRACE" in os.environ else False
     deserialize_trace = True if "TT_METAL_DESERIALIZE_TRACE" in os.environ else False
     logger.info("KCM Test. Serialize Trace: {}, Deserialize Trace: {}".format(serialize_trace, deserialize_trace))
 
-    # Capture Trace or Reload Trace
+    # Either Load existing Trace, or Capture.
     if deserialize_trace:
-        logger.info("KCM Deserialize Trace, skipping capture. Going to call load_trace_binary")
-        tid = 0
-        # KCM - Temp hack to keep allocs same as capture until replay respects addresses.
+        # Compile program binaries. Temp hack to preserve same allocs.
         output_tensor = run_op_chain(input_0_dev, input_1_dev)
-        # Load trace from binary
+
+        logger.info("KCM Deserialize Trace, skipping capture. Going to call load_trace_binary")
+        # KCM FIXME - Maybe bundle trace_id in binary, returned by load_trace_binary.
+        tid = 0
         ttnn.load_trace_binary(device, tid, cq_id=0)
         logger.info("KCM Deserialize Trace, done calling load_trace_binary")
+
     else:
-        # KCM - This is unchanged from original test.
-        logger.info("KCM Capture Trace start")
+        # Compile program binaries
+        run_op_chain(input_0_dev, input_1_dev)
+
         tid = ttnn.begin_trace_capture(device, cq_id=0)
         output_tensor = run_op_chain(input_0_dev, input_1_dev)
         ttnn.end_trace_capture(device, tid, cq_id=0)
-        logger.info("KCM Capture Trace end for tid: {}", tid)
 
+        # Early exit, don't run if serializing to disk.
         if serialize_trace:
-            logger.info("KCM Serialized trace, early exit")
             return
 
     for i in range(10):
