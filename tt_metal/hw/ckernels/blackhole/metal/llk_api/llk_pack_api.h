@@ -17,7 +17,7 @@
 #include "llk_pack_common.h"
 #include "llk_pack_untilize.h"
 #include "llk_param_structs.h"
-
+#include "debug/dprint.h"
 /*************************************************************************
 * LLK PACK
 *************************************************************************/
@@ -341,10 +341,11 @@ template <bool is_fp32_dest_acc_en = false, bool is_tile_dim_reconfig_en = false
 inline void llk_pack_reconfig_data_format(const std::uint32_t old_output, const std::uint32_t new_output) {
     std::uint32_t old_output_id = get_output_id(old_output);
     std::uint32_t new_output_id = get_output_id(new_output);
-
+    DPRINT << "Reconfig staaart: " << ENDL();
     if((pack_dst_format[old_output_id] != pack_dst_format[new_output_id])
        && (pack_dst_format[old_output_id] != (uint)DataFormat::Invalid)
        && (pack_dst_format[new_output_id] != (uint)DataFormat::Invalid)) {
+        DPRINT << "Reconfig" << ENDL();
         llk_pack_reconfig_data_format<is_fp32_dest_acc_en, is_tile_dim_reconfig_en>(new_output);
     } else if constexpr (is_tile_dim_reconfig_en) {
         // Same format but different tile dims

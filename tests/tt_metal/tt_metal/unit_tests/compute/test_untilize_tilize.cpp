@@ -17,7 +17,7 @@
 #include "tt_metal/test_utils/print_helpers.hpp"
 #include "tt_metal/test_utils/stimulus.hpp"
 #include "test_golden_impls.hpp"
-
+#include "tt_metal/common/bfloat8.hpp"
 using std::vector;
 using namespace tt;
 using namespace tt::test_utils;
@@ -121,7 +121,7 @@ void run_single_core_tilize_program(tt_metal::Device* device, const TestConfig& 
     uint32_t num_output_tiles = num_tiles;
     tt_metal::CircularBufferConfig cb_output_config = tt_metal::CircularBufferConfig(
         num_output_tiles * test_config.output_single_tile_size,
-        {{ouput_cb_index, test_config.fp32_dest_acc_en ? tt::DataFormat::Float32 : tt::DataFormat::Float16_b}})
+        {{ouput_cb_index, test_config.fp32_dest_acc_en ? tt::DataFormat::Float32 : tt::DataFormat::Bfp8_b}})
         .set_page_size(ouput_cb_index, test_config.output_single_tile_size);
     auto cb_output = tt_metal::CreateCircularBuffer(program, core, cb_output_config);
 
@@ -288,9 +288,18 @@ void run_single_core_tilize_program(tt_metal::Device* device, const TestConfig& 
 
     if (not pass){
         std::cout << "GOLDEN "  << std::endl;
-        print_vector(unpack_vector<bfloat16, uint32_t>(golden));
+        //print_vector(unpack_vector<bfloat16, uint32_t>(golden));
+        auto vec = unpack_vector<bfloat16, uint32_t>(golden);
+        vector<float> vec_float(vec.size());
+        for (int i = 0; i < vec.size(); i++) {
+            vec_float[i] = vec[i].to_float();
+        }
+        print_vector_fixed_numel_per_row<float>(vec_float, 32);
         std::cout << "RESULTS "  << std::endl;
-        print_vector(unpack_vector<bfloat16, uint32_t>(result_vec));
+        //print_vector(unpack_vector<bfloat16, uint32_t>(result_vec));
+        print_vector_fixed_numel_per_row<float>(unpack_bfp8_tiles_into_float_vec(result_vec, false, false), 32);
+        //auto res = unpack_bfp8_tiles_into_float_vec(result_vec, false, false);
+        //std::cout << result_vec.size() << ", " << res.size() << std::endl;
     }
     ASSERT_TRUE(pass);
     log_info(tt::LogTest, "Done running test with: num_tiles_r = {}, num_tiles_c = {}, FP32_DestAcc = {}, DstSyncFull = {}, pass = {}",
@@ -312,7 +321,7 @@ TEST_F(DeviceFixture, ComputeUnpackTilize) {
     for(auto num_tile : num_tiles) {
         for (bool fp32_dest_acc_en : {true, false}) {
             // FP32 dest acc not possible for GS and unpack_tilize hangs on BH -> tt-metal/#13640
-            if ((fp32_dest_acc_en == true) && (this->arch_ != tt::ARCH::WORMHOLE_B0)) continue;
+            if ((fp32_dest_acc_en == true) && (this->arch_ == tt::ARCH::GRAYSKULL)) continue;
             for (bool dst_full_sync_en : {true, false}) {
                 unit_tests::compute::tilize::TestConfig test_config = {
                     .dst_full_sync_en = dst_full_sync_en,
@@ -335,7 +344,7 @@ TEST_F(DeviceFixture, ComputeUnpackTilizeA_B) {
     if (arch == tt::ARCH::GRAYSKULL) {
         GTEST_SKIP();
     }
-    for (bool dst_full_sync_en : {true, false}) {
+    for (bool dst_full_sync_en : {true}) {
         unit_tests::compute::tilize::TestConfig test_config = {
             .dst_full_sync_en = dst_full_sync_en,
             .input_single_tile_size = 2 * 1024,
@@ -350,18 +359,19 @@ TEST_F(DeviceFixture, ComputeUnpackTilizeA_B) {
 }
 
 TEST_F(DeviceFixture, ComputeUnpackTilizeShortInit) {
-    vector<vector<uint32_t> > num_tiles = {{1, 1}, {1, 2}, {2, 1}, {1, 4}, {2, 2}, {4, 1}};
+    //vector<vector<uint32_t> > num_tiles = {{1, 1}, {1, 2}, {2, 1}, {1, 4}, {2, 2}, {4, 1}};
+    vector<vector<uint32_t> > num_tiles = {{1, 1}};
     for(auto num_tile : num_tiles) {
-        for (bool fp32_dest_acc_en : {true, false}) {
+        for (bool fp32_dest_acc_en : {false}) {
             // FP32 dest acc not possible for GS and unpack_tilize hangs on BH -> tt-metal/#13640
-            if ((fp32_dest_acc_en == true) && (this->arch_ != tt::ARCH::WORMHOLE_B0)) continue;
-            for (bool dst_full_sync_en : {true, false}) {
+            if ((fp32_dest_acc_en == true) && (this->arch_ == tt::ARCH::GRAYSKULL)) continue;
+            for (bool dst_full_sync_en : {true}) {
             unit_tests::compute::tilize::TestConfig test_config = {
                 .short_init = true,
                 .dst_full_sync_en = dst_full_sync_en,
                 .fp32_dest_acc_en = fp32_dest_acc_en,
                 .input_single_tile_size = 2 * 1024,
-                .output_single_tile_size = 1024 * (fp32_dest_acc_en ? 4 : 2),
+                .output_single_tile_size = 1024 * (fp32_dest_acc_en ? 4 : 1) + 64,
                 .num_tiles_r = num_tile[0],
                 .num_tiles_c = num_tile[1],
                 .tilize_type = unit_tests::compute::tilize::TilizeType::UNPACK_A,

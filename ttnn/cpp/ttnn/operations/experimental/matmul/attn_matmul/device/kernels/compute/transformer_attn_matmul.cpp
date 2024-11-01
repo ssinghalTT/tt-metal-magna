@@ -90,8 +90,9 @@ void MAIN {
         cb_reserve_back(out_cb_id, onetile);
 
         // tilize CB::intermed2 and write to CB::c_out0
-        tilize_init_short_with_dt(cb_in1, cb_intermed2, onetile);
         PACK((DPRINT << "Tilize blcok" << ENDL()));
+        tilize_init_short_with_dt(cb_in1, cb_intermed2, onetile);
+        //tilize_init(cb_intermed2, onetile, out_cb_id);
         tilize_block(cb_intermed2, onetile, out_cb_id);
         //print_full_tile(cb_intermed2);
         tensix_sync();

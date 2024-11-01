@@ -6,7 +6,7 @@
 
 #include "compute_kernel_api/tilize.h"
 #include "compute_kernel_api/eltwise_unary/eltwise_unary.h"
-
+#include "debug/dprint_tensix.h"
 namespace NAMESPACE {
 void MAIN {
 
@@ -25,7 +25,7 @@ void MAIN {
         cb_reserve_back(tt::CB::c_out0, per_core_block_tile_cnt);
 
         tilize_block(tt::CB::c_in0, per_core_block_tile_cnt, tt::CB::c_out0);
-
+        dprint_tensix_dest_reg(0);
         cb_push_back(tt::CB::c_out0, per_core_block_tile_cnt);
         cb_pop_front(tt::CB::c_in0, per_core_block_tile_cnt);
     }
