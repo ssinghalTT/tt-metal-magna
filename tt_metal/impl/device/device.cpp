@@ -3362,6 +3362,7 @@ void Device::load_trace_binary(const uint8_t cq_id, const uint32_t tid) {
 
     std::string trace_bin_path = "/tmp/trace_" + std::to_string(tid) + "_desc.bin";
     log_info(tt::LogMetal, "KCM Inside {} for cq: {} tid: {} file: {}", __FUNCTION__, (uint32_t)cq_id, tid, trace_bin_path);
+    this->EnableAllocs(); // KCM - Copied from begin_trace
     this->trace_buffer_pool_.insert({tid, Trace::create_empty_trace_buffer()});
 
     // TT_FATAL(this->hw_command_queues_[cq_id]->tid == tid, "CQ {} is not being used for tracing tid {}", (uint32_t)cq_id, tid);
@@ -3370,7 +3371,7 @@ void Device::load_trace_binary(const uint8_t cq_id, const uint32_t tid) {
     // Load the trace binary (TraceDescriptor serialized) and write to device.
     *this->trace_buffer_pool_[tid]->desc = deserialize_trace_desc(trace_bin_path);
     Trace::initialize_buffer(this->command_queue(cq_id), this->trace_buffer_pool_[tid]);
-    this->DisableAllocs();
+    this->DisableAllocs(); // Copied from end_trace
 }
 
 void Device::replay_trace(const uint8_t cq_id, const uint32_t tid, const bool blocking) {

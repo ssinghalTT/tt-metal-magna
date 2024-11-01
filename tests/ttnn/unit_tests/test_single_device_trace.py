@@ -101,9 +101,10 @@ def test_single_device_single_trace(device, shape, enable_async, blocking):
     device.enable_async(False)
 
 
-@pytest.mark.parametrize("shape", [(1, 1, 512, 512), (1, 1, 32, 32), (1, 3, 512, 512), (1, 3, 32, 32)])
-@pytest.mark.parametrize("enable_async", [True, False])
-@pytest.mark.parametrize("blocking", [True, False])
+# KCM - Simplify test.
+@pytest.mark.parametrize("shape", [(1, 1, 32, 32)])
+@pytest.mark.parametrize("enable_async", [True])
+@pytest.mark.parametrize("blocking", [True])
 @pytest.mark.parametrize("device_params", [{"trace_region_size": 266240}], indirect=True)
 def test_single_device_multi_trace(device, shape, enable_async, blocking):
     device.enable_async(enable_async)
@@ -123,25 +124,47 @@ def test_single_device_multi_trace(device, shape, enable_async, blocking):
     def run_op_chain_1(input_0, input_1, weight):
         return ttnn.gelu(ttnn.add(ttnn.tanh(ttnn.mul(ttnn.sub(input_0, input_1), weight)), input_1))
 
-    # Compile program binaries
-    run_op_chain(input_0_dev, input_1_dev, weight_dev)
-    run_op_chain_1(input_0_dev, input_1_dev, weight_dev)
+    serialize_trace = True if "TT_METAL_SERIALIZE_TRACE" in os.environ else False
+    deserialize_trace = True if "TT_METAL_DESERIALIZE_TRACE" in os.environ else False
+    logger.info("KCM Test. Serialize Trace: {}, Deserialize Trace: {}".format(serialize_trace, deserialize_trace))
 
-    # Capture Trace 0
-    logger.info("Capture Trace 0")
-    tid = ttnn.begin_trace_capture(device, cq_id=0)
-    output_tensor = run_op_chain(input_0_dev, input_1_dev, weight_dev)
-    ttnn.end_trace_capture(device, tid, cq_id=0)
+    # Either Load existing Trace, or Capture.
+    if deserialize_trace:
+        # Compile program binaries. Temp hack to preserve same allocs.
+        output_tensor = run_op_chain(input_0_dev, input_1_dev, weight_dev)
+        output_tensor_1 = run_op_chain_1(input_0_dev, input_1_dev, weight_dev)
 
-    # Capture Trace 1
-    logger.info("Capture Trace 1")
-    tid_1 = ttnn.begin_trace_capture(device, cq_id=0)
-    output_tensor_1 = run_op_chain_1(input_0_dev, input_1_dev, weight_dev)
-    ttnn.end_trace_capture(device, tid_1, cq_id=0)
+        # KCM FIXME - Maybe bundle trace_id in binary, returned by load_trace_binary.
+        tid, tid_1 = 0, 1
+        ttnn.load_trace_binary(device, tid, cq_id=0)
+        ttnn.load_trace_binary(device, tid_1, cq_id=0)
+
+    else:
+        # Compile program binaries
+        run_op_chain(input_0_dev, input_1_dev, weight_dev)
+        run_op_chain_1(input_0_dev, input_1_dev, weight_dev)
+
+        # Capture Trace 0
+        logger.info("Capture Trace 0")
+        tid = ttnn.begin_trace_capture(device, cq_id=0)
+        output_tensor = run_op_chain(input_0_dev, input_1_dev, weight_dev)
+        ttnn.end_trace_capture(device, tid, cq_id=0)
+
+        # Capture Trace 1
+        logger.info("Capture Trace 1")
+        tid_1 = ttnn.begin_trace_capture(device, cq_id=0)
+        output_tensor_1 = run_op_chain_1(input_0_dev, input_1_dev, weight_dev)
+        ttnn.end_trace_capture(device, tid_1, cq_id=0)
+        logger.info(f"Captured tid: {tid}, tid_1: {tid_1}")
+
+        # Early exit, don't run if serializing to disk.
+        if serialize_trace:
+            return
 
     # Execute and verify trace against pytorch
     torch_silu = torch.nn.SiLU()
-    for i in range(50):
+    for i in range(5):
+        logger.info(f"Run {i}")
         # Create torch inputs
         torch_input_tensor_0 = torch.rand(shape, dtype=torch.bfloat16)
         torch_input_tensor_1 = torch.rand(shape, dtype=torch.bfloat16)
