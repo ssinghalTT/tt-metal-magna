@@ -83,19 +83,19 @@ class AllGatherConfig {
 
 
     void print() const {
-        log_trace(tt::LogOp, "AllGatherConfig: (");
-        log_trace(tt::LogOp, "\tis_sharded: {}", is_sharded);
-        log_trace(tt::LogOp, "\terisc_handshake_address: {}", erisc_handshake_address);
-        log_trace(tt::LogOp, "\tnum_buffers: {}", num_eth_buffers);
-        log_trace(tt::LogOp, "\tnum_workers_per_link: {}", num_workers_per_link);
-        log_trace(tt::LogOp, "\tnum_edm_buffers_per_channel: {}", num_edm_buffers_per_channel);
-        log_trace(tt::LogOp, "\teth_buffer_size: {}", eth_buffer_size);
-        log_trace(tt::LogOp, "\tsemaphore_size: {}", semaphore_size);
-        log_trace(tt::LogOp, "\tsemaphore_offset: {}", semaphore_offset);
-        log_trace(tt::LogOp, "\teth_buffers_l1_base_byte_address: {}", eth_buffers_l1_base_byte_address);
-        log_trace(tt::LogOp, "\teth_sems_l1_base_byte_address: {}", eth_sems_l1_base_byte_address);
-        log_trace(tt::LogOp, "\tenable_bidirectional: {}", enable_bidirectional);
-        log_trace(tt::LogOp, ")");
+        log_info(tt::LogOp, "AllGatherConfig: (");
+        log_info(tt::LogOp, "\tis_sharded: {}", is_sharded);
+        log_info(tt::LogOp, "\terisc_handshake_address: {}", erisc_handshake_address);
+        log_info(tt::LogOp, "\tnum_buffers: {}", num_eth_buffers);
+        log_info(tt::LogOp, "\tnum_workers_per_link: {}", num_workers_per_link);
+        log_info(tt::LogOp, "\tnum_edm_buffers_per_channel: {}", num_edm_buffers_per_channel);
+        log_info(tt::LogOp, "\teth_buffer_size: {}", eth_buffer_size);
+        log_info(tt::LogOp, "\tsemaphore_size: {}", semaphore_size);
+        log_info(tt::LogOp, "\tsemaphore_offset: {}", semaphore_offset);
+        log_info(tt::LogOp, "\teth_buffers_l1_base_byte_address: {}", eth_buffers_l1_base_byte_address);
+        log_info(tt::LogOp, "\teth_sems_l1_base_byte_address: {}", eth_sems_l1_base_byte_address);
+        log_info(tt::LogOp, "\tenable_bidirectional: {}", enable_bidirectional);
+        log_info(tt::LogOp, ")");
     }
 
    private:
@@ -130,6 +130,7 @@ struct AllGather {
     const std::optional<chip_id_t> sender_device_id;
     const MemoryConfig output_mem_config;
     const ccl::Topology topology;
+    const bool use_logical_shape = true;
 
     void validate(const std::vector<Tensor> &input_tensors) const;
     std::vector<ttnn::SimpleShape> compute_output_shapes(const std::vector<Tensor> &input_tensors) const;

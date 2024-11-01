@@ -27,13 +27,12 @@ void kernel_main() {
     const uint32_t col_offset = get_arg_val<uint32_t>(arg_idx++);
     const uint32_t num_rows = get_arg_val<uint32_t>(arg_idx++);
     const uint32_t num_cols = get_arg_val<uint32_t>(arg_idx++);
-    const uint32_t last_output_page_offset = get_arg_val<uint32_t>(arg_idx++);
-    const uint32_t output_page_offset = get_arg_val<uint32_t>(arg_idx++);
+    const uint32_t last_output_page_offset = 0;get_arg_val<uint32_t>(arg_idx++);
+    const uint32_t output_page_offset = 0;get_arg_val<uint32_t>(arg_idx++);
     const uint32_t last_output_addr_offset = get_arg_val<uint32_t>(arg_idx++);
     const uint32_t output_addr_offset = get_arg_val<uint32_t>(arg_idx++);
     const uint32_t input_start_ring_idx = get_arg_val<uint32_t>(arg_idx++);
     const bool is_clockwise_direction = get_arg_val<uint32_t>(arg_idx++) == 1;
-
 
     #ifdef SHARDED_MEM_LAYOUT
     uint32_t output_shard_grid_nrows = get_arg_val<uint32_t>(arg_idx++);
@@ -53,18 +52,19 @@ void kernel_main() {
     constexpr uint32_t half_cb_n_pages = get_compile_time_arg_val(4);
     constexpr uint32_t ring_size = get_compile_time_arg_val(5);
     constexpr bool fuse_op = get_compile_time_arg_val(6);
+    constexpr uint32_t gather_dim_size = get_compile_time_arg_val(7);
 
     ASSERT(half_cb_n_pages > rem_num_pages);
 
     #ifdef SHARDED_MEM_LAYOUT
-    constexpr tt::tt_metal::TensorMemoryLayout output_tensor_memory_layout = static_cast<tt::tt_metal::TensorMemoryLayout>(get_compile_time_arg_val(7));
-    constexpr uint32_t output_tensor_shard_grid_height = get_compile_time_arg_val(8);
-    constexpr uint32_t output_tensor_shard_grid_width = get_compile_time_arg_val(9);
-    constexpr uint32_t output_tensor_shard_grid_start_y_logical = get_compile_time_arg_val(10);
-    constexpr uint32_t output_tensor_shard_grid_start_x_logical = get_compile_time_arg_val(11);
-    constexpr uint32_t output_tensor_shard_pages_per_shard_y = get_compile_time_arg_val(12);
-    constexpr uint32_t output_tensor_shard_pages_per_shard_x = get_compile_time_arg_val(13);
-    constexpr bool output_tensor_shard_grid_transposed = get_compile_time_arg_val(14) != 0;
+    constexpr tt::tt_metal::TensorMemoryLayout output_tensor_memory_layout = static_cast<tt::tt_metal::TensorMemoryLayout>(get_compile_time_arg_val(8));
+    constexpr uint32_t output_tensor_shard_grid_height = get_compile_time_arg_val(9);
+    constexpr uint32_t output_tensor_shard_grid_width = get_compile_time_arg_val(10);
+    constexpr uint32_t output_tensor_shard_grid_start_y_logical = get_compile_time_arg_val(11);
+    constexpr uint32_t output_tensor_shard_grid_start_x_logical = get_compile_time_arg_val(12);
+    constexpr uint32_t output_tensor_shard_pages_per_shard_y = get_compile_time_arg_val(13);
+    constexpr uint32_t output_tensor_shard_pages_per_shard_x = get_compile_time_arg_val(14);
+    constexpr bool output_tensor_shard_grid_transposed = get_compile_time_arg_val(15) != 0;
     #endif
 
     constexpr uint32_t cb_id_in0 = tt::CB::c_in0;
@@ -141,13 +141,16 @@ void kernel_main() {
 
 
     for (uint32_t i = 0; i < num_transfers; ++i) {
+        uint32_t intile_start_row = input_ring_idx*gather_dim_size;
+        uint32_t intile_end_row = intile_start_row + gather_dim_size;
+
         if (num_full_chunks > 0) {
             for (uint32_t c = 0; c < num_full_chunks; ++c) {
 
                 #ifdef SHARDED_MEM_LAYOUT
                 ASSERT(output_page_idx < output_tensor_shard_pages_per_shard_y * output_tensor_shard_pages_per_shard_x * output_tensor_shard_grid_height * output_tensor_shard_grid_width);
                 #endif
-                write_chunk(output_page_idx, col_idx, row_idx, cb_id_in0, d, num_cols, num_rows, col_offset, row_offset, num_pages, page_size);
+                write_chunk_partial(output_page_idx, col_idx, row_idx, cb_id_in0, d, num_cols, num_rows, col_offset, row_offset, num_pages, page_size, intile_start_row, intile_end_row);
                 if (sender_enabled) {
                     noc_semaphore_inc(worker_send_reader_semaphore_noc_addr, 1);
                 }
@@ -157,7 +160,7 @@ void kernel_main() {
             #ifdef SHARDED_MEM_LAYOUT
             ASSERT(output_page_idx < output_tensor_shard_pages_per_shard_y * output_tensor_shard_pages_per_shard_x * output_tensor_shard_grid_height * output_tensor_shard_grid_width);
             #endif
-            write_chunk(output_page_idx, col_idx, row_idx, cb_id_in0, d, num_cols, num_rows, col_offset, row_offset, rem_num_pages, page_size);
+            write_chunk_partial(output_page_idx, col_idx, row_idx, cb_id_in0, d, num_cols, num_rows, col_offset, row_offset, rem_num_pages, page_size, intile_start_row, intile_end_row);
             if (sender_enabled) {
                 noc_semaphore_inc(worker_send_reader_semaphore_noc_addr, 1);
             }
