@@ -39,17 +39,19 @@ def test_single_device_single_trace(device, shape, enable_async, blocking):
         return ttnn.neg(ttnn.add(ttnn.mul(input_1, ttnn.neg(ttnn.gelu(input_0))), ttnn.relu(input_1)))
 
     # Compile program binaries
-    # KCM - Move capture output up here so we can have a copy to compare to on rerun with deserialize.
-    output_tensor = run_op_chain(input_0_dev, input_1_dev)
+    run_op_chain(input_0_dev, input_1_dev)
 
     serialize_trace = True if "TT_METAL_SERIALIZE_TRACE" in os.environ else False
     deserialize_trace = True if "TT_METAL_DESERIALIZE_TRACE" in os.environ else False
     logger.info("KCM Test. Serialize Trace: {}, Deserialize Trace: {}".format(serialize_trace, deserialize_trace))
 
-    # Capture Trace
+    # Capture Trace or Reload Trace
     if deserialize_trace:
         logger.info("KCM Deserialize Trace, skipping capture. Going to call load_trace_binary")
         tid = 0
+        # KCM - Temp hack to keep allocs same as capture until replay respects addresses.
+        output_tensor = run_op_chain(input_0_dev, input_1_dev)
+        # Load trace from binary
         ttnn.load_trace_binary(device, tid, cq_id=0)
         logger.info("KCM Deserialize Trace, done calling load_trace_binary")
     else:
