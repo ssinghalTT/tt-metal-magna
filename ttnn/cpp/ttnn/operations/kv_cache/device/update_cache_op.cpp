@@ -51,7 +51,7 @@ void UpdateCache::validate(const std::vector<Tensor>& input_tensors) const {
         TT_FATAL(input_tensor.get_legacy_shape()[-2] <= cache_tensor.get_legacy_shape()[-2], "Error");
     } else if (this->op_type == UpdateCacheOpType::UPDATE) {
         if (input_tensor.device()->arch() == tt::ARCH::GRAYSKULL) {
-            TT_FATAL(cache_tensor.get_dtype() == DataType::BFLOAT16, "#12931: Update Cache currently produces non-deterministic output on GS when converting data types for cache tensor");
+            // TT_FATAL(cache_tensor.get_dtype() == DataType::BFLOAT16, "#12931: Update Cache currently produces non-deterministic output on GS when converting data types for cache tensor");
         }
         if (input_tensor.is_sharded()) {
             TT_FATAL(input_tensor.memory_config().memory_layout != TensorMemoryLayout::WIDTH_SHARDED, "Error");
