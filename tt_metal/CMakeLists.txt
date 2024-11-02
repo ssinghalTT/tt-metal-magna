@@ -31,6 +31,7 @@ target_link_libraries(
         span
         $<$<BOOL:${ENABLE_TRACY}>:TracyClient>
     PRIVATE
+        Metalium::Metal::Impl
         metal_header_directories
         profiler
         common
@@ -73,11 +74,15 @@ set_target_properties(
 )
 
 install(TARGETS tt_metal EXPORT Metal LIBRARY COMPONENT metal FILE_SET api COMPONENT metal-dev)
-# install(EXPORT Metal
-#     NAMESPACE Metalium::
-#     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Metalium
-#     COMPONENT metal-dev
-# )
+install(EXPORT Metal NAMESPACE Metalium:: DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Metalium COMPONENT metal-dev)
+
+# 3rd party dependencies we export in our public API
+install(
+    TARGETS
+        reflect
+        magic_enum
+    EXPORT Metal
+)
 
 add_subdirectory(hw)
 add_subdirectory(common)

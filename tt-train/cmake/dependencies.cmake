@@ -41,6 +41,11 @@ CPMAddPackage(
 ############################################################################################################################
 
 CPMAddPackage(NAME reflect GITHUB_REPOSITORY boost-ext/reflect GIT_TAG v1.1.1)
+if(reflect_ADDED)
+    add_library(reflect INTERFACE)
+    add_library(Reflect::Reflect ALIAS reflect)
+    target_include_directories(reflect SYSTEM INTERFACE $<BUILD_INTERFACE:${reflect_SOURCE_DIR}>)
+endif()
 
 ############################################################################################################################
 # fmt : https://github.com/fmtlib/fmt

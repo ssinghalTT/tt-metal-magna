@@ -45,9 +45,11 @@ target_link_libraries(
 target_include_directories(
     impl
     PUBLIC
-        ${PROJECT_SOURCE_DIR}/tt_metal
-        ${CMAKE_CURRENT_SOURCE_DIR}
         ${PROJECT_SOURCE_DIR}/tt_metal/include
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/tt_metal>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
 )
 
 target_compile_options(impl PUBLIC -Wno-int-to-pointer-cast)
+
+# install(TARGETS impl EXPORT Metal FILE_SET api COMPONENT metal-dev)

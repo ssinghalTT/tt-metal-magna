@@ -27,6 +27,7 @@ target_link_libraries(
 target_include_directories(
     common
     PUBLIC
-        ${PROJECT_SOURCE_DIR}
-        ${PROJECT_SOURCE_DIR}/tt_metal
+        # $<BUILD_INTERFACE:${UMD_HOME}>
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/tt_metal>
 )
