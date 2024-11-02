@@ -189,6 +189,11 @@ bool test_load_write_read_risc_binary(ll_api::memory &mem, chip_id_t chip_id, co
 
     log_debug(tt::LogLLRuntime, "wrote hex to core {}", core.str().c_str());
 
+    if (riscv_id == 6) {
+        ll_api::memory read_mem = read_mem_from_core(chip_id, core, mem, local_init_addr);
+        TT_FATAL(mem == read_mem, "Idle erisc binary readback is corrupted");
+    }
+
     if (std::getenv("TT_METAL_KERNEL_READBACK_ENABLE") != nullptr) {
         tt::Cluster::instance().l1_barrier(chip_id);
         ll_api::memory read_mem = read_mem_from_core(chip_id, core, mem, local_init_addr);
@@ -231,6 +236,15 @@ static bool check_if_riscs_on_specified_core_done(chip_id_t chip_id, const CoreC
         is_active_eth_core = active_eth_cores.find(logical_core_from_ethernet_core(chip_id, core)) != active_eth_cores.end();
         is_inactive_eth_core = inactive_eth_cores.find(logical_core_from_ethernet_core(chip_id, core)) != inactive_eth_cores.end();
         //we should not be operating on any reserved cores here.
+
+        uint32_t risc0_pc_reset = 0xFFB14000;
+        uint32_t risc0_pc_end = 0xFFB14004;
+        std::vector<uint32_t> risc0_pc_val = read_hex_vec_from_core(chip_id, core, risc0_pc_reset, sizeof(uint32_t));
+        std::vector<uint32_t> risc0_end_val = read_hex_vec_from_core(chip_id, core, risc0_pc_end, sizeof(uint32_t));
+        std::cout << "risc0 PC reset val " << std::hex << risc0_pc_val[0]
+                  << " risc0 PC end val " << risc0_end_val[0]
+                  << " MEM_IERISC_FIRMWARE_BASE " << (uint32_t)MEM_IERISC_FIRMWARE_BASE << std::dec << std::endl;
+
         assert(is_active_eth_core or is_inactive_eth_core);
     }
 
