@@ -52,6 +52,8 @@ function(CREATE_PGM_EXAMPLES_EXE TESTLIST SUBDIR)
                 tt_metal
                 m
                 pthread
+            PRIVATE
+                Metalium::Metal::API
         )
         target_include_directories(
             ${TEST_TARGET}

@@ -41,6 +41,12 @@ target_link_libraries(
         Boost::smart_ptr
         range-v3::range-v3
 )
+# target_link_libraries(impl
+# PUBLIC common
+#  PRIVATE
+#  Boost::smart_ptr
+#         Metalium::Metal::API
+#  )
 
 target_include_directories(
     impl
