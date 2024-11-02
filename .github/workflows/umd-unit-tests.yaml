@@ -30,12 +30,17 @@ jobs:
       LOGURU_LEVEL: INFO
     steps:
       - uses: tenstorrent-metal/metal-workflows/.github/actions/checkout-with-submodule-lfs@v2.0.0
+      - name: Create destination dir for umd artifacts
+        run: mkdir _umd
       - uses: actions/download-artifact@v4
         with:
           name: umd_${{ inputs.arch }}
+          path: ${{ github.workspace }}/_umd
       - name: Run UMD unit tests
         timeout-minutes: ${{ inputs.timeout }}
         env:
           # Unfortunately need this still
           LD_LIBRARY_PATH: ${{ github.workspace }}/_umd/lib
-        run: ldd _umd/${{ inputs.arch }}/unit_tests
+        run: |
+          ldd _umd/${{ inputs.arch }}/unit_tests
+          _umd/${{ inputs.arch }}/unit_tests
