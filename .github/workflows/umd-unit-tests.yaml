@@ -39,7 +39,7 @@ jobs:
       - name: Run UMD unit tests
         timeout-minutes: ${{ inputs.timeout }}
         env:
-          # Unfortunately need this still
+          # Unfortunately need this still, because we don't set any useful rpaths at build time
           LD_LIBRARY_PATH: ${{ github.workspace }}/_umd/lib
         run: |
           ldd _umd/${{ inputs.arch }}/unit_tests
