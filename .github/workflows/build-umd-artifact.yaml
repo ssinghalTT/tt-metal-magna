@@ -28,7 +28,7 @@ jobs:
   build-umd-artifact:
     needs: build-docker-image
     if: always()
-    timeout-minutes: 5
+    timeout-minutes: 15
     strategy:
       matrix:
         arch: ${{ fromJson(inputs.arch) }}
