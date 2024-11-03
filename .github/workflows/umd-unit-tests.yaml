@@ -43,4 +43,5 @@ jobs:
           LD_LIBRARY_PATH: ${{ github.workspace }}/_umd/lib
         run: |
           ldd _umd/${{ inputs.arch }}/unit_tests
+          chmod u+x _umd/${{ inputs.arch }}/unit_tests
           _umd/${{ inputs.arch }}/unit_tests
