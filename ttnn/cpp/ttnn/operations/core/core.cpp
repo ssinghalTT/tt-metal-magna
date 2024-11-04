@@ -154,8 +154,12 @@ void end_trace_capture(Device* device, const uint32_t tid, const uint8_t cq_id) 
     device->push_work([device, cq_id, tid]() mutable { device->end_trace(cq_id, tid); });
 }
 
-void load_trace_binary(Device* device, const uint32_t tid, const std::string& filename, const uint8_t cq_id) {
-    device->push_work([device, cq_id, tid, filename]() mutable { device->load_trace_binary(cq_id, tid, filename); });
+uint32_t load_trace_binary(Device* device, const std::string& filename, const uint8_t cq_id) {
+    uint32_t tid = 0;
+    device->push_work([device, cq_id, filename, &tid]() mutable {tid = device->load_trace_binary(cq_id, filename); });\
+    // Must block to ensure tid is valid before returning.
+    device->synchronize();
+    return tid;
 }
 
 void save_trace_to_disk(Device* device, const uint32_t tid, const std::string& filename) {

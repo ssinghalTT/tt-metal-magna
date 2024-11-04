@@ -211,7 +211,7 @@ class Device {
     // Metal trace device capture mode
     void begin_trace(const uint8_t cq_id, const uint32_t tid);
     void end_trace(const uint8_t cq_id, const uint32_t tid);
-    void load_trace_binary(const uint8_t cq_id, const uint32_t tid, const std::string& filename);
+    uint32_t load_trace_binary(const uint8_t cq_id, const std::string& filename);
     void replay_trace(const uint8_t cq_id, const uint32_t tid, const bool blocking);
     void release_trace(const uint32_t tid);
     std::shared_ptr<TraceBuffer> get_trace(const uint32_t tid);

@@ -49,10 +49,8 @@ def test_single_device_single_trace(device, shape, enable_async, blocking):
         output_tensor = run_op_chain(input_0_dev, input_1_dev)
 
         logger.info("KCM Deserialize Trace, skipping capture. Going to call load_trace_binary")
-        # KCM FIXME - Maybe bundle trace_id in binary, returned by load_trace_binary.
-        tid = 0
-        ttnn.load_trace_binary(device, tid, trace_bin_path, cq_id=0)
-        logger.info("KCM Deserialize Trace, done calling load_trace_binary")
+        tid = ttnn.load_trace_binary(device, trace_bin_path, cq_id=0)
+        logger.info(f"KCM Deserialize Trace, done calling load_trace_binary got tid: {tid}")
 
     else:
         # Compile program binaries
@@ -134,16 +132,20 @@ def test_single_device_multi_trace(device, shape, enable_async, blocking):
     deserialize_trace = True if "TT_METAL_DESERIALIZE_TRACE" in os.environ else False
     logger.info("KCM Test. Serialize Trace: {}, Deserialize Trace: {}".format(serialize_trace, deserialize_trace))
 
+    trace_bin_path_0 = "/tmp/trace_desc_0.bin"
+    trace_bin_path_1 = "/tmp/trace_desc_1.bin"
+    logger.info(f"KCM Test. trace_bin_path_0: {trace_bin_path_0}, trace_bin_path_1: {trace_bin_path_1}")
+
     # Either Load existing Trace, or Capture.
     if deserialize_trace:
         # Compile program binaries. Temp hack to preserve same allocs.
         output_tensor = run_op_chain(input_0_dev, input_1_dev, weight_dev)
         output_tensor_1 = run_op_chain_1(input_0_dev, input_1_dev, weight_dev)
 
-        # KCM FIXME - Maybe bundle trace_id in binary, returned by load_trace_binary.
-        tid, tid_1 = 0, 1
-        ttnn.load_trace_binary(device, tid, cq_id=0)
-        ttnn.load_trace_binary(device, tid_1, cq_id=0)
+        tid = ttnn.load_trace_binary(device, trace_bin_path_0, cq_id=0)
+        logger.info(f"KCM Deserialize Trace, done calling load_trace_binary for {trace_bin_path_0} got tid: {tid}")
+        tid_1 = ttnn.load_trace_binary(device, trace_bin_path_1, cq_id=0)
+        logger.info(f"KCM Deserialize Trace, done calling load_trace_binary for {trace_bin_path_1} got tid: {tid_1}")
 
     else:
         # Compile program binaries
@@ -155,13 +157,16 @@ def test_single_device_multi_trace(device, shape, enable_async, blocking):
         tid = ttnn.begin_trace_capture(device, cq_id=0)
         output_tensor = run_op_chain(input_0_dev, input_1_dev, weight_dev)
         ttnn.end_trace_capture(device, tid, cq_id=0)
+        ttnn.save_trace_to_disk(device, tid, trace_bin_path_0)
+        logger.info(f"KCM Captured tid: {tid} as {trace_bin_path_0}")
 
         # Capture Trace 1
         logger.info("Capture Trace 1")
         tid_1 = ttnn.begin_trace_capture(device, cq_id=0)
         output_tensor_1 = run_op_chain_1(input_0_dev, input_1_dev, weight_dev)
         ttnn.end_trace_capture(device, tid_1, cq_id=0)
-        logger.info(f"Captured tid: {tid}, tid_1: {tid_1}")
+        ttnn.save_trace_to_disk(device, tid_1, trace_bin_path_1)
+        logger.info(f"KCM Captured tid: {tid_1} as {trace_bin_path_1}")
 
         # Early exit, don't run if serializing to disk.
         if serialize_trace:

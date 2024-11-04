@@ -289,9 +289,8 @@ void py_module(py::module& module) {
 
     module.def(
         "load_trace_binary",
-        py::overload_cast<Device*, const uint32_t, const std::string&, const uint8_t>(&ttnn::operations::core::load_trace_binary),
+        py::overload_cast<Device*, const std::string&, const uint8_t>(&ttnn::operations::core::load_trace_binary),
         py::arg("device"),
-        py::arg("trace_id"),
         py::arg("filename"),
         py::kw_only(),
         py::arg("cq_id") = ttnn::DefaultQueueId);
