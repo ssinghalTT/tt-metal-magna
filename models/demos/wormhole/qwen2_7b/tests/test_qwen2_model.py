@@ -31,6 +31,7 @@ from models.utility_functions import skip_for_grayskull
     (10,),
 )
 def test_qwen2_model_inference(device, iterations, use_program_cache, reset_seeds):
+    device.enable_async(False)
     run_ref_pt = True  # Flag to run reference PyTorch model and compare PCC
     cache_pcc = False  # Flag to measure KV cache PCC for all layers
 

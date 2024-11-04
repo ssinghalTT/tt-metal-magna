@@ -569,6 +569,8 @@ def run_qwen2_demo(user_input, batch_size, device, instruct_mode, is_ci_env, num
 def test_qwen2_7B_demo(
     device, use_program_cache, input_prompts, instruct_weights, is_ci_env, is_single_card_n300, num_batches
 ):
+    device.enable_async(False)
+
     if (is_ci_env and instruct_weights == False) or (is_ci_env and not (num_batches == 1 or num_batches == 3)):
         pytest.skip(
             "CI demo test only runs instruct weights (1 and 3 batches) to reduce CI pipeline load (both are supported)"

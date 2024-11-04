@@ -146,6 +146,8 @@ def test_qwen2_reference_perplexity(device, batch_size: int, max_seq_len: int, n
     ],
 )
 def test_qwen2_perplexity(device, batch_size: int, max_seq_len: int, num_samples: int):
+    device.enable_async(False)
+
     torch.manual_seed(0)
 
     expected_perplexity = 26.3

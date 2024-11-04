@@ -30,6 +30,7 @@ from models.utility_functions import skip_for_grayskull
     ),
 )
 def test_qwen2_mlp_inference(device, batch_size, use_program_cache, reset_seeds):
+    device.enable_async(False)
     dtype = ttnn.bfloat8_b
     model_args = TtModelArgs(device=device)
     state_dict = load_safetensor_weights(model_args.consolidated_weights_path)
