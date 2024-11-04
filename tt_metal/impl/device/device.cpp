@@ -3245,40 +3245,49 @@ void Device::begin_trace(const uint8_t cq_id, const uint32_t tid) {
     this->hw_command_queues_[cq_id]->record_begin(tid, this->trace_buffer_pool_[tid]->desc);
 }
 
+// Serialize a TraceDescriptor to a memory buffer
+std::pair<const std::uint8_t*, std::size_t> serialize_trace_desc_to_memory(const detail::TraceDescriptor& traceDesc) {
+    std::vector<std::uint8_t> buffer;
 
-// Serialize a TraceDescriptor to a binary file
-void serialize_trace_desc(const detail::TraceDescriptor& traceDesc, const std::string& filename) {
+    // Reserve space for metadata and vector data
+    buffer.reserve(3 * sizeof(uint32_t) + sizeof(uint32_t) + traceDesc.data.size() * sizeof(uint32_t));
+
+    // Helper to append data to the buffer
+    auto append_to_buffer = [&](const void* data, std::size_t size) {
+        const auto* byteData = static_cast<const std::uint8_t*>(data);
+        buffer.insert(buffer.end(), byteData, byteData + size);
+    };
+
+    // Serialize metadata fields
+    append_to_buffer(&traceDesc.num_completion_worker_cores, sizeof(traceDesc.num_completion_worker_cores));
+    append_to_buffer(&traceDesc.num_traced_programs_needing_go_signal_multicast, sizeof(traceDesc.num_traced_programs_needing_go_signal_multicast));
+    append_to_buffer(&traceDesc.num_traced_programs_needing_go_signal_unicast, sizeof(traceDesc.num_traced_programs_needing_go_signal_unicast));
+
+    // Serialize the size of the vector data
+    uint32_t size_in_bytes = traceDesc.data.size() * sizeof(uint32_t);
+    append_to_buffer(&size_in_bytes, sizeof(size_in_bytes));
+
+    // Serialize the vector data
+    if (!traceDesc.data.empty()) {
+        append_to_buffer(traceDesc.data.data(), size_in_bytes);
+    }
+
+    return { buffer.data(), buffer.size() };
+}
+
+// Serialize a binary data (like TraceDescriptor serialized) to a file.
+void write_binary_data_to_file(const std::pair<const std::uint8_t*, std::size_t>& binaryData, const std::string& filename) {
     std::ofstream ofs(filename, std::ios::binary);
     if (!ofs) {
         std::cerr << "Error opening file for writing: " << filename << std::endl;
         return;
     }
 
-    // Write metadata fields
-    ofs.write(reinterpret_cast<const char*>(&traceDesc.num_completion_worker_cores), sizeof(traceDesc.num_completion_worker_cores));
-    ofs.write(reinterpret_cast<const char*>(&traceDesc.num_traced_programs_needing_go_signal_multicast), sizeof(traceDesc.num_traced_programs_needing_go_signal_multicast));
-    ofs.write(reinterpret_cast<const char*>(&traceDesc.num_traced_programs_needing_go_signal_unicast), sizeof(traceDesc.num_traced_programs_needing_go_signal_unicast));
-
-    // Write the size of the vector data in bytes
-    uint32_t size_in_bytes = traceDesc.data.size() * sizeof(uint32_t);
-    ofs.write(reinterpret_cast<const char*>(&size_in_bytes), sizeof(size_in_bytes));
-
-    // Write the vector data
-    ofs.write(reinterpret_cast<const char*>(traceDesc.data.data()), size_in_bytes);
+    ofs.write(reinterpret_cast<const char*>(binaryData.first), binaryData.second);
 
     ofs.close();
     if (!ofs) {
         std::cerr << "Error writing to file: " << filename << std::endl;
-    }
-
-    bool debug = parse_env("DEBUG_TRACE", false);
-    if (debug) {
-        log_info(tt::LogMetal, "KCM TraceDescriptor Serialize num_completion_worker_cores: {} num_traced_programs_needing_go_signal_multicast: {} num_traced_programs_needing_go_signal_unicast: {}",
-            traceDesc.num_completion_worker_cores, traceDesc.num_traced_programs_needing_go_signal_multicast, traceDesc.num_traced_programs_needing_go_signal_unicast);
-        for (int i=0; i<traceDesc.data.size(); i++) {
-            auto d = traceDesc.data.at(i);
-            log_info(tt::LogMetal, "KCM TraceDescriptor Serialize i: {} DATA: 0x{:x}", i, d);
-        }
     }
 }
 
@@ -3342,26 +3351,14 @@ void Device::end_trace(const uint8_t cq_id, const uint32_t tid) {
         trace_data.push_back(((uint32_t*)command_sequence.data())[i]);
     }
 
-    // KCM - Serialize TraceBuffer to Disk Here instead of writing to device. FIXME - Make this seperate API.
-    bool serialize_trace = parse_env("TT_METAL_SERIALIZE_TRACE", false);
-    log_info(tt::LogMetal, "KCM Trace Buffer Size: {} serialize: {}", trace_data.size(), serialize_trace);
-    std::string trace_bin_path = "/tmp/trace_" + std::to_string(tid) + "_desc.bin";
-
-    if (serialize_trace) {
-        serialize_trace_desc(*trace_desc, trace_bin_path);
-        this->DisableAllocs();
-        // Skipped initialize_buffer call here, since we are not writing to device
-    } else {
-        Trace::initialize_buffer(this->command_queue(cq_id), this->trace_buffer_pool_[tid]);
-        this->DisableAllocs();
-    }
+    Trace::initialize_buffer(this->command_queue(cq_id), this->trace_buffer_pool_[tid]);
+    this->DisableAllocs();
 }
 
 // KCM - New API to load a trace binary from disk and write to device, simliar to what happens in end_trace() during capture.
-void Device::load_trace_binary(const uint8_t cq_id, const uint32_t tid) {
+void Device::load_trace_binary(const uint8_t cq_id, const uint32_t tid, const std::string& filename) {
 
-    std::string trace_bin_path = "/tmp/trace_" + std::to_string(tid) + "_desc.bin";
-    log_info(tt::LogMetal, "KCM Inside {} for cq: {} tid: {} file: {}", __FUNCTION__, (uint32_t)cq_id, tid, trace_bin_path);
+    log_info(tt::LogMetal, "KCM Inside {} for cq: {} tid: {} file: {}", __FUNCTION__, (uint32_t)cq_id, tid, filename);
     this->EnableAllocs(); // KCM - Copied from begin_trace
     this->trace_buffer_pool_.insert({tid, Trace::create_empty_trace_buffer()});
 
@@ -3369,9 +3366,25 @@ void Device::load_trace_binary(const uint8_t cq_id, const uint32_t tid) {
     TT_FATAL(this->trace_buffer_pool_.count(tid) > 0, "Trace instance {} must exist on device", tid);
 
     // Load the trace binary (TraceDescriptor serialized) and write to device.
-    *this->trace_buffer_pool_[tid]->desc = deserialize_trace_desc(trace_bin_path);
+    *this->trace_buffer_pool_[tid]->desc = deserialize_trace_desc(filename);
     Trace::initialize_buffer(this->command_queue(cq_id), this->trace_buffer_pool_[tid]);
     this->DisableAllocs(); // Copied from end_trace
+}
+
+// Collect a trace for later use, return pointer to binarized data.
+std::pair<std::uint8_t const*, std::size_t> Device::collect_trace(const uint32_t tid) {
+    log_info(tt::LogMetal, "KCM Collect trace for tid {}", tid);
+    TT_FATAL(this->trace_buffer_pool_.count(tid) > 0, "Trace instance {} must exist on device", tid);
+    auto &trace_desc = this->trace_buffer_pool_[tid]->desc;
+    auto trace_data_pair = serialize_trace_desc_to_memory(*trace_desc);
+    return trace_data_pair;
+}
+
+// Wrapper to serialize a TraceDescriptor to a binary file and write to disk.
+void Device::save_trace_to_disk(const uint32_t tid, const std::string& filename) {
+    log_info(tt::LogMetal, "KCM Saving trace for tid {} filename: {}", tid, filename);
+    auto trace_binary_data = collect_trace(tid);
+    write_binary_data_to_file(trace_binary_data, filename);
 }
 
 void Device::replay_trace(const uint8_t cq_id, const uint32_t tid, const bool blocking) {

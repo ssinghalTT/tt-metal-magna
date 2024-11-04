@@ -41,6 +41,7 @@ def test_single_device_single_trace(device, shape, enable_async, blocking):
     serialize_trace = True if "TT_METAL_SERIALIZE_TRACE" in os.environ else False
     deserialize_trace = True if "TT_METAL_DESERIALIZE_TRACE" in os.environ else False
     logger.info("KCM Test. Serialize Trace: {}, Deserialize Trace: {}".format(serialize_trace, deserialize_trace))
+    trace_bin_path = "/tmp/trace_desc.bin"
 
     # Either Load existing Trace, or Capture.
     if deserialize_trace:
@@ -50,7 +51,7 @@ def test_single_device_single_trace(device, shape, enable_async, blocking):
         logger.info("KCM Deserialize Trace, skipping capture. Going to call load_trace_binary")
         # KCM FIXME - Maybe bundle trace_id in binary, returned by load_trace_binary.
         tid = 0
-        ttnn.load_trace_binary(device, tid, cq_id=0)
+        ttnn.load_trace_binary(device, tid, trace_bin_path, cq_id=0)
         logger.info("KCM Deserialize Trace, done calling load_trace_binary")
 
     else:
@@ -60,6 +61,11 @@ def test_single_device_single_trace(device, shape, enable_async, blocking):
         tid = ttnn.begin_trace_capture(device, cq_id=0)
         output_tensor = run_op_chain(input_0_dev, input_1_dev)
         ttnn.end_trace_capture(device, tid, cq_id=0)
+
+        # Get version with filenames to start, then use binary blobs.
+        logger.info(f"KCM Test going to save tid: {tid} to disk as filename: {trace_bin_path}")
+        ttnn.save_trace_to_disk(device, tid, trace_bin_path)
+        # TODO - 2 step mode where this isn't serialized straight disk but data returned to user here.
 
         # Early exit, don't run if serializing to disk.
         if serialize_trace:
