@@ -43,7 +43,9 @@
     }
 #endif
 
-template<uint32_t num_output_tiles, bool is_partial_tile, uint32_t split_reader, uint32_t unpA_face_r_dim, uint32_t in_nblocks_c>
+constexpr uint32_t MAX_TILES_PER_REDUCTION = 8;
+
+template<uint32_t in_ntiles_c, bool is_partial_tile, uint32_t split_reader, uint32_t unpA_face_r_dim, uint32_t in_nblocks_c>
 inline void reduce_h_fused(
     const uint32_t in_cb_id,
     const uint32_t in_scalar_cb_id,
@@ -57,14 +59,14 @@ inline void reduce_h_fused(
         const uint32_t curr_in_cb_id = split_reader ? (in_cb_id + (in_stick_index & 0x1)) : in_cb_id;
         cb_wait_front(curr_in_cb_id, 1);
         tile_regs_acquire();
-        unpack_tilizeA_B_block(curr_in_cb_id, in_scalar_cb_id, num_output_tiles, 0 /*tile idx for Src b is 0 because only 1 tile of constants is loaded*/, num_faces_in_tile /* unpack 1 or 2 faces ) */, unpA_face_r_dim);
-        for (uint32_t c_i = 0; c_i < num_output_tiles; ++c_i) {
+        unpack_tilizeA_B_block(curr_in_cb_id, in_scalar_cb_id, MAX_TILES_PER_REDUCTION, 0 /*tile idx for Src b is 0 because only 1 tile of constants is loaded*/, num_faces_in_tile /* unpack 1 or 2 faces ) */, unpA_face_r_dim);
+        for (uint32_t c_i = 0; c_i < MAX_TILES_PER_REDUCTION; ++c_i) {
             reduce_tile_math(c_i,  num_faces_in_tile /* reduce 1 or 2 faces */);
         }
         cb_pop_front(curr_in_cb_id, 1);
         tile_regs_wait();
         tile_regs_commit();
-        pack_untilize_dst<num_output_tiles>(out_cb_id, 1/*out_subblock_h*/, 0, num_out_rows, num_faces_in_tile);  /* pack 1 row (1x16 or 1x32) */
+        pack_untilize_dst<MAX_TILES_PER_REDUCTION, in_ntiles_c>(out_cb_id, 1/*out_subblock_h*/, 0, num_out_rows, num_faces_in_tile);  /* pack 1 row (1x16 or 1x32) */
         tile_regs_release();
         cb_push_back(out_cb_id, 1);
     }
@@ -97,8 +99,6 @@ void MAIN {
     constexpr uint32_t num_faces_in_tile = is_partial_tile ? 1 : 2;
     constexpr uint32_t num_out_rows = 1;
 
-    constexpr uint32_t MAX_TILES_PER_REDUCTION = 8;
-
     tilizeA_B_reduce_init<true>(
         in_cb_id,
         in_scalar_cb_id,
@@ -110,7 +110,7 @@ void MAIN {
 
     cb_wait_front(in_scalar_cb_id, 1);
     for (uint32_t i = 0; i < nsticks_per_core; ++ i) {
-        reduce_h_fused<MAX_TILES_PER_REDUCTION, is_partial_tile, split_reader, window_size_hw, in_nblocks_c>(in_cb_id, in_scalar_cb_id, i, out_cb_id);
+        reduce_h_fused<in_ntiles_c, is_partial_tile, split_reader, window_size_hw, in_nblocks_c>(in_cb_id, in_scalar_cb_id, i, out_cb_id);
     }
     cb_pop_front(in_scalar_cb_id, 1);
 }

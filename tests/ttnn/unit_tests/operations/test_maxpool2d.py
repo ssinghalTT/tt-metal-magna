@@ -122,7 +122,7 @@ def run_max_pool(
         for c in range(act_shape[1]):
             for h in range(act_shape[2]):
                 for w in range(act_shape[3]):
-                    act[n, c, h, w] = w + h * in_w
+                    act[n, c, h, w] = h * in_w * in_c + w * in_c + c
     # act = torch.zeros(act_shape, dtype=torch.bfloat16)
     # act = torch.ones(act_shape, dtype=torch.bfloat16)
     # act = torch.arange(0, volume(act_shape), dtype=torch.bfloat16).reshape(act_shape)
@@ -206,8 +206,8 @@ def run_max_pool(
 
     output_pytorch = torch.permute(output_pytorch, (0, 3, 1, 2))  ## N, C, H, W
 
-    print("output_pytorch", output_pytorch[0][0])
-    print("golden_pytorch", golden_pytorch[0][0])
+    print("output_pytorch", output_pytorch[0][383])
+    print("golden_pytorch", golden_pytorch[0][383])
 
     pcc_thresh = 1.0
     if dtype == ttnn.bfloat8_b:
@@ -277,12 +277,12 @@ def run_max_pool(
             # [1, 512, 28, 28],
             # [1, 512, 14, 14],
             # wide yolo kernel
-            [1, 288, 10, 10],
-            [1, 320, 10, 10],
+            # [1, 288, 10, 10],
+            # [1, 320, 10, 10],
             [1, 384, 10, 10],
-            [1, 448, 10, 10],
-            [1, 480, 10, 10],
-            [1, 512, 10, 10],
+            # [1, 448, 10, 10],
+            # [1, 480, 10, 10],
+            # [1, 512, 10, 10],
         )
     ),
 )

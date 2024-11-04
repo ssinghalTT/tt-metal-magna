@@ -6,7 +6,7 @@
 #include <cstring>
 #include "dataflow_api.h"
 
-#define ENABLE_DEBUG_PRINT 1
+#define ENABLE_DEBUG_PRINT 0
 
 #if ENABLE_DEBUG_PRINT == 1
     #include "debug/dprint.h"
@@ -67,8 +67,6 @@ void kernel_main() {
     // static_assert(0 == reader_nindices%2, "reader_nindices must be multiple of 2");
 
     constexpr uint32_t TILE_WIDTH = 32;
-    constexpr uint32_t TILE_HEIGHT = 32;
-    constexpr uint32_t MAX_TILES_PER_REDUCTION = 8;
     constexpr uint32_t MAX_ELE_PER_REDUCTION = 512;
 
     constexpr uint32_t in_cb_id = (reader_id == 1) ? tt::CB::c_in1 : tt::CB::c_in0;
@@ -93,21 +91,10 @@ void kernel_main() {
 
     uint32_t in_w_padded = in_w + 2 * pad_w;
 
-    uint32_t ele_size = in_nbytes_c / in_c;
-    uint16_t minus_inf = 63487;
-
-    /* if (reader_id == 0) {
-        print_pages(in_l1_read_base_addr, in_nbytes_c / 2, 30);
-    } */
-
     uint32_t npages_to_reserve = 1;
     uint32_t counter = reader_id;
     while (counter < reader_nindices) {
         uint16_t top_left_local_index = reader_indices_ptr[counter ++];
-        /* if (reader_id == 0) {
-            DPRINT << "top_left_local_index: " << top_left_local_index << ENDL();
-        } */
-        uint32_t processed_c = 0;
         for (uint32_t c_i = 0; c_i < in_nblocks_c; ++ c_i) {
             cb_reserve_back(in_cb_id, npages_to_reserve);
             uint32_t out_l1_write_addr_base = get_write_ptr(in_cb_id);
@@ -121,11 +108,7 @@ void kernel_main() {
                 }
             }
             noc_async_read_barrier();
-            /* if (reader_id == 0) {
-                print_pages(out_l1_write_addr_base, MAX_ELE_PER_REDUCTION / 2, window_h * window_w);
-            } */
             cb_push_back(in_cb_id, npages_to_reserve);
-            processed_c += TILE_WIDTH * MAX_TILES_PER_REDUCTION;
         }
         if (split_reader) counter++; // interleave the indices
     }
