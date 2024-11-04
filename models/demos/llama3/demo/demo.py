@@ -318,12 +318,18 @@ def run_llama3_demo(
                     mode="prefill",
                     get_last_token=((decoding_pos[batch_id] - 1) // 32) * 32,
                 )
-
-            pt_out.append(
-                ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))[
-                    0, 0, (decoding_pos[batch_id] - 1) % 32, :
-                ]
-            )
+            if model_args.is_galaxy:
+                tt_out_torch = ttnn.to_torch(
+                    tt_out,
+                    mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(3, 1), mesh_shape=mesh_device.shape),
+                )
+                pt_out.append(tt_out_torch[0, 0, (decoding_pos[batch_id] - 1) % 32, :])
+            else:
+                pt_out.append(
+                    ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))[
+                        0, 0, (decoding_pos[batch_id] - 1) % 32, :
+                    ]
+                )
             ttnn.deallocate(tt_out)
 
         # Synchronize devices to ensure the profile captures the correct timing of all devices
@@ -380,7 +386,9 @@ def run_llama3_demo(
         decode_input = ttnn.unsqueeze_to_4D(tt_embd(tt_out_tok))
         tt_out = tt_model(decode_input, current_pos, rot_mat=current_rot_mat)
         if tt_model.args.num_devices > 1:
-            tt_out_gathered = ttnn.all_gather(tt_out, dim=3, num_links=1, topology=ttnn.Topology.Linear)
+            tt_out_gathered = ttnn.all_gather(
+                tt_out, dim=3, num_links=2, cluster_axis=0, mesh_device=mesh_device, topology=ttnn.Topology.Linear
+            )
             ttnn.deallocate(tt_out)
         else:
             tt_out_gathered = tt_out
@@ -401,7 +409,9 @@ def run_llama3_demo(
         decode_input = ttnn.unsqueeze_to_4D(tt_embd(tt_out_tok))
         tt_out = tt_model(decode_input, current_pos, rot_mat=current_rot_mat)
         if tt_model.args.num_devices > 1:
-            tt_out_gathered = ttnn.all_gather(tt_out, dim=3, num_links=1, topology=ttnn.Topology.Linear)
+            tt_out_gathered = ttnn.all_gather(
+                tt_out, dim=3, num_links=2, cluster_axis=0, mesh_device=mesh_device, topology=ttnn.Topology.Linear
+            )
             ttnn.deallocate(tt_out)
         else:
             tt_out_gathered = tt_out
@@ -449,14 +459,20 @@ def run_llama3_demo(
 
             # Execute trace
             ttnn.wait_for_event(0, write_event)
-            ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=True)
+            ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
             ttnn.record_event(0, op_event)
 
             # Write to host
             ttnn.wait_for_event(1, op_event)
-            tt_output_torch = ttnn.to_torch(
-                tt_out_tok.cpu(blocking=False, cq_id=1), mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1)
-            )[0, 0, 0, :batch_size]
+            if tt_model.args.is_galaxy:
+                tt_output_torch = ttnn.to_torch(
+                    tt_out_tok.cpu(blocking=False, cq_id=1),
+                    mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(3, 1), mesh_shape=mesh_device.shape),
+                )[0, 0, 0, :batch_size]
+            else:
+                tt_output_torch = ttnn.to_torch(  # TODO: Apply changes to support TG
+                    tt_out_tok.cpu(blocking=False, cq_id=1), mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1)
+                )[0, 0, 0, :batch_size]
             ttnn.record_event(1, write_event)
 
             # Save output token to print out later
