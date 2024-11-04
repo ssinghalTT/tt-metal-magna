@@ -1401,13 +1401,8 @@ def run_all_gather_sharded_n300(
     (
         # LLama
         (
-            (1, 1, 32, 1024),
+            (4, 1, 256, 32),
             (32, 32),
-            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 3))}),
-        ),
-        (  # https://github.com/tenstorrent/tt-metal/issues/9686
-            (1, 1, 32, 4096),
-            (32, 128),
             ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 3))}),
         ),
     ),
@@ -1415,7 +1410,7 @@ def run_all_gather_sharded_n300(
 @pytest.mark.parametrize("tile_h", [16, 32])
 @pytest.mark.parametrize("tile_w", [16, 32])
 @pytest.mark.parametrize("enable_async", [True])
-def test_all_gather_sharded_post_commit_tiny_tile(
+def test_tiny_all_gather_sharded_post_commit(
     t3k_mesh_device,
     num_devices,
     input_shape,

@@ -7,8 +7,11 @@
 #include "ttnn/cpp/ttnn/operations/ccl/all_gather/device/kernels/dataflow/worker_ring_gather_utils.hpp"
 #include "ttnn/cpp/ttnn/operations/ccl/shared_with_host/sharded_tensor_addr_gen.hpp"
 #include "ttnn/cpp/ttnn/operations/ccl/kernel_common/worker_sync_utils.hpp"
+#include "debug/waypoint.h"
+#include "debug/assert.h"
 
 void kernel_main() {
+    WAYPOINT("BAAA");
     uint32_t arg_idx = 0;
     const uint32_t dst_addr = get_arg_val<uint32_t>(arg_idx++);
     // Different per worker receiver writer
@@ -55,7 +58,7 @@ void kernel_main() {
     constexpr bool fuse_op = get_compile_time_arg_val(6);
 
     ASSERT(half_cb_n_pages > rem_num_pages);
-
+    WAYPOINT("BAAB");
     #ifdef SHARDED_MEM_LAYOUT
     constexpr tt::tt_metal::TensorMemoryLayout output_tensor_memory_layout = static_cast<tt::tt_metal::TensorMemoryLayout>(get_compile_time_arg_val(7));
     constexpr uint32_t output_tensor_shard_grid_height = get_compile_time_arg_val(8);
@@ -118,7 +121,7 @@ void kernel_main() {
             );
         #endif
     #endif
-
+    WAYPOINT("BAAC");
     // Each worker receiver writer matches with a specific worker sender reader
     // Used to signal that data has been committed to memory and can be read
     uint64_t worker_send_reader_semaphore_noc_addr = -1;
@@ -143,7 +146,7 @@ void kernel_main() {
     for (uint32_t i = 0; i < num_transfers; ++i) {
         if (num_full_chunks > 0) {
             for (uint32_t c = 0; c < num_full_chunks; ++c) {
-
+                WAYPOINT("BAAD");
                 #ifdef SHARDED_MEM_LAYOUT
                 ASSERT(output_page_idx < output_tensor_shard_pages_per_shard_y * output_tensor_shard_pages_per_shard_x * output_tensor_shard_grid_height * output_tensor_shard_grid_width);
                 #endif
@@ -151,9 +154,11 @@ void kernel_main() {
                 if (sender_enabled) {
                     noc_semaphore_inc(worker_send_reader_semaphore_noc_addr, 1);
                 }
+                WAYPOINT("BAAE");
             }
         }
         if (rem_num_pages > 0) {
+            WAYPOINT("BAAF");
             #ifdef SHARDED_MEM_LAYOUT
             ASSERT(output_page_idx < output_tensor_shard_pages_per_shard_y * output_tensor_shard_pages_per_shard_x * output_tensor_shard_grid_height * output_tensor_shard_grid_width);
             #endif
@@ -164,6 +169,7 @@ void kernel_main() {
             ASSERT(num_pages == 0 || num_pages > rem_num_pages);
             ASSERT(half_cb_n_pages > rem_num_pages);
             pop_filler_pages_from_cb(cb_id_in0, half_cb_n_pages - rem_num_pages);
+            WAYPOINT("BAAG");
         }
 
         // Synchronize if all gather fusion is enabled
@@ -213,5 +219,7 @@ void kernel_main() {
         output_page_idx = output_base_page_idx;
         col_idx = col_start_idx;
         row_idx = row_start_idx;
+        WAYPOINT("BAAH");
     }
+    WAYPOINT("BAAI");
 }

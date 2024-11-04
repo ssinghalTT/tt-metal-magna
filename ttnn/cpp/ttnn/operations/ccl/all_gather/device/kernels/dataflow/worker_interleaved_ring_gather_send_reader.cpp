@@ -6,9 +6,12 @@
 #include "dataflow_api.h"
 #include "ttnn/cpp/ttnn/operations/ccl/all_gather/device/kernels/dataflow/worker_ring_gather_utils.hpp"
 #include "ttnn/cpp/ttnn/operations/ccl/shared_with_host/sharded_tensor_addr_gen.hpp"
+#include "debug/waypoint.h"
+#include "debug/assert.h"
 
 
 void kernel_main() {
+    WAYPOINT("CAAA");
     uint32_t arg_idx = 0;
     const uint32_t src_addr = get_arg_val<uint32_t>(arg_idx++);
     const uint32_t dst_addr = get_arg_val<uint32_t>(arg_idx++);
@@ -77,6 +80,7 @@ void kernel_main() {
     #endif
 
     ASSERT(half_cb_n_pages > rem_num_pages);
+    WAYPOINT("CAAB");
 
     constexpr uint32_t cb_id_in0 = tt::CB::c_in0;
 
@@ -172,7 +176,7 @@ void kernel_main() {
     uint32_t output_page_idx = output_base_page_idx;
     uint32_t col_idx = col_start_idx;
     uint32_t row_idx = row_start_idx;
-
+    WAYPOINT("CAAC");
     if (num_full_chunks > 0) {
         for (uint32_t c = 0; c < num_full_chunks; ++c) {
             read_chunk_from_input_tensor(input_page_idx, cb_id_in0, s, num_pages, page_size);
@@ -228,6 +232,7 @@ void kernel_main() {
                 }
             }
         }
+        WAYPOINT("CAAD");
         output_page_idx = output_base_page_idx;
         col_idx = col_start_idx;
         row_idx = row_start_idx;
@@ -246,5 +251,6 @@ void kernel_main() {
             ASSERT(half_cb_n_pages > rem_num_pages);
             push_filler_pages_to_cb(cb_id_in0, half_cb_n_pages - rem_num_pages);
         }
+        WAYPOINT("CAAE");
     }
 }

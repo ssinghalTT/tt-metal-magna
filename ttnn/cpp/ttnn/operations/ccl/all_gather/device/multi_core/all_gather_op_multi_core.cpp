@@ -260,7 +260,6 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_helper(
     auto const& all_gather_config = AllGatherConfig(input_tensor, output_tensor, dim, ring_size, num_links, topology, num_edm_buffers_per_channel, fuse_op, user_defined_num_workers);
     auto const& topology_config = ttnn::ccl::RingTopology(device, topology, sender_device_id, receiver_device_id, num_links, ring_size, ring_index);
 
-    bool enable_print = false;
     all_gather_config.print();
 
     bool is_sharded = input_tensor.is_sharded();
@@ -272,6 +271,8 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_helper(
 
     uint32_t input_page_size = input_tensor_config->get_page_size();
     uint32_t output_page_size = output_tensor_config->get_page_size();
+    //Here is the issue, page size give 32x32x2=2048 rather than 16x16x2 on both, debug input tensor config and output tensor config
+    printf("Page size is %d,%d\n",input_page_size,output_page_size);
     auto const& [input_pages_per_shard_y, input_pages_per_shard_x] = is_sharded ? input_tensor.buffer()->shard_spec().shape_in_pages() : std::array<uint32_t, 2>{0,0};
     auto const& [output_pages_per_shard_y, output_pages_per_shard_x] = is_sharded ? output_tensor.buffer()->shard_spec().shape_in_pages() : std::array<uint32_t, 2>{0,0};
     if (is_sharded) {

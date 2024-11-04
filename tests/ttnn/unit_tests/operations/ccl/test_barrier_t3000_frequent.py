@@ -238,7 +238,7 @@ def run_with_trace(
 @pytest.mark.parametrize("num_iters", [1000])
 @pytest.mark.parametrize("mem_config", [ttnn.MemoryConfig(buffer_type=ttnn.BufferType.DRAM)])
 def test_run_barrier_impl(
-    mesh_device,
+    t3k_mesh_device,
     num_devices,
     input_shape,
     output_shard_spec,
@@ -251,10 +251,10 @@ def test_run_barrier_impl(
     all_gather_topology,
     enable_async,
 ):
-    if mesh_device.get_num_devices() < num_devices:
+    if t3k_mesh_device.get_num_devices() < num_devices:
         pytest.skip("Not T3000!")
     run_normal(
-        mesh_device,
+        t3k_mesh_device,
         num_devices,
         input_shape,
         dim,
@@ -432,7 +432,7 @@ def test_barrier_sharded(
 @pytest.mark.parametrize("tile_h", [16, 32])
 @pytest.mark.parametrize("tile_w", [8, 16])
 def test_run_barrier_tiny_tile(
-    mesh_device,
+    t3k_mesh_device,
     num_devices,
     input_shape,
     output_shard_spec,
@@ -447,10 +447,10 @@ def test_run_barrier_tiny_tile(
     tile_h,
     tile_w,
 ):
-    if mesh_device.get_num_devices() < num_devices:
+    if t3k_mesh_device.get_num_devices() < num_devices:
         pytest.skip("Not T3000!")
     run_normal(
-        mesh_device,
+        t3k_mesh_device,
         num_devices,
         input_shape,
         dim,
