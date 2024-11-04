@@ -438,6 +438,11 @@ class TtModelArgs:
         self.DEFAULT_CKPT_DIR = "/proj_sw/user_dev/llama3-data-repacked/llama-3-70b/"
         self.DEFAULT_TOKENIZER_PATH = "/proj_sw/user_dev/llama3-data-repacked/"
         self.DEFAULT_CACHE_PATH = "/proj_sw/user_dev/llama3-data-cache/weights-cache-2"
+
+        self.is_galaxy = self.num_devices == 32
+        if self.is_galaxy:
+            self.DEFAULT_CACHE_PATH = "/proj_sw/user_dev/weights-cache-TG"
+
         if not dummy_weights:
             # Assert if all folders and files exist
             assert os.path.exists(
@@ -954,7 +959,6 @@ class TtModelArgs:
 
             self.is_2d_fracturing = all([dim > 1 for dim in self.mesh_device.shape]) if self.mesh_device else False
             self.is_multichip = self.num_devices > 1
-            self.is_galaxy = self.num_devices == 32
 
     def is_distributed_norm(self, mode):
         if not self.is_multichip:

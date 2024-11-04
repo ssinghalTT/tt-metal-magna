@@ -32,10 +32,15 @@ from models.utility_functions import skip_for_grayskull
 @pytest.mark.parametrize(
     "seq_len",
     (
-        # 128,
+        128,
         # 1024,
         4096,
     ),
+)
+@pytest.mark.parametrize(
+    "layers",
+    [1, None],
+    ids=["quick", "full"],
 )
 @pytest.mark.parametrize(
     "mesh_device",
@@ -46,9 +51,9 @@ from models.utility_functions import skip_for_grayskull
     ],
     indirect=True,
 )
-def test_llama_model_inference(mesh_device, seq_len, use_program_cache, reset_seeds, ensure_gc):
+def test_llama_model_inference(mesh_device, seq_len, layers, use_program_cache, reset_seeds, ensure_gc):
     run_ref_pt = True  # Flag to run reference PyTorch model and compare PCC
-    cache_pcc = False  # Flag to measure KV cache PCC for all layers
+    cache_pcc = layers == 1  # Flag to measure KV cache PCC for all layers
 
     dtype = ttnn.bfloat8_b
     pcc = 0.93
@@ -60,6 +65,9 @@ def test_llama_model_inference(mesh_device, seq_len, use_program_cache, reset_se
 
     model_args = TtModelArgs(mesh_device, instruct=instruct)
     tokenizer = Tokenizer(model_args.tokenizer_path)
+
+    if layers is not None:
+        model_args.n_layers = layers
 
     logger.info("Loading weights...")
     state_dict_prefix = model_args.get_state_dict_prefix("", None)
@@ -140,11 +148,18 @@ def test_llama_model_inference(mesh_device, seq_len, use_program_cache, reset_se
         # Run TT model
         tt_out = tt_model(decode_input, None, rot_mats, transformation_mats, user_id=i, mode="prefill")
         # Convert ttnn tensor to torch tensor
-        tt_output_torch = ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))[
-            :, 0, :, :
-        ].view(
-            batch, seq_len, -1
-        )  # [ batch, seq, hidden_dim]
+        # TODO: Apply to TG concatenating output
+        if model_args.is_galaxy:
+            tt_output_torch = ttnn.to_torch(
+                tt_out, mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(1, 3), mesh_shape=mesh_device.shape)
+            )
+            tt_output_torch = tt_output_torch[:, 0, :, :].view(batch, seq_len, -1)
+        else:
+            tt_output_torch = ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))[
+                :, 0, :, :
+            ].view(
+                batch, seq_len, -1
+            )  # [ batch, seq, hidden_dim]
 
         if run_ref_pt:  # Run reference model
             ref_output = reference_model(pt_decode_input, start_pos, mode="prefill")
@@ -179,10 +194,19 @@ def test_llama_model_inference(mesh_device, seq_len, use_program_cache, reset_se
                     ]
 
                     tt_layer_present = []
-                    for layer_past in tt_model.layers[i].attention.layer_past_list[0]:
-                        tt_layer_present.append(
-                            ttnn.to_torch(layer_past, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1))
-                        )
+                    for layer_past in tt_model.layers[i].attention.layer_past:
+                        if model_args.is_galaxy:
+                            val = ttnn.to_torch(
+                                layer_past,
+                                mesh_composer=ttnn.ConcatMesh2dToTensor(
+                                    mesh_device, dims=(1, 0), mesh_shape=mesh_device.shape
+                                ),
+                            )[:batch, ...]
+                            tt_layer_present.append(val)  # TODO: Apply to TG
+                        else:
+                            tt_layer_present.append(  # TODO: Apply to TG
+                                ttnn.to_torch(layer_past, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1))
+                            )
 
                     for i, (cache_pt, cache_tt) in enumerate(zip(pytorch_layer_present, tt_layer_present)):
                         cache_length_to_check = model_args.sliding_window
