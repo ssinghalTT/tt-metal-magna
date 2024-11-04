@@ -97,7 +97,9 @@ void MAIN {
     constexpr uint32_t num_faces_in_tile = is_partial_tile ? 1 : 2;
     constexpr uint32_t num_out_rows = 1;
 
-    constexpr uint32_t num_output_tiles = in_ntiles_c / in_nblocks_c;
+    constexpr uint32_t MAX_TILES_PER_REDUCTION = 8;
+
+    constexpr uint32_t num_output_tiles = in_nblocks_c == 1 ? in_ntiles_c : MAX_TILES_PER_REDUCTION;
     tilizeA_B_reduce_init<true>(
         in_cb_id,
         in_scalar_cb_id,
