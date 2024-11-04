@@ -109,13 +109,15 @@ CclOpTensorConfig::CclOpTensorConfig(Tensor const& tensor) :
     buffer_start_address(tensor.buffer()->address()),
     df(tt::tt_metal::datatype_to_dataformat_converter(tensor.get_dtype())) {
     if (tensor.get_layout() == Layout::TILE) {
-        this->page_size =tt::tt_metal::detail::TileSize(this->df);
+        //this->page_size =tt::tt_metal::detail::TileSize(this->df);
+        this->tile = tensor.get_tile();
+        this->page_size = this->tile.get_tile_size(this->df);
     } else {
         this->page_size = tensor.buffer()->page_size();
     }
 }
 uint32_t CclOpTensorConfig::get_page_size() const { return this->page_size; }
-
+Tile CclOpTensorConfig::get_tile() const { return this->tile; }
 uint32_t CclOpTensorConfig::get_buffer_start_address() const { return this->buffer_start_address; }
 
 

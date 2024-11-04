@@ -58,16 +58,24 @@ CCLOpConfig::CCLOpConfig(
     output_tensors(&output_tensors),
     input_sharded(input_tensors.at(0).is_sharded()),
     output_sharded(output_tensors.at(0).is_sharded()),
-    page_size(input_tensors.at(0).buffer()->page_size()),
+    df(tt::tt_metal::datatype_to_dataformat_converter(input_tensors.at(0).get_dtype())),
     shard_grid_size(output_tensors.at(0).is_sharded() ? input_tensors.at(0).shard_spec()->num_cores() : 0),
     topology(topology),
     is_row_major(input_tensors.at(0).get_layout() == Layout::ROW_MAJOR) {
+    if(input_tensors.at(0).get_layout() == Layout::TILE) {
+        this->tile = input_tensors.at(0).get_tile();
+        this->page_size = this->tile.get_tile_size(this->df);
+        //this->page_size = input_tensors.at(0).buffer()->page_size();
+    } else {
+        this->page_size = input_tensors.at(0).buffer()->page_size();
+    }
 }
 
 
 uint32_t CCLOpConfig::get_page_size() const { return this->page_size; }
 
 Topology CCLOpConfig::get_topology() const { return this->topology; }
+Tile CCLOpConfig::get_tile() const { return this->tile; }
 
 bool CCLOpConfig::is_input_sharded() const { return this->input_sharded; }
 

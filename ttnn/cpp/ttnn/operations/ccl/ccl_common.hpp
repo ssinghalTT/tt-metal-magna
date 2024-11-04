@@ -54,6 +54,7 @@ class CclOpTensorConfig {
 
     CclOpTensorConfig(Tensor const& tensor);
     uint32_t get_page_size() const;
+    Tile get_tile() const;
 
     uint32_t get_buffer_start_address() const;
 
@@ -61,6 +62,7 @@ class CclOpTensorConfig {
 
    protected:
     uint32_t page_size;
+    Tile tile;
     uint32_t buffer_start_address;
     tt::DataFormat df;
 };

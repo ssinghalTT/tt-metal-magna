@@ -268,11 +268,10 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_helper(
 
     const auto input_buffer = input_tensor.buffer();
     const auto output_buffer = output_tensor.buffer();
-
+    tt::DataFormat df = datatype_to_dataformat_converter(input_tensor.get_dtype());
     uint32_t input_page_size = input_tensor_config->get_page_size();
     uint32_t output_page_size = output_tensor_config->get_page_size();
-    //Here is the issue, page size give 32x32x2=2048 rather than 16x16x2 on both, debug input tensor config and output tensor config
-    printf("Page size is %d,%d\n",input_page_size,output_page_size);
+    //changing page size to tiling size
     auto const& [input_pages_per_shard_y, input_pages_per_shard_x] = is_sharded ? input_tensor.buffer()->shard_spec().shape_in_pages() : std::array<uint32_t, 2>{0,0};
     auto const& [output_pages_per_shard_y, output_pages_per_shard_x] = is_sharded ? output_tensor.buffer()->shard_spec().shape_in_pages() : std::array<uint32_t, 2>{0,0};
     if (is_sharded) {
@@ -289,7 +288,6 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_helper(
     log_trace(tt::LogOp, "max_pages_per_chunk: {}", max_pages_per_chunk);
     bool rm = input_tensor.get_layout() == Layout::ROW_MAJOR;
     bool width = input_tensor.get_legacy_shape().rank() - 1 == dim;
-    tt::DataFormat df = datatype_to_dataformat_converter(input_tensor.get_dtype());
 
     std::map<string, string> worker_defines;
     if (rm) {
@@ -370,11 +368,15 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_helper(
     // Circular Buffer Setup
     uint32_t cb_page_size = input_page_size;
     log_trace(tt::LogOp, "input_page_size: {}", input_page_size);
+    const uint32_t cb_n_packets = 2;
+    const uint32_t CB_buffer_size = cb_n_packets * max_buffer_per_chunk;
+
     uint32_t cb_num_pages = 2 * max_pages_per_chunk;
     log_trace(tt::LogOp, "cb_num_pages: {}", cb_num_pages);
     uint32_t src0_cb_index = tt::CB::c_in0;
-    CircularBufferConfig cb_src0_config = CircularBufferConfig(cb_num_pages * cb_page_size, {{src0_cb_index, df}})
-    .set_page_size(src0_cb_index, cb_page_size);
+    CircularBufferConfig cb_src0_config = CircularBufferConfig(CB_buffer_size, {{src0_cb_index, df}})
+        .set_page_size(src0_cb_index, cb_page_size)
+        .set_tile_dims(src0_cb_index, input_tensor_config->get_tile());
     CBHandle cb_src0_sender_workers = CreateCircularBuffer(program, all_sender_workers, cb_src0_config);
     CBHandle cb_src0_receiver_workers = CreateCircularBuffer(program, all_receiver_workers, cb_src0_config);
 
