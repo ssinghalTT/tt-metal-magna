@@ -249,7 +249,7 @@ const DataFormat get_single_pack_src_format(
             default: pack_src_format = DataFormat::Lf8; break;
         }
     } else if (input_format == DataFormat::UInt16) {
-        pack_src_format = output_format;
+        pack_src_format = input_format;
     } else if ((input_format == DataFormat::Invalid) || (output_format == DataFormat::Invalid)) {
         pack_src_format =  DataFormat::Invalid;
     } else if (input_format == DataFormat::Fp8_e4m3) {
@@ -263,30 +263,30 @@ const DataFormat get_single_pack_src_format(
             pack_src_format = output_format;
         } else if(output_format == DataFormat::Float16){
             pack_src_format = DataFormat::Float16_b;
-        } else if(output_format == DataFormat::UInt32){
+        } else if(input_format == DataFormat::UInt32){
             pack_src_format = DataFormat::UInt32;
-        } else if(output_format == DataFormat::Int32){
+        } else if(input_format == DataFormat::Int32){
             pack_src_format = DataFormat::Int32;
-        } else if(output_format == DataFormat::UInt16){
+        } else if(input_format == DataFormat::UInt16){
             pack_src_format = DataFormat::UInt16;
-        } else if(output_format == DataFormat::UInt8){
+        } else if(input_format == DataFormat::UInt8){
             pack_src_format = DataFormat::UInt8;
         } else {
-            TT_THROW("No valid conversion from fp32 dest to output format = {}", output_format);
+            TT_THROW("No valid conversion from fp32 dest to output format = {}", input_format);
         }
     } else if (int_fpu_en) {
         TT_THROW("Integer math is not supported");
         // TT_FATAL(arch != tt::ARCH::GRAYSKULL, "Integer math is not supported for arch grayskull");
         // If output is integer, then pack_src_format is integer as conversion in packer is not supported
         // If output if float, then pack_src_format is Float32 as sfpu outut if Float32
-        if (tt::is_integer_format(output_format)) {
-            pack_src_format = output_format;
+        if (tt::is_integer_format(input_format)) {
+            pack_src_format = input_format;
         } else {
             pack_src_format = DataFormat::Float32;
         }
-    } else if (tt::is_integer_format(output_format)) {
-        pack_src_format = output_format;
-    } else if ( (!is_input_or_output_float32 && input_exp_width == output_exp_width ) || condition_exp_float32_match_output || output_format == DataFormat::Float32) {
+    } else if (tt::is_integer_format(input_format)) {
+        pack_src_format = input_format;
+    } else if ( (!is_input_or_output_float32 && input_exp_width == output_exp_width ) || condition_exp_float32_match_output || input_format == DataFormat::Float32) {
         if (is_input_or_output_float32) {
             //Assert that pack_src_format has same exp width as input format
             TT_FATAL((unpack_conditional_dst_format == DataFormat::Float16_b || unpack_conditional_dst_format == DataFormat::Float16),
@@ -300,18 +300,18 @@ const DataFormat get_single_pack_src_format(
         } else if (is_bfp_format(output_format)) {
             pack_src_format = bfp8_pack_precise ? (is_exp_b_format(output_format) ? DataFormat::Float16_b : DataFormat::Float16) : (is_exp_b_format(output_format) ? DataFormat::Bfp8_b : DataFormat::Bfp8);
         } else {
-            pack_src_format = output_format;
+            pack_src_format = input_format;
         }
     } else {
         //Inputs and outputs are different exponent widths, gs/wha0 only support this mode for fp16
         if(arch != tt::ARCH::WORMHOLE_B0 && arch != tt::ARCH::BLACKHOLE) {
-            TT_FATAL((output_format == DataFormat::Float16_b) || (output_format == DataFormat::Float16),
+            TT_FATAL((input_format == DataFormat::Float16_b) || (input_format == DataFormat::Float16),
                 "Exponent width conversion is only supported for float16 formats for grayskull/wormhole_a0");
         }
 
         //Pack_src_format is the same data format as output data format, but with same exponent width as input data format
         //A/B format mixing only occurs at packer level
-        DataFormat pack_src_format_tmp = output_format;
+        DataFormat pack_src_format_tmp = input_format;
 
         if (is_bfp_format(output_format)) {
             pack_src_format_tmp = bfp8_pack_precise ? (is_exp_b_format(output_format) ? DataFormat::Float16_b : DataFormat::Float16) : (is_exp_b_format(output_format) ? DataFormat::Bfp8_b : DataFormat::Bfp8);
