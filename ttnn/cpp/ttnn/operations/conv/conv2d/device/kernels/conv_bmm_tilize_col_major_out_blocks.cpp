@@ -17,14 +17,48 @@
 
 #include "compute_kernel_api/eltwise_unary/sfpu_split_includes.h"
 
-#define DEBUG_PRINT 0
+#define DEBUG_PRINT 1
 
+#if DEBUG_PRINT == 1
+#include "debug/dprint.h"
 // #include "debug_macros.h"
 
-// SliceRange srt = SliceRange{.h0 = 0, .h1 = 4, .hs = 1, .w0 = 0, .w1 = 8, .ws = 1};
+// SliceRange srt = SliceRange{.h0 = 0, .h1 = 32, .hs = 8, .w0 = 0, .w1 = 32, .ws = 4};
 // SliceRange srr = SliceRange{.h0 = 0, .h1 = 1, .hs = 8, .w0 = 0, .w1 = 32, .ws = 1};
 // SliceRange srr1 = SliceRange{.h0 = 1, .h1 = 2, .hs = 8, .w0 = 0, .w1 = 32, .ws = 1};
 // SliceRange src = SliceRange{.h0 = 0, .h1 = 32, .hs = 1, .w0 = 0, .w1 = 1, .ws = 1};
+
+inline void print_tile_rows(uint32_t cb_id, uint32_t rows = 32, uint32_t tile_id = 0, bool untilize = false) {
+    // UNPACK(( DPRINT << "======" << ENDL() ));
+    for (uint16_t r = 0; r < rows; ++r) {
+        SliceRange sr = SliceRange{.h0 = (uint8_t)r, .h1 = (uint8_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
+        // UNPACK(( DPRINT << (uint)r << " :: " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL() ));
+        UNPACK((DPRINT << (uint)r << " :: " << TileSlice(cb_id, tile_id, sr, true, untilize)));
+    }
+    // UNPACK(( DPRINT << "++++++" << ENDL() ));
+}
+
+inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
+    UNPACK((DPRINT << "======" << ENDL()));
+    for (uint16_t r = 0; r < 32; ++r) {
+        SliceRange sr = SliceRange{.h0 = (uint8_t)r, .h1 = (uint8_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
+        UNPACK((DPRINT << (uint)r << " : " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL()));
+    }
+    UNPACK((DPRINT << "++++++" << ENDL()));
+}
+
+// inline void print_cb_details(uint32_t cb_id) {
+//     DPRINT << "cb_id " << cb_id << ": { "
+//             << "size: " << cb_interface[cb_id].fifo_size << ", "
+//             << "limit: " << cb_interface[cb_id].fifo_limit << ", "
+//             << "page_size: " << cb_interface[cb_id].fifo_page_size << ", "
+//             << "num_pages: " << cb_interface[cb_id].fifo_num_pages << ", "
+//             << "rd_ptr: " << cb_interface[cb_id].fifo_rd_ptr << ", "
+//             << "wr_ptr: " << cb_interface[cb_id].fifo_wr_ptr << ", "
+//             << "wr_tile_ptr: " << cb_interface[cb_id].fifo_wr_tile_ptr << " }" << ENDL();
+// }
+#endif
+
 
 inline void tilize_in(
     uint32_t in_cb_id,
@@ -58,6 +92,7 @@ inline void reblock_and_untilize(
     uint32_t TILE_SIZE = is_non_tile_height_ ? 32 : out_block_w;
     uint32_t num_tiles_in_row_of_subblocks = mulsi3(out_subblock_num_tiles, num_out_subblocks_in_col);
     cb_wait_front(interm_cb_id, num_tiles_in_row_of_subblocks);
+    print_tile_rows(interm_cb_id, 1);
     uint32_t within_block_index = 0;
     for (uint32_t h = 0; h < out_subblock_h; h++) {
         uint32_t block_offset = 0;
@@ -77,10 +112,12 @@ inline void reblock_and_untilize(
             block_offset += out_subblock_num_tiles;
         }
         cb_push_back(out_cb_id, out_sub_block_rows_h);
+        //print_full_tile(out_cb_id);
         output_rows_h -= out_sub_block_rows_h;
         within_block_index += out_subblock_w;
     }
     cb_pop_front(interm_cb_id, num_tiles_in_row_of_subblocks);
+    print_tile_rows(out_cb_id, 1);
 }
 
 namespace NAMESPACE {
