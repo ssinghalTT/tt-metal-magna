@@ -190,7 +190,7 @@ MaxPool2D::MultiCore::cached_program_t max_pool_2d_multi_core_sharded_with_halo_
     // output of tilize == input to reduce
     uint32_t in_tiled_cb_id = tt::CB::c_intermed0;  // tiled input
     uint32_t in_tiled_cb_pagesize = tile_size(in_df);
-    uint32_t in_tiled_cb_npages = in_ntiles_c * in_ntiles_hw * nblocks;
+    uint32_t in_tiled_cb_npages = MAX_TILES_PER_REDUCTION * in_nblocks_c * in_ntiles_hw * nblocks;
     CircularBufferConfig in_tiled_cb_config =
         CircularBufferConfig(in_tiled_cb_npages * in_tiled_cb_pagesize, {{in_tiled_cb_id, in_df}})
             .set_page_size(in_tiled_cb_id, in_tiled_cb_pagesize);

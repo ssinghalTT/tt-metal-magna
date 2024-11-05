@@ -8,39 +8,39 @@
 #include "compute_kernel_api/reduce.h"
 #include "compute_kernel_api/pack_untilize.h"
 
-#define DEBUG_PRINT 0
+#define DEBUG_PRINT 1
 
 #if DEBUG_PRINT == 1
     #include "debug/dprint.h"
 
-    inline void print_tile_rows(uint32_t cb_id, uint32_t rows = 32, uint32_t tile_id = 0, bool untilize = false) {
-        // UNPACK(( DPRINT << "======" << ENDL() ));
-        for (uint16_t r = 0; r < rows; ++ r) {
-            SliceRange sr = SliceRange{.h0 = r, .h1 = (uint16_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
-            UNPACK(( DPRINT << (uint)r << " :: " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL() ));
-        }
-        // UNPACK(( DPRINT << "++++++" << ENDL() ));
-    }
+    // inline void print_tile_rows(uint32_t cb_id, uint32_t rows = 32, uint32_t tile_id = 0, bool untilize = false) {
+    //     // UNPACK(( DPRINT << "======" << ENDL() ));
+    //     for (uint16_t r = 0; r < rows; ++ r) {
+    //         SliceRange sr = SliceRange{.h0 = r, .h1 = (uint16_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
+    //         UNPACK(( DPRINT << (uint)r << " :: " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL() ));
+    //     }
+    //     // UNPACK(( DPRINT << "++++++" << ENDL() ));
+    // }
 
-    inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
-        UNPACK(( DPRINT << "======" << ENDL() ));
-        for (uint16_t r = 0; r < 32; ++ r) {
-            SliceRange sr = SliceRange{.h0 = r, .h1 = (uint16_t)(r+1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
-            UNPACK(( DPRINT << (uint)r << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL() ));
-        }
-        UNPACK(( DPRINT << "++++++" << ENDL() ));
-    }
+    // inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
+    //     UNPACK(( DPRINT << "======" << ENDL() ));
+    //     for (uint16_t r = 0; r < 32; ++ r) {
+    //         SliceRange sr = SliceRange{.h0 = r, .h1 = (uint16_t)(r+1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
+    //         UNPACK(( DPRINT << (uint)r << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL() ));
+    //     }
+    //     UNPACK(( DPRINT << "++++++" << ENDL() ));
+    // }
 
-    inline void print_cb_details(uint32_t cb_id) {
-        DPRINT << "cb_id " << cb_id << ": { "
-                << "size: " << cb_interface[cb_id].fifo_size << ", "
-                << "limit: " << cb_interface[cb_id].fifo_limit << ", "
-                << "page_size: " << cb_interface[cb_id].fifo_page_size << ", "
-                << "num_pages: " << cb_interface[cb_id].fifo_num_pages << ", "
-                << "rd_ptr: " << cb_interface[cb_id].fifo_rd_ptr << ", "
-                << "wr_ptr: " << cb_interface[cb_id].fifo_wr_ptr << ", "
-                << "wr_tile_ptr: " << cb_interface[cb_id].fifo_wr_tile_ptr << " }" << ENDL();
-    }
+    // inline void print_cb_details(uint32_t cb_id) {
+    //     DPRINT << "cb_id " << cb_id << ": { "
+    //             << "size: " << cb_interface[cb_id].fifo_size << ", "
+    //             << "limit: " << cb_interface[cb_id].fifo_limit << ", "
+    //             << "page_size: " << cb_interface[cb_id].fifo_page_size << ", "
+    //             << "num_pages: " << cb_interface[cb_id].fifo_num_pages << ", "
+    //             << "rd_ptr: " << cb_interface[cb_id].fifo_rd_ptr << ", "
+    //             << "wr_ptr: " << cb_interface[cb_id].fifo_wr_ptr << ", "
+    //             << "wr_tile_ptr: " << cb_interface[cb_id].fifo_wr_tile_ptr << " }" << ENDL();
+    // }
 #endif
 
 constexpr uint32_t MAX_TILES_PER_REDUCTION = 8;
@@ -66,7 +66,7 @@ inline void reduce_h_fused(
         cb_pop_front(curr_in_cb_id, 1);
         tile_regs_wait();
         tile_regs_commit();
-        pack_untilize_dst<MAX_TILES_PER_REDUCTION, in_ntiles_c>(out_cb_id, 1/*out_subblock_h*/, 0, num_out_rows, num_faces_in_tile);  /* pack 1 row (1x16 or 1x32) */
+        pack_untilize_dst<MAX_TILES_PER_REDUCTION, in_ntiles_c>(out_cb_id, 1/*out_subblock_h*/, b_i, num_out_rows, num_faces_in_tile);  /* pack 1 row (1x16 or 1x32) */
         tile_regs_release();
         cb_push_back(out_cb_id, 1);
     }
@@ -98,6 +98,8 @@ void MAIN {
     static_assert((!is_partial_tile || (in_c == 16)), "Partial tile must have c_dim 16");
     constexpr uint32_t num_faces_in_tile = is_partial_tile ? 1 : 2;
     constexpr uint32_t num_out_rows = 1;
+
+    DPRINT << "in_ntiles_c: " << in_ntiles_c << ENDL();
 
     tilizeA_B_reduce_init<true>(
         in_cb_id,
