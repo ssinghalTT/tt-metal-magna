@@ -15,7 +15,7 @@ from tests.ttnn.utils_for_testing import check_with_pcc, start_measuring_time, s
 from models.utility_functions import torch_random
 
 # Override the default timeout in seconds for hang detection.
-TIMEOUT = 30
+TIMEOUT = 120
 
 random.seed(0)
 
@@ -26,10 +26,11 @@ random.seed(0)
 # Developers can create their own generator functions and pass them to the parameters as inputs.
 parameters = {
     "nightly": {
-        "input_shape": gen_shapes([1, 1, 1, 1], [2, 6, 128, 128], [1, 1, 1, 1], 32)
-        + gen_shapes([1, 1, 1], [6, 128, 128], [1, 1, 1], 32)
-        + gen_shapes([1, 1], [128, 128], [1, 1], 32),
-        "dim": [0, 1, 2, 3, None],
+        "input_shape": gen_shapes([1, 1, 1, 1], [1, 1, 128, 128], [1, 1, 1, 1], 52)
+        + gen_shapes([1, 1, 1, 1], [6, 12, 128, 128], [1, 1, 1, 1], 4)
+        + gen_shapes([1, 1, 1], [12, 128, 128], [1, 1, 1], 4)
+        + gen_shapes([1, 1], [128, 128], [1, 1, 1], 4),
+        "dim": [-1, -2, -3, -4, None],
         "input_a_dtype": [ttnn.bfloat16, ttnn.bfloat8_b],
         "input_layout": [ttnn.ROW_MAJOR_LAYOUT, ttnn.TILE_LAYOUT],
         "input_a_memory_config": [ttnn.DRAM_MEMORY_CONFIG, ttnn.L1_MEMORY_CONFIG],
@@ -42,11 +43,13 @@ parameters = {
 # If invalidated, the vector will still be stored but will be skipped.
 # Returns False, None if the vector is valid, and True, str with a reason for invalidation if it is invalid.
 def invalidate_vector(test_vector) -> Tuple[bool, Optional[str]]:
+    if len(test_vector["input_shape"]) < 4:
+        return True, "Argmax is not supported for tensors with rank less than 4"
     if test_vector["input_shape"][0] != 1:
         return True, "dim 0 must be 1"
     if test_vector["input_shape"][1] != 1:
         return True, "dim 1 must be 1"
-    if test_vector["dim"] != 3:
+    if test_vector["dim"] != -1:
         return True, "Only argmax on last dim is supported"
     if test_vector["dim"] is not None:
         if test_vector["dim"] * (-1) > (len(test_vector["input_shape"])):

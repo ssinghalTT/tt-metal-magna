@@ -19,6 +19,7 @@ import framework.tt_smi_util as tt_smi_util
 from elasticsearch import Elasticsearch, NotFoundError
 from framework.elastic_config import *
 from framework.sweeps_logger import sweeps_logger as logger
+import time  # mine
 
 ARCH = os.getenv("ARCH_NAME")
 
@@ -75,7 +76,10 @@ def run(test_module, input_queue, output_queue):
         return
     try:
         while True:
-            test_vector = input_queue.get(block=True, timeout=1)
+            start = time.time()  # Mine
+            test_vector = input_queue.get(block=True, timeout=None)
+            end = time.time()  # Mine
+            print(end - start)
             test_vector = deserialize_vector(test_vector)
             try:
                 results = test_module.run(**test_vector, device=device)
