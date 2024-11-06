@@ -837,7 +837,12 @@ DeviceAddr AllocateBuffer(Buffer *buffer) {
         GraphTracker::instance().track_allocate(buffer);
         return 0;
     }
-    // TODO: Validate correct sub-device manager id
+    if (buffer->sub_device_manager_id().has_value()) {
+        TT_FATAL(buffer->sub_device_manager_id() == buffer->device()->get_active_sub_device_manager_id(),
+            "Sub-device manager id mismatch. Buffer sub-device manager id: {}, Device active sub-device manager id: {}",
+            buffer->sub_device_manager_id(),
+            buffer->device()->get_active_sub_device_manager_id());
+    }
     auto& allocator = buffer->device()->get_initialized_allocator(buffer->sub_device_id());
     DeviceAddr allocated_addr;
     if (is_sharded(buffer->buffer_layout())) {
@@ -876,7 +881,12 @@ void DeallocateBuffer(Buffer *buffer) {
         TracyFreeN(reinterpret_cast<void const *>(buffer->address()), get_buffer_location_name(buffer->buffer_type(), buffer->device()->id()));
     }
 #endif
-    // TODO: Validate correct sub-device manager id
+    if (buffer->sub_device_manager_id().has_value()) {
+        TT_FATAL(buffer->sub_device_manager_id() == buffer->device()->get_active_sub_device_manager_id(),
+            "Sub-device manager id mismatch. Buffer sub-device manager id: {}, Device active sub-device manager id: {}",
+            buffer->sub_device_manager_id(),
+            buffer->device()->get_active_sub_device_manager_id());
+    }
     auto& allocator = buffer->device()->get_initialized_allocator(buffer->sub_device_id());
     allocator::deallocate_buffer(*allocator, buffer);
 }

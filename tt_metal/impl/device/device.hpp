@@ -18,6 +18,7 @@
 #include "llrt/tt_cluster.hpp"
 #include "llrt/hal.hpp"
 #include "tt_metal/impl/dispatch/command_queue_interface.hpp"
+#include "tt_metal/impl/sub_device/sub_device_manager.hpp"
 #include "tt_metal/tt_stl/span.hpp"
 #include "program_cache.hpp"
 
@@ -38,6 +39,7 @@ class CommandQueue;
 class JitBuildEnv;
 class HWCommandQueue;
 class TraceBuffer;
+class SubDevice;
 
 namespace detail {
 
@@ -141,7 +143,8 @@ class Device {
 
     bool is_inactive_ethernet_core(CoreCoord logical_core) const;
 
-    uint32_t num_worker_cores(HalProgrammableCoreType core_type, uint32_t sub_device_id) const;
+    CoreRangeSet worker_cores(HalProgrammableCoreType core_type, uint32_t sub_device_index) const;
+    uint32_t num_worker_cores(HalProgrammableCoreType core_type, uint32_t sub_device_index) const;
 
     std::tuple<chip_id_t, CoreCoord> get_connected_ethernet_core(CoreCoord eth_core) const {
         return tt::Cluster::instance().get_connected_ethernet_core(std::make_tuple(this->id_, eth_core));
@@ -361,21 +364,29 @@ class Device {
     uint32_t num_noc_unicast_txns(uint32_t sub_device_id) const;
     uint32_t num_noc_mcast_unicast_txns(uint32_t sub_device_id, bool mcast_data=true, bool unicast_data=true) const;
 
+    std::optional<SubDeviceManagerId> get_active_sub_device_manager_id() const;
+    SubDeviceManagerId create_sub_device_manager(tt::stl::Span<const SubDevice> sub_devices, DeviceAddr mesh_l1_size);
+    void load_sub_device_manager(SubDeviceManagerId sub_device_manager_id);
+    void clear_loaded_sub_device_manager();
+    void remove_sub_device_manager(SubDeviceManagerId sub_device_manager_id);
    private:
     void reset_num_sub_devices(uint32_t num_sub_devices);
 
     void MarkAllocationsUnsafe();
     void MarkAllocationsSafe();
-    std::unordered_map<uint32_t, std::shared_ptr<TraceBuffer>> trace_buffer_pool_;
+    std::unordered_map<uint32_t, std::pair<std::optional<SubDeviceManagerId>, std::shared_ptr<TraceBuffer>>> trace_buffer_pool_;
     std::map<std::string, std::string> device_kernel_defines_;
 
     // Data structures queried when no SubDeviceManager is active
     // Otherwise this data comes from the SubDeviceManager
     // TODO: Encapsulate the default case in a SubDeviceManager as well?
-    std::array<uint32_t, NumHalProgrammableCoreTypes> num_worker_cores_{};
+    std::array<CoreRangeSet, NumHalProgrammableCoreTypes> worker_cores_{};
     vector_memcpy_aligned<uint32_t> noc_mcast_data_;
     vector_memcpy_aligned<uint32_t> noc_unicast_data_;
     vector_memcpy_aligned<uint32_t> noc_mcast_unicast_data_;
+
+    std::optional<SubDeviceManagerId> active_sub_device_manager_id_;
+    std::unordered_map<SubDeviceManagerId, std::unique_ptr<detail::SubDeviceManager>> sub_device_managers_;
 };
 
 }  // namespace v0
