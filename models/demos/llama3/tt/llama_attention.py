@@ -488,7 +488,6 @@ class TtLlamaAttention(LightweightModule):
                 memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if TG else ttnn.L1_MEMORY_CONFIG,
                 dtype=ttnn.bfloat8_b,
                 compute_kernel_config=self.compute_kernel_config_hifi2,
-                dtype=self.ccl_dtype if self.is_multichip else ttnn.bfloat16,
             )
 
             ttnn.deallocate(attn_output_cat)

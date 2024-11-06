@@ -82,7 +82,6 @@ class RMSNorm(LightweightModule):
             device=device,
             dtype=weight_dtype,
             layout=ttnn.ROW_MAJOR_LAYOUT,
-            layout=ttnn.ROW_MAJOR_LAYOUT,
             memory_config=weight_memory_config,
             cache_file_name=cache_name,
             mesh_mapper=ttnn.ReplicateTensorToMesh(device),

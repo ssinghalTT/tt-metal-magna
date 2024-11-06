@@ -153,9 +153,9 @@ class TtModelArgs:
         else:
             assert "Please set $LLAMA_DIR to a valid checkpoint directory"
 
-        self.DEFAULT_CKPT_DIR = "/proj_sw/user_dev/llama3-data-repacked/llama-3-70b/"
-        self.DEFAULT_TOKENIZER_PATH = "/proj_sw/user_dev/llama3-data-repacked/"
-        self.DEFAULT_CACHE_PATH = "/proj_sw/user_dev/weights-cache-TG"
+        # self.DEFAULT_CKPT_DIR = "/proj_sw/user_dev/llama3-data-repacked/llama-3-70b/"
+        # self.DEFAULT_TOKENIZER_PATH = "/proj_sw/user_dev/llama3-data-repacked/"
+        # self.DEFAULT_CACHE_PATH = "/proj_sw/user_dev/weights-cache-TG"
         if not dummy_weights:
             # Assert if all folders and files exist
             assert os.path.exists(

@@ -86,7 +86,6 @@ class TtLlamaMLP(LightweightModule):
         # print("x", x.shape)
         w1_out = ttnn.linear(
             x,
-            x,
             self.w1,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
             core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_1 else None,
@@ -98,7 +97,6 @@ class TtLlamaMLP(LightweightModule):
         # print("w1_out", w1_out.shape)
 
         w3_out = ttnn.linear(
-            x,
             x,
             self.w3,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
