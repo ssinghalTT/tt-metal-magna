@@ -233,6 +233,9 @@ def ttnn_vgg11(
             tt_bias = parameters.features[conv_feature_ids_2[iter_conv_id]].bias
 
             # Call ttnn.conv
+            # ttnn.Conv2d expects the input to be in ttnn but on host. If kept on device, hitting with the following error
+            # E RuntimeError: TT_FATAL @ ../ttnn/cpp/ttnn/operations/data_movement/data_transfer/data_transfer.cpp:23: input_tensor.get_legacy_shape()[-1] * input_tensor.element_size() % sizeof(uint32_t) == 0
+
             conv_op_cache = {}
             [tt_output_tensor_on_device, out_height, out_width, weights_device, bias_device] = ttnn.conv2d(
                 input_tensor=tt_x,
