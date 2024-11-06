@@ -118,7 +118,7 @@ class TtLlamaMLP(LightweightModule):
             self.w2,
             compute_kernel_config=self.args.compute_kernel_config_hifi2,
             core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_2 else None,
-            dtype=ttnn.bfloat16,
+            dtype=self.args.ccl_dtype if self.args.is_multichip else ttnn.bfloat16,
             program_config=pc_2,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
         )

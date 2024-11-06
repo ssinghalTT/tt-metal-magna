@@ -38,15 +38,21 @@ class DistributedNorm(LightweightModule):
 
         # Distributed norm already performs a gather
         if self.args.is_multichip and not self.args.is_distributed_norm(mode):
+            if x.dtype != self.args.ccl_dtype:
+                x = ttnn.typecast(x, self.args.ccl_dtype)  # typecast only works on interleaved inputs
             if mode == "decode":
-                x = ttnn.interleaved_to_sharded(x, self.gather_in_mem_cfg)
-                x = ttnn.all_gather(
-                    x, dim=3, num_links=1, topology=self.args.ccl_topology(), memory_config=input_mem_cfg
-                )
+                # x = ttnn.interleaved_to_sharded(x, self.gather_in_mem_cfg)
+                # x = ttnn.all_gather(
+                #     x, dim=3, num_links=1, topology=self.args.ccl_topology(), memory_config=input_mem_cfg
+                # )
+                x = ttnn.all_gather(x, dim=3, num_links=1, topology=self.args.ccl_topology())
             else:
-                x = ttnn.all_gather(
-                    x, dim=3, num_links=1, topology=self.args.ccl_topology(), memory_config=input_mem_cfg
-                )
+                # x = ttnn.all_gather(
+                #     x, dim=3, num_links=1, topology=self.args.ccl_topology(), memory_config=input_mem_cfg
+                # )
+                x = ttnn.all_gather(x, dim=3, num_links=1, topology=self.args.ccl_topology())
+            x = ttnn.typecast(x, ttnn.bfloat16)
+            x = ttnn.interleaved_to_sharded(x, input_mem_cfg)
         elif mode == "decode":
             # Gathered norms will be sharded for decode mode, so single-chip should be too
             x = ttnn.interleaved_to_sharded(x, input_mem_cfg)

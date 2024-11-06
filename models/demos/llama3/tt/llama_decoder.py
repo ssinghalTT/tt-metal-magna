@@ -96,8 +96,13 @@ class TtTransformerBlock(LightweightModule):
             # self.model_config["DEC_SKIP_OUTPUT_MEMCFG"] if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG
         )
 
+        if self.args.is_multichip and x.dtype != self.args.ccl_dtype:
+            attn_in = ttnn.clone(x, dtype=self.args.ccl_dtype)
+        else:
+            attn_in = x
+
         # Norms take fractured inputs and output replicated across devices
-        attn_in = self.attention_norm(x, mode)
+        attn_in = self.attention_norm(attn_in, mode)
         # Attention takes replicated inputs and produces fractured outputs
         attn_out = self.attention.forward(
             attn_in,
@@ -110,7 +115,12 @@ class TtTransformerBlock(LightweightModule):
         )
 
         # Here x and attn_out are both fractured across devices
-        h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg)
+        h = ttnn.add(
+            x,
+            attn_out,
+            memory_config=skip_mem_cfg,
+            dtype=self.args.ccl_dtype if self.args.is_multichip else ttnn.bfloat16,
+        )
         ttnn.deallocate(attn_out)
 
         # Norms take fractured inputs and output replicated across devices
@@ -118,6 +128,11 @@ class TtTransformerBlock(LightweightModule):
         # MLP takes replicated inputs and produces fractured outputs
         ff_out = self.feed_forward.forward(ff_in, mode)
         # ff_out and h are both fractured across devices
-        out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)
+        out = ttnn.add(
+            h,
+            ff_out,
+            memory_config=skip_mem_cfg,
+            dtype=self.args.ccl_dtype if self.args.is_multichip else ttnn.bfloat16,
+        )
 
         return out  # fractured across devices
