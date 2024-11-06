@@ -54,7 +54,8 @@ void MAIN {
 
     constexpr uint32_t HtWt = Ht * Wt;
 
-    binary_op_init_common(tt::CB::c_in0, tt::CB::c_in0);
+    constexpr auto cb_out_init = gamma_grad_has_value ? cb_dgamma : cb_dbeta;
+    binary_op_init_common(tt::CB::c_in0, tt::CB::c_in0, cb_out_init);
 
     cb_wait_front(cb_scaler, onetile);  // comes from the reader
 

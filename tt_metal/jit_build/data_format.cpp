@@ -109,21 +109,6 @@ DataFormat check_consistent_format_across_buffers(DataFormat data_format[NUM_CIR
     return last_valid_format;
 }
 
-DataFormat check_same_format_within_operand(DataFormat data_format[NUM_CIRCULAR_BUFFERS]) {
-    DataFormat last_valid_format = DataFormat::Invalid;
-    for (int i = 0; i < NUM_CIRCULAR_BUFFERS; i++) {
-        if (data_format[i] != DataFormat::Invalid && last_valid_format != DataFormat::Invalid) {
-            // TT_FATAL(data_format[i] == last_valid_format,
-            //     "Not all buffer data-formats within this operand are the same");
-
-            // dump_data_formats(data_format);
-        } else if (data_format[i] != DataFormat::Invalid && last_valid_format == DataFormat::Invalid) {
-            last_valid_format = data_format[i];
-        }
-    }
-    return last_valid_format;
-}
-
 DataFormat check_valid_formats_in_out_data_formats(DataFormat data_format[NUM_CIRCULAR_BUFFERS]) {
     DataFormat last_valid_format = DataFormat::Invalid;
     for (int i = 0; i < NUM_CIRCULAR_BUFFERS; i++) {
@@ -134,10 +119,6 @@ DataFormat check_valid_formats_in_out_data_formats(DataFormat data_format[NUM_CI
         }
     }
     return last_valid_format;
-}
-
-DataFormat get_pack_data_format(DataFormat data_formats[NUM_CIRCULAR_BUFFERS]) {
-    return check_same_format_within_operand(data_formats);
 }
 
 ExpPrecision get_data_exp_precision(DataFormat data_formats[NUM_CIRCULAR_BUFFERS]) {
@@ -338,12 +319,10 @@ std::vector<DataFormat> get_pack_src_formats(
     bool int_fpu_en,
     tt::ARCH arch
 ) {
-    DataFormat pack_output_format = get_pack_data_format(data_formats);
-
     std::vector<DataFormat> pack_src_formats;
     DataFormat pack_src_format;
     for (int i = 0; i < NUM_CIRCULAR_BUFFERS; i++) {
-        pack_src_format = get_single_pack_src_format(data_formats[i], pack_output_format, unpack_conditional_dst_format, fp32_dest_acc_en, bfp8_pack_precise, int_fpu_en, arch);
+        pack_src_format = get_single_pack_src_format(data_formats[i], data_formats[i], unpack_conditional_dst_format, fp32_dest_acc_en, bfp8_pack_precise, int_fpu_en, arch);
         pack_src_formats.push_back(pack_src_format);
     }
 
@@ -353,7 +332,15 @@ std::vector<DataFormat> get_pack_src_formats(
 std::vector<DataFormat> get_pack_dst_formats(DataFormat buf_formats[NUM_CIRCULAR_BUFFERS]) {
     std::vector<DataFormat> pack_dst_format;
     for (int i = 0; i < NUM_CIRCULAR_BUFFERS; i++) {
-        pack_dst_format.push_back(buf_formats[i]);
+        DataFormat dst_format = buf_formats[i];
+        if (dst_format == DataFormat::RawUInt32 || dst_format == DataFormat::RawUInt16 || dst_format == DataFormat::RawUInt8) {
+            switch (dst_format) {
+               case DataFormat::RawUInt32: dst_format = DataFormat::Float32; break;
+               case DataFormat::RawUInt16: dst_format = DataFormat::Float16; break;
+               default: dst_format = DataFormat::Lf8; break;
+            }
+        }
+        pack_dst_format.push_back(dst_format);
     }
     return pack_dst_format;
 }

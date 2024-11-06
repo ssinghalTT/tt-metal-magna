@@ -39,7 +39,6 @@ DataFormat check_same_format_across_buffers(DataFormat data_format[NUM_CIRCULAR_
 
 
 DataFormat check_valid_formats_in_out_data_formats(DataFormat data_format[NUM_CIRCULAR_BUFFERS]);
-DataFormat get_pack_data_format(DataFormat output_formats[NUM_CIRCULAR_BUFFERS]);
 ExpPrecision get_data_exp_precision(DataFormat data_formats[NUM_CIRCULAR_BUFFERS]);
 
 

@@ -290,21 +290,9 @@ static void generate_data_format_descriptors(JitBuildOptions& options, const tt:
     // assuming all cores within a op have the same desc
     tt_hlk_desc& desc = options.hlk_desc;
 
-    // Determine what the packformat should be
-    DataFormat pack_format =
-        tt::get_pack_data_format(desc.buf_dataformat_arr);
-
     // Determine dst format under ambiguous conditions (either or both l1 input & output formats are Float32)
-    DataFormat unpack_conditional_dst_format = DataFormat::Invalid;
-    if (pack_format == DataFormat::Float32) {
-        ExpPrecision unpack_exp_prec = tt::get_data_exp_precision(desc.buf_dataformat_arr);
-        unpack_conditional_dst_format =
-            (unpack_exp_prec == ExpPrecision::A) ? DataFormat::Float16 : DataFormat::Float16_b;
-    } else {
-        ExpPrecision pack_exp_prec = tt::get_data_exp_precision(desc.buf_dataformat_arr);
-        unpack_conditional_dst_format =
-            (pack_exp_prec == ExpPrecision::A) ? DataFormat::Float16 : DataFormat::Float16_b;
-    }
+    ExpPrecision exp_prec = tt::get_data_exp_precision(desc.buf_dataformat_arr);
+    DataFormat unpack_conditional_dst_format = (exp_prec == ExpPrecision::A) ? DataFormat::Float16 : DataFormat::Float16_b;
 
     if (tt::is_all_fp32_formats(desc.buf_dataformat_arr) && options.fp32_dest_acc_en) {
         unpack_conditional_dst_format = DataFormat::Tf32;
