@@ -67,7 +67,7 @@ def run(
 
     scalar = torch.tensor(1, dtype=torch.bfloat16).uniform_(-100, 100).item()
 
-    golden_function = ttnn.get_golden_function(ttnn.add)
+    golden_function = ttnn.get_golden_function(ttnn.add_)
     torch_output_tensor = golden_function(torch_input_tensor_a, scalar)
 
     input_tensor_a = ttnn.from_torch(
@@ -79,9 +79,9 @@ def run(
     )
 
     start_time = start_measuring_time()
-    output_tensor = ttnn.add(input_tensor_a, scalar, memory_config=output_memory_config)
+    ttnn.add_(input_tensor_a, scalar)
     e2e_perf = stop_measuring_time(start_time)
 
-    output_tensor = ttnn.to_torch(output_tensor)
+    output_tensor = ttnn.to_torch(input_tensor_a)
 
     return [check_with_pcc(torch_output_tensor, output_tensor, 0.999), e2e_perf]
