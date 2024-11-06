@@ -89,6 +89,7 @@ class TtLlamaAttention(LightweightModule):
         self.model_config = configuration.get_model_config()
         self.ccl_topology = configuration.ccl_topology()
         self.is_multichip = configuration.is_multichip
+        self.ccl_dtype = configuration.ccl_dtype
 
         layer_name = configuration.get_state_dict_prefix(self.__class__.__name__, layer_num)
         if configuration.dummy_weights or (weight_cache_path is None):
@@ -487,6 +488,7 @@ class TtLlamaAttention(LightweightModule):
                 memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if TG else ttnn.L1_MEMORY_CONFIG,
                 dtype=ttnn.bfloat8_b,
                 compute_kernel_config=self.compute_kernel_config_hifi2,
+                dtype=self.ccl_dtype if self.is_multichip else ttnn.bfloat16,
             )
 
             ttnn.deallocate(attn_output_cat)

@@ -111,8 +111,13 @@ class TtTransformerBlock(LightweightModule):
             # self.model_config["DEC_SKIP_OUTPUT_MEMCFG"] if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG
         )
 
+        if self.args.is_multichip and x.dtype != self.args.ccl_dtype:
+            attn_in = ttnn.clone(x, dtype=self.args.ccl_dtype)
+        else:
+            attn_in = x
+
         # Norms take fractured inputs and output replicated across devices
-        attn_in = self.attention_norm(x, mode)
+        attn_in = self.attention_norm(attn_in, mode)
         # Attention takes replicated inputs and produces fractured outputs
         attn_out = self.attention.forward(
             attn_in,
@@ -128,11 +133,16 @@ class TtTransformerBlock(LightweightModule):
             attn_out = ttnn.to_memory_config(attn_out, memory_config=self.ATTN_ACT_MEMCFG)
 
         # Here x and attn_out are both fractured across devices
-        h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg)
+        h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg, dtype=ttnn.bfloat16)
         ttnn.deallocate(attn_out)
 
+        if self.args.is_multichip and h.dtype != self.args.ccl_dtype:
+            ff_norm_in = ttnn.clone(h, dtype=self.args.ccl_dtype)
+        else:
+            ff_norm_in = h
+
         # Norms take fractured inputs and output replicated across devices
-        ff_in = self.ff_norm(h, mode)
+        ff_in = self.ff_norm(ff_norm_in, mode)
 
         if TG and mode == "decode":
             ff_in = ttnn.to_memory_config(ff_in, memory_config=self.MLP_ACT_MEMCFG)
@@ -144,6 +154,11 @@ class TtTransformerBlock(LightweightModule):
             ff_out = ttnn.to_memory_config(ff_out, memory_config=self.ATTN_ACT_MEMCFG)
 
         # ff_out and h are both fractured across devices
-        out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)
+        out = ttnn.add(
+            h,
+            ff_out,
+            memory_config=skip_mem_cfg,
+            dtype=self.args.ccl_dtype if self.args.is_multichip else ttnn.bfloat16,
+        )
 
         return out  # fractured across devices

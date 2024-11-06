@@ -743,6 +743,9 @@ class TtModelArgs:
 
             self.is_multichip = self.num_devices > 1
 
+            self.ccl_dtype = ttnn.bfloat8_b
+            self.activation_dtype = ttnn.bfloat16
+
     def is_distributed_norm(self, mode):
         if not self.is_multichip:
             return False
