@@ -212,8 +212,11 @@ void validate_sub_device_id(std::optional<uint32_t> sub_device_id, Device *devic
     }
     TT_FATAL(shard_parameters.has_value(), "Specifying sub-device for buffer requires buffer to be sharded");
     TT_FATAL(is_l1(buffer_type), "Specifying sub-device for buffer requires buffer to be L1");
-    // TODO: Validate that cores used match the sub-device
-    TT_FATAL(*sub_device_id == 0, "Invalid sub-device id");
+    auto sub_device_manager_id = device->get_active_sub_device_manager_id();
+    TT_FATAL(sub_device_manager_id.has_value(), "Specifying sub-device for buffer requires device to have an active sub-device manager");
+    const auto &sub_device_cores = device->worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id.value());
+    const auto &shard_cores = shard_parameters->grid();
+    TT_FATAL(sub_device_cores.contains(shard_cores), "Shard cores specified {} do not match sub-device cores {}", shard_cores, sub_device_cores);
 }
 
 Buffer::Buffer(
@@ -240,6 +243,7 @@ Buffer::Buffer(
     TT_FATAL(this->device_ != nullptr && this->device_->allocator_ != nullptr, "Device and allocator need to not be null.");
     if (this->sub_device_id_.has_value()) {
         validate_sub_device_id(this->sub_device_id_, this->device_, buffer_type, shard_parameters);
+        this->sub_device_manager_id_ = this->device_->get_active_sub_device_manager_id();
     }
     if (size != 0) {
         validate_buffer_size_and_page_size(size, page_size, buffer_type, buffer_layout, shard_parameters);

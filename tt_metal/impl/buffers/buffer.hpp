@@ -20,6 +20,7 @@
 #include "common/bfloat16.hpp"
 #include "common/core_coord.hpp"
 #include "tt_metal/impl/buffers/buffer_constants.hpp"
+#include "tt_metal/impl/sub_device/sub_device_manager.hpp"
 #include "tt_metal/third_party/umd/device/tt_soc_descriptor.h"
 #include "third_party/umd/device/xy_pair.h"
 #include "tt_metal/tt_stl/concepts.hpp"
@@ -226,6 +227,7 @@ class Buffer final {
     const std::shared_ptr<const BufferPageMapping>& get_buffer_page_mapping();
 
     std::optional<uint32_t> sub_device_id() const { return sub_device_id_; }
+    std::optional<SubDeviceManagerId> sub_device_manager_id() const { return sub_device_manager_id_; }
 
     Buffer(
         Device *device,
@@ -262,6 +264,8 @@ class Buffer final {
     const bool bottom_up_;
     const std::optional<uint32_t> sub_device_id_;
     const bool owns_data_;
+
+    std::optional<SubDeviceManagerId> sub_device_manager_id_;
 
     std::atomic<AllocationStatus> allocation_status_ = AllocationStatus::ALLOCATION_REQUESTED;
     DeviceAddr address_ = 0;
