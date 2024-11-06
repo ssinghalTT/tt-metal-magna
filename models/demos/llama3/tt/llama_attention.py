@@ -52,6 +52,7 @@ class TtLlamaAttention(LightweightModule):
         self.model_config = configuration.get_model_config()
         self.ccl_topology = configuration.ccl_topology()
         self.is_multichip = configuration.is_multichip
+        self.ccl_dtype = configuration.ccl_dtype
 
         layer_name = configuration.get_state_dict_prefix(self.__class__.__name__, layer_num)
         if configuration.dummy_weights or (weight_cache_path is None):
@@ -344,6 +345,7 @@ class TtLlamaAttention(LightweightModule):
                 memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
                 program_config=self.model_config["ATTN_OUTPUT_PROGCFG"],
                 compute_kernel_config=self.compute_kernel_config_hifi2,
+                dtype=self.ccl_dtype if self.is_multichip else ttnn.bfloat16,
             )  # seqlen, 1, batch, hidden_size
 
         ttnn.deallocate(attn_output_cat)
@@ -484,6 +486,11 @@ class TtLlamaAttention(LightweightModule):
             scale=self.scale,
             program_config=self.model_config["SDPA_PROGCFG"](seq_len),
         )
+
+        if (
+            self.is_multichip and self.use_fused_all_gather_matmul
+        ):  # Need to cast since SDPA can't convert to different output dtypes
+            attn_output_84SD = ttnn.typecast(attn_output_84SD, dtype=self.ccl_dtype)
 
         # deallocate keys and values
         ttnn.deallocate(q_heads_84SD_8b)

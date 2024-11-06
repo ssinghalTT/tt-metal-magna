@@ -110,14 +110,19 @@ class TtTransformerBlock(LightweightModule):
         )
 
         # Here x and attn_out are both fractured across devices
-        h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg)
+        h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg, dtype=ttnn.bfloat16)
         ttnn.deallocate(attn_out)
 
         # Norms take fractured inputs and output replicated across devices
-        ff_in = self.ff_norm(h, mode)
+        ff_in = self.ff_norm(x, mode)
         # MLP takes replicated inputs and produces fractured outputs
         ff_out = self.feed_forward.forward(ff_in, mode)
         # ff_out and h are both fractured across devices
-        out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)
+        out = ttnn.add(
+            h,
+            ff_out,
+            memory_config=skip_mem_cfg,
+            dtype=self.args.ccl_dtype if self.args.is_multichip else ttnn.bfloat16,
+        )
 
         return out  # fractured across devices
