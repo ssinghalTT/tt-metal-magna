@@ -125,7 +125,6 @@ class TtLlamaCrossAttentionTransformerBlock(LightweightModule):
             mode=mode,
             user_id=user_id,
         )
-        print(f"xattn output {attn_out.shape=}")
 
         attn_out = ttnn.mul(attn_out, ttnn.tanh(self.gate_attn))
 
