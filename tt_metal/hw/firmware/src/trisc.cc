@@ -120,6 +120,10 @@ int main(int argc, char *argv[]) {
         crta_l1_base = (uint32_t tt_l1_ptr *)(kernel_config_base +
             mailboxes->launch.kernel_config.mem_map[DISPATCH_CLASS_TENSIX_COMPUTE].crta_offset);
 
+        // Add 0x12345678 marker at L1 address 0x15200 so ARC FW can use it to start PMON measurements
+        volatile uint32_t* dbg_dump = (volatile uint32_t*) 0x15200;
+        *(dbg_dump+0) = 0x12345678;
+
         DEBUG_STATUS("R");
         kernel_init();
         RECORD_STACK_USAGE();
