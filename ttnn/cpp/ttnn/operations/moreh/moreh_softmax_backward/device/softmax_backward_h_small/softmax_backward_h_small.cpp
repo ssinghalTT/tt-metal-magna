@@ -4,6 +4,9 @@
 
 #include "ttnn/cpp/ttnn/operations/moreh/moreh_softmax_backward/device/moreh_softmax_backward_device_operation.hpp"
 #include "ttnn/operations/moreh/moreh_helper_functions.hpp"
+#include "tt_metal/hostdevcommon/profiler_common.h"
+#include "tt_metal/impl/device/device.hpp"
+
 
 namespace ttnn::operations::moreh::moreh_softmax_backward {
 
@@ -147,6 +150,11 @@ MorehSoftmaxBackwardOperation::MorehSoftmaxBackwardHSmallFactory::create(
 
         tile_offset += num_tiles_per_core;
     }
+
+    for (int i = 0; i < PROFILER_OP_SUPPORT_COUNT * kernel_profiler::PROFILER_L1_GUARANTEED_MARKER_COUNT / 1; i++) {
+        EnqueueProgram(device->command_queue(), program, false);
+    }
+    tt::tt_metal::detail::DumpDeviceProfileResults(device);
 
     return {std::move(program), {reader_kernel_id, writer_kernel_id, num_cores, core_h}};
 }

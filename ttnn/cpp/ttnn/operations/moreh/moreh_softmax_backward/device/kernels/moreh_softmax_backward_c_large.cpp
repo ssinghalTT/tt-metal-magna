@@ -8,10 +8,15 @@
 #define REDUCE_DIM ReduceDim::REDUCE_ROW
 
 #include "ttnn/cpp/ttnn/deprecated/tt_dnn/kernels/compute/moreh_common.hpp"
+#include "tools/profiler/kernel_profiler.hpp"
+
+#define LOOP_COUNT 1
+#define LOOP_SIZE 1
 
 namespace NAMESPACE {
 
 void MAIN {
+    for (int i = 0; i < LOOP_COUNT; i++) {
     constexpr uint32_t onetile = 1;
 
     constexpr auto cb_y = tt::CB::c_in0;
@@ -85,6 +90,7 @@ void MAIN {
         }
         cb_pop_front(cb_sum, onetile);
 #endif
+    }
     }
 }
 }  // namespace NAMESPACE

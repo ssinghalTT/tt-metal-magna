@@ -8,10 +8,17 @@
 #define REDUCE_DIM ReduceDim::REDUCE_ROW
 
 #include "ttnn/cpp/ttnn/deprecated/tt_dnn/kernels/compute/moreh_common.hpp"
+#include "tools/profiler/kernel_profiler.hpp"
+
+#define LOOP_COUNT 1
+#define LOOP_SIZE 10
 
 namespace NAMESPACE {
 
 void MAIN {
+    for (int i = 0; i < LOOP_COUNT; i++) {
+    DeviceZoneScopedN("TEST-FULL");
+
     constexpr auto cb_in0 = tt::CB::c_in0;
     constexpr auto cb_mask = tt::CB::c_in1;
     constexpr auto cb_bcast_scaler = tt::CB::c_in2;
@@ -169,5 +176,7 @@ void MAIN {
         cb_pop_front(cb_exps, Wt);
 #endif
     }
+    }
+
 }
 }  // namespace NAMESPACE

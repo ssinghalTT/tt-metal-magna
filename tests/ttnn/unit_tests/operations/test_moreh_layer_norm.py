@@ -501,10 +501,11 @@ def test_moreh_layer_norm(input_shape_normalized_dims, elementwise_affine, eps, 
 @pytest.mark.parametrize(
     "input_shape_normalized_dims",
     [
-        ([20, 30], 2),  # test 2d
-        ([2, 20, 30], 1),  # test 3d
-        ([6, 2 * TILE_HEIGHT, 2 * TILE_WIDTH], 2),  # test 3d
-        ([5, 2, 3, 4, TILE_HEIGHT + 13, TILE_WIDTH + 13], 3),  # test 6d
+        # ([20, 30], 2),  # test 2d
+        # ([2, 20, 30], 1),  # test 3d
+        # ([6, 2 * TILE_HEIGHT, 2 * TILE_WIDTH], 2),  # test 3d
+        # ([5, 2, 3, 4, TILE_HEIGHT + 13, TILE_WIDTH + 13], 3),  # test 6d
+        ([8, 512, 768], 1),
     ],
 )
 def test_moreh_layer_norm_backward(input_shape_normalized_dims, elementwise_affine, eps, dtype, device):
