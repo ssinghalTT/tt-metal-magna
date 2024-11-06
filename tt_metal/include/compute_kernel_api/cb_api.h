@@ -42,6 +42,12 @@ ALWI void cb_wait_front(uint32_t cbid, uint32_t ntiles) {
     UNPACK(( llk_wait_tiles(cbid, ntiles)  ));
 }
 
+ALWI bool cb_pool_ready(uint32_t cbid, uint32_t ntiles) {
+    bool retValue = false;
+    UNPACK(( retValue = llk_pool_tiles(cbid, ntiles) ));
+    return retValue;
+}
+
 /**
  * Pops a specified number of tiles from the front of the specified CB. This
  * also frees this number of tiles in the circular buffer. This call is used by

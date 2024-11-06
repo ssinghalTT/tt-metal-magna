@@ -15,6 +15,13 @@
 
 #include "compute_kernel_api/eltwise_unary/sfpu_split_includes.h"
 
+volatile uint32_t* unpack_sem = (volatile uint32_t*) 0x15200;
+volatile uint32_t* math_sem = (volatile uint32_t*) 0x15204;
+
+constexpr uint32_t IDLE_SIGNAL = 0;
+constexpr uint32_t GO_SIGNAL = 1;
+constexpr uint32_t DONE_SIGNAL = 2;
+constexpr uint32_t SKIP_SIGNAL = 3;
 
 // Please update
 // tests/tt_metal/tt_metal/perf_microbenchmark/1_compute_mm/kernels/bmm_large_block_zm_fused_bias_activation_copy.cpp
@@ -89,6 +96,9 @@ void MAIN {
     }
 #endif
 
+    UNPACK(*unpack_sem = IDLE_SIGNAL;)
+    MATH(*math_sem = IDLE_SIGNAL;)
+
     constexpr uint32_t in0_block_w = get_compile_time_arg_val(0);        // inner block size in tiles
     constexpr uint32_t in0_num_subblocks = get_compile_time_arg_val(1);  // outer row block size (in inner row blocks)
     constexpr uint32_t in0_block_num_tiles =
@@ -155,8 +165,27 @@ void MAIN {
             }
 #endif
 
-            cb_wait_front(in0_cb_id, in0_block_num_tiles);
-            cb_wait_front(in1_cb_id, in1_block_num_tiles);
+            UNPACK(while(cb_pool_ready(in0_cb_id, in0_block_num_tiles) == false || cb_pool_ready(in1_cb_id, in1_block_num_tiles) == false))
+            UNPACK({ while (*unpack_sem != IDLE_SIGNAL);)
+            UNPACK(*unpack_sem = GO_SIGNAL;)
+            UNPACK(matmul_block(in0_cb_id, in1_cb_id, 0, 0, 0, false, out_subblock_w, out_subblock_h, in0_block_w);)
+            UNPACK(while(*math_sem != DONE_SIGNAL);)
+            UNPACK(*math_sem = IDLE_SIGNAL; })
+
+            // Signal math to skip computation
+            UNPACK(*unpack_sem = SKIP_SIGNAL;)
+
+            // Math:
+            // Wait for skip signal
+            acquire_dst();
+            MATH(while(true) {)
+            MATH(if (*unpack_sem == SKIP_SIGNAL) { *unpack_sem = IDLE_SIGNAL; *math_sem = IDLE_SIGNAL; break; })
+            MATH(if (*unpack_sem == GO_SIGNAL) { matmul_block(in0_cb_id, in1_cb_id, 0, 0, 0, false, out_subblock_w, out_subblock_h, in0_block_w); *math_sem = DONE_SIGNAL; *unpack_sem = IDLE_SIGNAL; })
+            MATH(};)
+            release_dst();
+
+            // cb_wait_front(in0_cb_id, in0_block_num_tiles);
+            // cb_wait_front(in1_cb_id, in1_block_num_tiles);
 
             int in0_index_subblock_offset = 0;
             for (uint32_t in0_subblock = 0; in0_subblock < in0_num_subblocks; in0_subblock++) {

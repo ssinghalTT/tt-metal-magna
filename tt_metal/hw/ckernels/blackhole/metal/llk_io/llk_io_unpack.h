@@ -14,6 +14,18 @@
 
 using namespace ckernel;
 
+inline bool llk_pool_tiles(int operand, std::int32_t num_tiles) {
+    // TODO(MO): Manually uncomment until issue #6619 is resolved
+    // DeviceZoneScopedSumN1("CB-COMPUTE-WAIT-FRONT");
+    std::uint32_t input = operand;
+    volatile tt_l1_ptr std::uint32_t* tiles_received_ptr = get_cb_tiles_received_ptr(operand);
+    std::uint16_t num_tiles_u = (std::uint16_t)num_tiles;
+
+    std::uint16_t tiles_received = (std::uint16_t)reg_read((std::uint32_t)tiles_received_ptr);
+    uint16_t num_tiles_recv = tiles_received - cb_interface[input].tiles_acked;
+    return num_tiles_recv >= num_tiles_u;
+}
+
 // Wait for N tiles available in the incoming stream
 inline void llk_wait_tiles(int operand, std::int32_t num_tiles) {
     // TODO(MO): Manually uncomment until issue #6619 is resolved
