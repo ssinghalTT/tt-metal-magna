@@ -13,19 +13,18 @@
 #if DEBUG_PRINT == 1
     #include "debug/dprint.h"
 
-    // inline void print_tile_rows(uint32_t cb_id, uint32_t rows = 32, uint32_t tile_id = 0, bool untilize = false) {
-    //     // UNPACK(( DPRINT << "======" << ENDL() ));
-    //     for (uint16_t r = 0; r < rows; ++ r) {
-    //         SliceRange sr = SliceRange{.h0 = r, .h1 = (uint16_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
-    //         UNPACK(( DPRINT << (uint)r << " :: " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL() ));
-    //     }
-    //     // UNPACK(( DPRINT << "++++++" << ENDL() ));
-    // }
+    inline void print_tile_rows(uint32_t cb_id, uint32_t rows = 32, uint32_t tile_id = 0, bool untilize = false) {
+        // UNPACK(( DPRINT << "======" << ENDL() ));
+        for (uint16_t r = 0; r < rows; ++ r) {
+            UNPACK(( DPRINT << (uint)r << " :: " << TileSlice(cb_id, tile_id, SliceRange{.h0 = (uint8_t)r, .h1 = (uint8_t)(r + 1), .hs = (uint8_t)1, .w0 = (uint8_t)0, .w1 = (uint8_t)32, .ws = (uint8_t)1}, true, untilize) << ENDL() ));
+        }
+        // UNPACK(( DPRINT << "++++++" << ENDL() ));
+    }
 
     // inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
     //     UNPACK(( DPRINT << "======" << ENDL() ));
     //     for (uint16_t r = 0; r < 32; ++ r) {
-    //         SliceRange sr = SliceRange{.h0 = r, .h1 = (uint16_t)(r+1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
+    //         SliceRange sr = SliceRange{.h0 = (uint8_t)r, .h1 = (uint8_t)(r+1), .hs = (uint8_t)1, .w0 = (uint8_t)0, .w1 = (uint8_t)32, .ws = (uint8_t)1};
     //         UNPACK(( DPRINT << (uint)r << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL() ));
     //     }
     //     UNPACK(( DPRINT << "++++++" << ENDL() ));
@@ -66,8 +65,11 @@ inline void reduce_h_fused(
         cb_pop_front(curr_in_cb_id, 1);
         tile_regs_wait();
         tile_regs_commit();
-        pack_untilize_dst<MAX_TILES_PER_REDUCTION, in_ntiles_c>(out_cb_id, 1/*out_subblock_h*/, b_i, num_out_rows, num_faces_in_tile);  /* pack 1 row (1x16 or 1x32) */
+        pack_untilize_dst<MAX_TILES_PER_REDUCTION, in_ntiles_c>(out_cb_id, 1/*out_subblock_h*/, 0, num_out_rows, num_faces_in_tile);  /* pack 1 row (1x16 or 1x32) */
         tile_regs_release();
+        if (curr_in_cb_id == in_cb_id) {
+            print_tile_rows(out_cb_id, 1, 0, true);
+        }
         cb_push_back(out_cb_id, 1);
     }
 }

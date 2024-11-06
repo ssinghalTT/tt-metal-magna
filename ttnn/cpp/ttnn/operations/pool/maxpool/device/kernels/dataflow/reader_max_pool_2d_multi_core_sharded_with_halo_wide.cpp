@@ -128,15 +128,15 @@ void kernel_main() {
                 }
             }
             noc_async_read_barrier();
-            if (reader_id == 0) {
+            /* if (reader_id == 1) {
                 print_pages(out_l1_write_addr_base, MAX_ELE_PER_REDUCTION / 2, 9);
-            }
+            } */
             cb_push_back(in_cb_id, npages_to_reserve);
         }
         if (split_reader) counter++; // interleave the indices
     }
 
     /* if (reader_id == 0) {
-        print_pages(in_l1_read_base_addr, in_nbytes_c / 2, 30);
+        print_pages(in_l1_read_base_addr, in_nbytes_c / 2, 28);
     } */
 } // kernel_main()
