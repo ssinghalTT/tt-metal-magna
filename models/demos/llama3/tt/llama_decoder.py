@@ -1,13 +1,12 @@
 # SPDX-FileCopyrightText: © 2023 Tenstorrent Inc.
 
 # SPDX-License-Identifier: Apache-2.0
-import torch
 import ttnn
-from typing import Optional
 from models.demos.llama3.tt.llama_attention import TtLlamaAttention
 from models.demos.llama3.tt.llama_mlp import TtLlamaMLP
 from models.common.rmsnorm import RMSNorm
 from models.common.lightweightmodule import LightweightModule
+from models.demos.llama3.tt.distributed_norm import DistributedNorm
 
 
 class TtTransformerBlock(LightweightModule):
@@ -16,7 +15,6 @@ class TtTransformerBlock(LightweightModule):
 
         self.state_dict = state_dict
         self.mesh_device = mesh_device
-        self.num_devices = 1
 
         self.args = args
         self.hidden_size = args.dim
@@ -31,9 +29,6 @@ class TtTransformerBlock(LightweightModule):
         self.model_config = args.get_model_config()
 
         self.layer_num = layer_num
-        self.n_local_heads = self.n_heads // self.num_devices
-        self.n_local_kv_heads = self.n_kv_heads // self.num_devices
-
         self.attention = TtLlamaAttention(
             mesh_device=mesh_device,
             state_dict=state_dict,
@@ -51,24 +46,49 @@ class TtTransformerBlock(LightweightModule):
             dtype=dtype,
             model_config=self.model_config,
         )
-        self.attention_norm = RMSNorm(
-            device=mesh_device,
-            dim=args.dim,
-            state_dict=state_dict,
-            state_dict_prefix=args.get_state_dict_prefix("", layer_num),
-            weight_cache_path=None if args.dummy_weights else weight_cache_path,
-            weight_dtype=dtype,
-            weight_key="attention_norm",
+        self.attention_norm = DistributedNorm(
+            RMSNorm(
+                device=mesh_device,
+                dim=args.dim,
+                state_dict=state_dict,
+                state_dict_prefix=args.get_state_dict_prefix("", layer_num),
+                weight_cache_path=None if args.dummy_weights else weight_cache_path,
+                weight_dtype=ttnn.bfloat16,
+                weight_key="attention_norm",
+                is_distributed=self.args.is_distributed_norm,
+                sharded_program_config=self.model_config["SHARDED_NORM_ATTN_PRGM_CFG"],
+                sharded_output_config=self.model_config["SHARDED_ATTN_INPUT_MEMCFG"],
+                TG=args.is_galaxy,
+            ),
+            args,
+            TG=args.is_galaxy,
         )
-        self.ffn_norm = RMSNorm(
-            device=mesh_device,
-            dim=args.dim,
-            state_dict=state_dict,
-            state_dict_prefix=args.get_state_dict_prefix("", layer_num),
-            weight_cache_path=None if args.dummy_weights else weight_cache_path,
-            weight_dtype=dtype,
-            weight_key="ffn_norm",
+        self.ff_norm = DistributedNorm(
+            RMSNorm(
+                device=mesh_device,
+                dim=args.dim,
+                state_dict=state_dict,
+                state_dict_prefix=args.get_state_dict_prefix("", layer_num),
+                weight_cache_path=None if args.dummy_weights else weight_cache_path,
+                weight_dtype=ttnn.bfloat16,
+                weight_key="ffn_norm",
+                is_distributed=self.args.is_distributed_norm,
+                sharded_program_config=self.model_config["SHARDED_NORM_MLP_PRGM_CFG"],
+                sharded_output_config=self.model_config["SHARDED_MLP_INPUT_MEMCFG"],
+                TG=args.is_galaxy,
+            ),
+            args,
+            TG=args.is_galaxy,
         )
+
+        self.ATTN_ACT_MEMCFG = ttnn.create_sharded_memory_config(
+            shape=(32, 2048 // 32),
+            core_grid=ttnn.CoreGrid(y=4, x=8),
+            strategy=ttnn.ShardStrategy.WIDTH,
+            orientation=ttnn.ShardOrientation.ROW_MAJOR,
+            use_height_and_width_as_shard_shape=True,
+        )
+        self.MLP_ACT_MEMCFG = self.model_config["FULL_GRID_MEMCFG"]
 
     def forward(
         self,
@@ -80,14 +100,22 @@ class TtTransformerBlock(LightweightModule):
         mode="decode",
         page_table=None,
     ) -> ttnn.Tensor:
-        if mode == "prefill":
-            skip_mem_cfg = ttnn.DRAM_MEMORY_CONFIG
-        else:
-            skip_mem_cfg = self.model_config["DEC_SKIP_OUTPUT_MEMCFG"]
-        attn_norm = self.attention_norm(x)
-        # Attention module expects a list of inputs (multi-device support)
-        r = self.attention.forward(
-            attn_norm,
+        # x is fractured across devices and interleaved in DRAM (for prefill) and L1 (for decode)
+        # FIXME: move to sharded residuals once support for this is added
+        # FIXME: Currently, for decode mode, we are using DRAM intereleaved as L1 interleaved results in h being corrupted in MLP
+        TG = self.args.is_galaxy
+        skip_mem_cfg = (
+            ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG
+            if (TG and mode == "decode")
+            else ttnn.DRAM_MEMORY_CONFIG
+            # self.model_config["DEC_SKIP_OUTPUT_MEMCFG"] if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG
+        )
+
+        # Norms take fractured inputs and output replicated across devices
+        attn_in = self.attention_norm(x, mode)
+        # Attention takes replicated inputs and produces fractured outputs
+        attn_out = self.attention.forward(
+            attn_in,
             current_pos,
             rot_mat,
             transformation_mats,
@@ -95,11 +123,27 @@ class TtTransformerBlock(LightweightModule):
             mode,
             page_table,
         )
-        ttnn.deallocate(attn_norm)
-        h = ttnn.add(x, r, memory_config=skip_mem_cfg)
-        ttnn.deallocate(x)
-        r = self.feed_forward.forward(self.ffn_norm(h), mode)
-        out = ttnn.add(h, r, memory_config=skip_mem_cfg)
-        ttnn.deallocate(h)
-        ttnn.deallocate(r)
-        return out
+
+        if TG and mode == "decode":
+            attn_out = ttnn.to_memory_config(attn_out, memory_config=self.ATTN_ACT_MEMCFG)
+
+        # Here x and attn_out are both fractured across devices
+        h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg)
+        ttnn.deallocate(attn_out)
+
+        # Norms take fractured inputs and output replicated across devices
+        ff_in = self.ff_norm(h, mode)
+
+        if TG and mode == "decode":
+            ff_in = ttnn.to_memory_config(ff_in, memory_config=self.MLP_ACT_MEMCFG)
+
+        # MLP takes replicated inputs and produces fractured outputs
+        ff_out = self.feed_forward.forward(ff_in, mode)
+
+        if TG and mode == "decode":
+            ff_out = ttnn.to_memory_config(ff_out, memory_config=self.ATTN_ACT_MEMCFG)
+
+        # ff_out and h are both fractured across devices
+        out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)
+
+        return out  # fractured across devices

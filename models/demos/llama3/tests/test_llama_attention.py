@@ -10,7 +10,6 @@ from models.demos.llama3.tt.llama_attention import TtLlamaAttention
 from models.demos.llama3.tt.model_config import TtModelArgs
 from models.demos.llama3.tt.llama_common import (
     precompute_freqs,
-    prepare_inputs_ttnn,
     get_single_rot_mat,
 )
 from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import Attention
@@ -39,7 +38,8 @@ def test_llama_attention_inference(mesh_device, use_program_cache, reset_seeds, 
     mesh_device.enable_async(True)
 
     model_args = TtModelArgs(mesh_device)
-    state_dict = torch.load(model_args.consolidated_weights_path, map_location=torch.device("cpu"))
+    model_args.n_layers = 1
+    state_dict = model_args.load_state_dict()
 
     first_layer_prefix = model_args.get_state_dict_prefix("TtLlamaAttention", 0) + "."
     # Ref model needs partial state dict, but our models use full state dict keys as cached weight names
@@ -77,7 +77,8 @@ def test_llama_attention_inference(mesh_device, use_program_cache, reset_seeds, 
     cos, sin = precompute_freqs(model_args.head_dim, model_args.max_seq_len * 2)
     freqs_cis = torch.complex(cos, sin)
     for i in range(generation_length):
-        pt_attention_input = (torch.rand(batch, seq_len, model_args.dim) * 2) - 1
+        # 70B attention block typically sees tensors with mean 0 and std 0.03 - 0.05 in layer 1
+        pt_attention_input = torch.randn(batch, seq_len, model_args.dim) * 0.05
 
         tt_attention_input = pt_attention_input.clone()
         current_pos = generation_start_pos + i
@@ -88,25 +89,26 @@ def test_llama_attention_inference(mesh_device, use_program_cache, reset_seeds, 
             mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
         )
 
-        attention_input = prepare_inputs_ttnn(
+        attention_input = model_args.prepare_inputs_ttnn_decode(
             tt_attention_input,
-            model_args.dim,
-            mesh_device,
+            model_args.model_config["SHARDED_ATTN_INPUT_MEMCFG"],
+            force_replicated=False if model_args.is_galaxy else True,
         )
 
-        tt_out = tt_model(attention_input, current_pos_tensor, rot_mats=current_rot_mat)
+        tt_out = tt_model(attention_input, current_pos_tensor, rot_mats=current_rot_mat, mode="decode")
         # multi-device attention module returns replicated output
-        tt_output_torch = (
-            ttnn.to_torch(tt_out, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1))[0]
-            .view(1, -1, model_args.dim)
-            .permute(1, 0, 2)[: model_args.max_batch_size, :, :]
-        )  # [ batch, seq, hidden_dim]
+        tt_out = ttnn.to_torch(
+            tt_out,
+            mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, dims=(1, 3), mesh_shape=model_args.cluster_shape),
+        )
+        tt_output_torch = tt_out[:, 0:1, : model_args.max_batch_size, : model_args.dim].view(1, -1, model_args.dim)
 
         freqs_cis_i = freqs_cis[current_pos, :].unsqueeze(0)
         # positions = torch.tensor([current_pos])
-
         reference_output = reference_model(pt_attention_input, current_pos, freqs_cis_i, mask=None)
 
+        print(f"{tt_output_torch.shape=}")
+        print(f"{reference_output.shape=}")
         passing, pcc_message = comp_pcc(reference_output, tt_output_torch, pcc)
 
         logger.info(comp_allclose(reference_output, tt_output_torch))
@@ -129,12 +131,20 @@ def test_llama_attention_inference(mesh_device, use_program_cache, reset_seeds, 
             ]
             # TT hardware execution -------------------------------------------------------------
             tt_layer_present = [
-                ttnn.to_torch(cache, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=1))
+                ttnn.to_torch(
+                    cache,
+                    mesh_composer=ttnn.ConcatMesh2dToTensor(
+                        mesh_device,
+                        dims=(1, 0) if model_args.is_galaxy else (0, 1),
+                        mesh_shape=model_args.cluster_shape,
+                    ),
+                )[:batch, :, :, :]
                 for cache in tt_model.layer_past
             ]
 
             for i, (cache_pt, cache_tt) in enumerate(zip(pytorch_layer_present, tt_layer_present)):
                 cache_length_to_check = min(model_args.sliding_window, generation_start_pos + generation_length + 1)
+                print("cache_length_to_check", cache_length_to_check)
                 cache_pt = cache_pt[:, :, generation_start_pos:cache_length_to_check, :]
                 cache_tt = cache_tt[:, :, generation_start_pos:cache_length_to_check, :]
                 does_pass, output_pcc = comp_pcc(cache_pt, cache_tt, pcc)
