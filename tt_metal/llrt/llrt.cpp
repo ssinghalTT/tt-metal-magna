@@ -53,7 +53,7 @@ ll_api::memory get_risc_binary(string const &path, uint32_t riscv_id,
         MEM_TRISC0_FIRMWARE_BASE,
         MEM_TRISC1_FIRMWARE_BASE,
         MEM_TRISC2_FIRMWARE_BASE,
-        eth_l1_mem::address_map::FIRMWARE_BASE,
+        eth_l1_mem::address_map::FIRMWARE_BASE, // clean up active eth address map
         MEM_IERISC_FIRMWARE_BASE,
 #ifdef ARCH_BLACKHOLE
         MEM_SLAVE_IERISC_FIRMWARE_BASE,
@@ -156,7 +156,7 @@ ll_api::memory read_mem_from_core(chip_id_t chip, const CoreCoord &core, const l
 }
 
 
-uint32_t generate_risc_startup_addr(bool is_eth_core) {
+uint32_t generate_risc_startup_addr(bool is_eth_core, bool is_idle_eth) {
     // Options for handling brisc fw not starting at mem[0]:
     // 1) Program the register for the start address out of reset
     // 2) Encode a jump in crt0 for mem[0]
@@ -166,7 +166,8 @@ uint32_t generate_risc_startup_addr(bool is_eth_core) {
     constexpr uint32_t jal_opcode = 0x6f;
     constexpr uint32_t jal_max_offset = 0x0007ffff;
     uint32_t opcode = jal_opcode;
-    uint32_t firmware_base = is_eth_core ? MEM_IERISC_FIRMWARE_BASE : MEM_BRISC_FIRMWARE_BASE;
+    uint32_t firmware_base = is_eth_core ?
+        (is_idle_eth ? MEM_IERISC_FIRMWARE_BASE : eth_l1_mem::address_map::FIRMWARE_BASE) : MEM_BRISC_FIRMWARE_BASE;
     assert(firmware_base < jal_max_offset);
     // See riscv spec for offset encoding below
     uint32_t jal_offset_bit_20 = 0;
@@ -182,9 +183,9 @@ uint32_t generate_risc_startup_addr(bool is_eth_core) {
     return jal_offset | opcode;
 }
 
-void program_risc_startup_addr(chip_id_t chip_id, const CoreCoord &core) {
+void program_risc_startup_addr(chip_id_t chip_id, const CoreCoord &core, bool is_idle_eth) {
     std::vector<uint32_t> jump_to_fw;
-    jump_to_fw.push_back(generate_risc_startup_addr(is_ethernet_core(core, chip_id)));
+    jump_to_fw.push_back(generate_risc_startup_addr(is_ethernet_core(core, chip_id), is_idle_eth));
     write_hex_vec_to_core(chip_id, core, jump_to_fw, 0);
 }
 

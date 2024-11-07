@@ -87,8 +87,8 @@ inline bool is_ethernet_core(const CoreCoord &core, chip_id_t chip_id) {
            soc_desc.physical_ethernet_cores.end();
 }
 
-uint32_t generate_risc_startup_addr(bool is_eth_core);
-void program_risc_startup_addr(chip_id_t chip_id, const CoreCoord &core);
+uint32_t generate_risc_startup_addr(bool is_eth_core, bool is_idle_eth=false);
+void program_risc_startup_addr(chip_id_t chip_id, const CoreCoord &core, bool is_idle_eth=false);
 
 bool test_load_write_read_risc_binary(ll_api::memory &mem, chip_id_t chip_id, const CoreCoord &core, int riscv_id);
 bool test_load_write_read_trisc_binary(ll_api::memory &mem, chip_id_t chip_id, const CoreCoord &core, int triscv_id);

@@ -319,13 +319,20 @@ void Device::initialize_build() {
                             break;
                         }
                         case HalProgrammableCoreType::ACTIVE_ETH: {
-                            build_states[index] = std::make_shared<JitBuildActiveEthernet>(
-                                this->build_env_, JitBuiltStateConfig{.processor_id = processor_class, .is_fw=is_fw, .dispatch_message_addr=dispatch_message_addr});
+                            if (this->arch() == ARCH::BLACKHOLE) {
+                                bool enable_slaves = false; // Risc1 of active ethernet cores on BH run idle erisc FW
+                                build_states[index] = std::make_shared<JitBuildIdleEthernet>(
+                                    this->build_env_, JitBuiltStateConfig{.processor_id = processor_class, .is_fw=is_fw, .dispatch_message_addr=dispatch_message_addr}, enable_slaves);
+                            } else {
+                                build_states[index] = std::make_shared<JitBuildActiveEthernet>(
+                                    this->build_env_, JitBuiltStateConfig{.processor_id = processor_class, .is_fw=is_fw, .dispatch_message_addr=dispatch_message_addr});
+                            }
                             break;
                         }
                         case HalProgrammableCoreType::IDLE_ETH: {
+                            bool enable_slaves = is_fw and processor_class == 0;
                             build_states[index] = std::make_shared<JitBuildIdleEthernet>(
-                                this->build_env_, JitBuiltStateConfig{.processor_id = processor_class, .is_fw=is_fw, .dispatch_message_addr=dispatch_message_addr});
+                                this->build_env_, JitBuiltStateConfig{.processor_id = processor_class, .is_fw=is_fw, .dispatch_message_addr=dispatch_message_addr}, enable_slaves);
                             break;
                         }
                         default:
@@ -412,8 +419,8 @@ void Device::initialize_firmware(const HalProgrammableCoreType &core_type, CoreC
                     }
                 }
             }
-            if (is_idle_eth) {
-                llrt::program_risc_startup_addr(this->id(), phys_core);
+            if (is_idle_eth or this->arch() == ARCH::BLACKHOLE) {
+                llrt::program_risc_startup_addr(this->id(), phys_core, is_idle_eth);
             } else {
                 llrt::launch_erisc_app_fw_on_core(this->id(), phys_core);
             }

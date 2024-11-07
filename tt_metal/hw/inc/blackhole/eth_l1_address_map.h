@@ -10,7 +10,7 @@
 
 namespace eth_l1_mem {
 
-
+// TODO: This needs to be updated for BH
 struct address_map {
 
   // UMD doesn't distinguish between active/idle eth cores
@@ -18,8 +18,9 @@ struct address_map {
   // active/idle eth cores have very different mem maps
   // Reserve some space at the end of l1 for l1_barrier
   static constexpr std::int32_t ERISC_BARRIER_SIZE = 32;
-  static constexpr std::int32_t MAX_SIZE = 512 * 1024 - ERISC_BARRIER_SIZE;
-  static constexpr std::int32_t MAX_L1_LOADING_SIZE = 1 * 512 * 1024 - ERISC_BARRIER_SIZE;
+  static constexpr std::int32_t SYSENG_RESERVED_SIZE = 64 * 1024;
+  static constexpr std::int32_t MAX_SIZE = 512 * 1024 - SYSENG_RESERVED_SIZE - ERISC_BARRIER_SIZE;
+  static constexpr std::int32_t MAX_L1_LOADING_SIZE = 1 * 512 * 1024 - SYSENG_RESERVED_SIZE - ERISC_BARRIER_SIZE;
 
   // Sizes
   static constexpr std::int32_t FIRMWARE_SIZE = 32 * 1024;
