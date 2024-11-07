@@ -190,7 +190,10 @@ MaxPool2D::MultiCore::cached_program_t max_pool_2d_multi_core_sharded_with_halo_
     // output of tilize == input to reduce
     uint32_t in_tiled_cb_id = tt::CB::c_intermed0;  // tiled input
     uint32_t in_tiled_cb_pagesize = tile_size(in_df);
-    uint32_t in_tiled_cb_npages = MAX_TILES_PER_REDUCTION * in_nblocks_c * in_ntiles_hw * nblocks;
+    uint32_t in_tiled_cb_npages = in_ntiles_c * in_ntiles_hw * nblocks;
+    if (is_wide_reduction) {
+        //in_tiled_cb_npages = ceil_multiple_of(in_tiled_cb_npages, MAX_TILES_PER_REDUCTION);
+    }
     CircularBufferConfig in_tiled_cb_config =
         CircularBufferConfig(in_tiled_cb_npages * in_tiled_cb_pagesize, {{in_tiled_cb_id, in_df}})
             .set_page_size(in_tiled_cb_id, in_tiled_cb_pagesize);
@@ -206,6 +209,7 @@ MaxPool2D::MultiCore::cached_program_t max_pool_2d_multi_core_sharded_with_halo_
     uint32_t out_cb_npages = output.shard_spec().value().shape[0] * in_nblocks_c;
     if (is_wide_reduction) {
         out_cb_pagesize = ceil_multiple_of(out_cb_pagesize, MAX_TILES_PER_REDUCTION * tt::constants::TILE_WIDTH * out_nbytes);
+        //out_cb_npages = ceil_multiple_of(out_cb_npages, MAX_TILES_PER_REDUCTION);
     }
 
     printf("shard 0: %d, shard 1: %d\n", output.shard_spec().value().shape[0], output.shard_spec().value().shape[1]);

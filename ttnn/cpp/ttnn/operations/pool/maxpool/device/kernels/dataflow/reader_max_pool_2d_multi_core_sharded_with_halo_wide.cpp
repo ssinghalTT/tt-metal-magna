@@ -95,9 +95,6 @@ void kernel_main() {
 
     uint16_t minus_inf = 63487;
 
-    DPRINT << "in_nbytes_c: " << in_nbytes_c << ENDL();
-    DPRINT << "MAX_ELE_PER_REDUCTION: " << MAX_ELE_PER_REDUCTION << ENDL();
-
     /* if (reader_id == 0) {
         print_pages(in_l1_read_base_addr, in_nbytes_c / 2, 28);
     } */
@@ -106,6 +103,7 @@ void kernel_main() {
     uint32_t counter = reader_id;
     while (counter < reader_nindices) {
         uint16_t top_left_local_index = reader_indices_ptr[counter ++];
+        //DPRINT << "top_left_local_index: " << top_left_local_index << ENDL();
         for (uint32_t c_i = 0; c_i < in_nblocks_c; ++ c_i) {
             uint32_t read_bytes = MAX_ELE_PER_REDUCTION;
             if (c_i == in_nblocks_c - 1) {
@@ -128,7 +126,7 @@ void kernel_main() {
                 }
             }
             noc_async_read_barrier();
-            /* if (reader_id == 1) {
+            /* if (reader_id == 0) {
                 print_pages(out_l1_write_addr_base, MAX_ELE_PER_REDUCTION / 2, 9);
             } */
             cb_push_back(in_cb_id, npages_to_reserve);

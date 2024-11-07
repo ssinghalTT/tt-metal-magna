@@ -43,6 +43,21 @@
     // }
 #endif
 
+uint16_t minus_inf = 63487;
+
+#define ALWI inline __attribute__((always_inline))
+
+// Fill an L1 buffer with the given val
+// WARNING: Use with caution as there's no memory protection. Make sure size is within limits
+ALWI bool fill_with_val(uint32_t begin_addr, uint32_t n, uint16_t val) {
+    // simplest impl:
+    volatile tt_l1_ptr uint32_t* ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(begin_addr);
+    for (uint32_t i = 0; i < n/2; ++ i) {
+        ptr[i] = (val | (val << 16));
+    }
+    return true;
+}
+
 template<uint32_t num_output_tiles, bool is_partial_tile, uint32_t split_reader, uint32_t unpA_face_r_dim>
 inline void reduce_h_fused(
     const uint32_t in_cb_id,
@@ -100,7 +115,6 @@ void MAIN {
 
     constexpr uint32_t max_tiles_per_iter = in_ntiles_c < MAX_TILES_PER_REDUCTION ? in_ntiles_c : MAX_TILES_PER_REDUCTION;
     constexpr uint32_t partial_iter_output_tiles = in_ntiles_c % MAX_TILES_PER_REDUCTION;
-    DPRINT << "max_tiles_per_iter: " << max_tiles_per_iter << ", partial_iter_output_tiles: " << partial_iter_output_tiles << ENDL();
     tilizeA_B_reduce_init<true>(
         in_cb_id,
         in_scalar_cb_id,
@@ -117,11 +131,9 @@ void MAIN {
                 pack_untilize_uninit(out_cb_id);
                 pack_untilize_dst_init_short<partial_iter_output_tiles>(out_cb_id, num_out_rows, num_faces_in_tile); /* pack 1 row (1x16 or 1x32) */
                 reduce_h_fused<partial_iter_output_tiles, is_partial_tile, split_reader, window_size_hw>(in_cb_id, in_scalar_cb_id, i, out_cb_id);
-                DPRINT << "PATH 1" << ENDL();
             }
             else {
                 reduce_h_fused<max_tiles_per_iter, is_partial_tile, split_reader, window_size_hw>(in_cb_id, in_scalar_cb_id, i, out_cb_id);
-                DPRINT << "PATH 2" << ENDL();
             }
         }
     }
