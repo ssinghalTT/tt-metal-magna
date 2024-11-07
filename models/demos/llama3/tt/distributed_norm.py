@@ -85,6 +85,8 @@ class DistributedNorm(LightweightModule):
 
         # Distributed norm already performs a gather
         if self.args.is_multichip and not self.args.is_distributed_norm(mode):
+            if x.dtype != self.args.ccl_dtype:
+                x = ttnn.typecast(x, self.args.ccl_dtype)
             if mode == "decode":
                 x = ttnn.interleaved_to_sharded(x, self.gather_in_mem_cfg)
                 x = ttnn.all_gather(
@@ -103,6 +105,8 @@ class DistributedNorm(LightweightModule):
 
         # Distributed norm requires a gather
         if self.args.is_distributed_norm(mode):
+            if x.dtype != self.args.ccl_dtype:
+                x = ttnn.typecast(x, self.args.ccl_dtype)
             x = ttnn.all_gather(x, dim=3, num_links=1, topology=self.args.ccl_topology())
 
         return x

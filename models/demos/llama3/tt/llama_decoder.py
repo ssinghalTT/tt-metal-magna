@@ -115,7 +115,7 @@ class TtTransformerBlock(LightweightModule):
         )
 
         # Here x and attn_out are both fractured across devices
-        h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg)
+        h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg, dtype=ttnn.bfloat16)
         ttnn.deallocate(attn_out)
 
         # Norms take fractured inputs and output replicated across devices
@@ -129,5 +129,13 @@ class TtTransformerBlock(LightweightModule):
 
         # ff_out and h are both fractured across devices
         out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)
+        out = ttnn.add(
+            h,
+            ff_out,
+            memory_config=skip_mem_cfg,
+            dtype=self.args.ccl_dtype
+            if self.args.is_multichip and not self.args.is_distributed_norm(mode)
+            else ttnn.bfloat16,
+        )
 
         return out  # fractured across devices
