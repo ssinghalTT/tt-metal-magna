@@ -814,13 +814,16 @@ std::unordered_set<CoreCoord> Cluster::get_active_ethernet_cores(
             //      - due to lack of timeouts in eth training, ports with nothing connected will stay at 0xFACE0001
             // 0xFACE0005: ethernet is done training / active
             bool is_active = false;
-            if (training_status == 0xFACE0005) {
+            if (training_status == 0xFACE0005) { // handle case when eth is training
                 CoreCoord logical_active_eth = soc_desc.get_logical_ethernet_core_from_physical(physical_eth_core);
                 active_ethernet_cores.insert(logical_active_eth);
                 is_active = true;
             }
             if (not printed) {
-                std::cout << "Eth core " << physical_eth_core.str() << " training status is: " << std::hex << training_status << std::dec
+                CoreCoord logical = soc_desc.get_logical_ethernet_core_from_physical(physical_eth_core);
+                std::cout << "Eth core " << physical_eth_core.str()
+                          << " logical core " << logical.str()
+                          << " training status is: " << std::hex << training_status << std::dec
                           << " is active? " << is_active << std::endl;
             }
         }

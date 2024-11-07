@@ -26,6 +26,7 @@
 #include "debug/watcher_common.h"
 #include "debug/waypoint.h"
 #include "debug/stack_usage.h"
+#include "debug/dprint.h"
 
 uint8_t noc_index;
 
@@ -100,6 +101,7 @@ int main() {
     conditionally_disable_l1_cache();
     DIRTY_STACK_MEMORY();
     WAYPOINT("I");
+
     int32_t num_words = ((uint)__ldm_data_end - (uint)__ldm_data_start) >> 2;
     uint32_t *local_mem_ptr = (uint32_t *)__ldm_data_start;
     uint32_t *l1_data_ptr = (uint32_t *)MEM_IERISC_INIT_LOCAL_L1_BASE_SCRATCH;
@@ -113,6 +115,11 @@ int main() {
     mailboxes->slave_sync.all = RUN_SYNC_MSG_ALL_SLAVES_DONE;
     set_deassert_addresses();
     //device_setup();
+    // DPRINT << "In idle erisc FW" << ENDL();
+
+    uint32_t debug_addr = 0x7E000;
+    volatile tt_l1_ptr uint32_t* debug_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(debug_addr);
+    debug_ptr[0] = 0xDEADBEEF;
 
     noc_init(MEM_NOC_ATOMIC_RET_VAL_ADDR);
 

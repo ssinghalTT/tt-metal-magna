@@ -405,25 +405,26 @@ void Device::initialize_firmware(const HalProgrammableCoreType &core_type, CoreC
         case HalProgrammableCoreType::ACTIVE_ETH:
         case HalProgrammableCoreType::IDLE_ETH: {
             bool is_idle_eth = core_type == HalProgrammableCoreType::IDLE_ETH;
-            if (is_idle_eth) {
+            // if (is_idle_eth) {
                 tt::Cluster::instance().assert_risc_reset_at_core(tt_cxy_pair(this->id(), phys_core));
-            }
+            // }
             if (not llrt::OptionsG.get_skip_loading_fw()) {
                 for (uint32_t processor_class = 0; processor_class < processor_class_count; processor_class++) {
                     auto [build_idx, num_build_states] = this->build_processor_type_to_index(core_type_idx, processor_class);
                     for (uint32_t eriscv_id = build_idx; eriscv_id < (build_idx + num_build_states); eriscv_id++) {
                         ll_api::memory binary_mem = llrt::get_risc_binary(firmware_build_states_[eriscv_id]->get_target_out_path(""), eriscv_id);
                         uint32_t fw_size = binary_mem.get_text_size();
-                        log_debug(LogDevice, "ERISC fw binary size: {} in bytes", fw_size);
+                        log_info(LogDevice, "ERISC fw binary size: {} in bytes", fw_size);
                         llrt::test_load_write_read_risc_binary(binary_mem, this->id(), phys_core, eriscv_id);
                     }
                 }
             }
-            if (is_idle_eth or this->arch() == ARCH::BLACKHOLE) {
-                llrt::program_risc_startup_addr(this->id(), phys_core, is_idle_eth);
-            } else {
-                llrt::launch_erisc_app_fw_on_core(this->id(), phys_core);
-            }
+            // if (is_idle_eth or this->arch() == ARCH::BLACKHOLE) {
+            //     llrt::program_risc_startup_addr(this->id(), phys_core, is_idle_eth);
+            // } else {
+            //     llrt::launch_erisc_app_fw_on_core(this->id(), phys_core);
+            // }
+            llrt::launch_erisc_app_fw_on_core(this->id(), phys_core, is_idle_eth, (is_idle_eth or this->arch() == ARCH::BLACKHOLE));
             // Ethernet worker core. Launch messages will be sent by FD infra if it's enabled
             // Idle ethernet core. Used by FD infra. Host will write launch messages during init.
             launch_msg->kernel_config.mode = (this->using_slow_dispatch() or is_idle_eth) ? DISPATCH_MODE_HOST :  DISPATCH_MODE_DEV;
@@ -649,6 +650,9 @@ void Device::initialize_and_launch_firmware() {
         tt::llrt::write_hex_vec_to_core(
             this->id(), phys_eth_core, core_info_vec, this->get_dev_addr(phys_eth_core, HalL1MemAddrType::CORE_INFO));
         this->initialize_firmware(HalProgrammableCoreType::ACTIVE_ETH, phys_eth_core, &launch_msg, &go_msg);
+        if (this->arch() == ARCH::BLACKHOLE) {
+            not_done_cores.insert(phys_eth_core);
+        }
     }
 
     for (const auto &eth_core : this->get_inactive_ethernet_cores()) {

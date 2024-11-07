@@ -133,8 +133,17 @@ void write_launch_msg_to_core(chip_id_t chip, const CoreCoord core, launch_msg_t
     }
 }
 
-void launch_erisc_app_fw_on_core(chip_id_t chip, CoreCoord core) {
-    llrt::write_hex_vec_to_core(chip, core, {0x1}, eth_l1_mem::address_map::LAUNCH_ERISC_APP_FLAG);
+void launch_erisc_app_fw_on_core(chip_id_t chip, CoreCoord core, bool is_active_eth, bool is_idle_fw) {
+    if (is_idle_fw) {
+        // pull out base FW address from HAL and the PC
+        uint32_t pc_addr = (is_active_eth) ? 0xFFB14000 : 0xFFB14008;
+        uint32_t fw_base = (is_active_eth) ? eth_l1_mem::address_map::FIRMWARE_BASE : MEM_IERISC_FIRMWARE_BASE;
+        std::cout << "Eth core " << core.str() << " pc addr " << std::hex << pc_addr << " fw base " << fw_base << std::dec << std::endl;
+        llrt::write_hex_vec_to_core(chip, core, {fw_base}, pc_addr);
+        llrt::write_hex_vec_to_core(chip, core, {fw_base + 0x72000}, pc_addr + 0x4);
+    } else {
+        llrt::write_hex_vec_to_core(chip, core, {0x1}, eth_l1_mem::address_map::LAUNCH_ERISC_APP_FLAG);
+    }
 }
 
 void print_worker_cores(chip_id_t chip_id) {
@@ -180,6 +189,10 @@ uint32_t generate_risc_startup_addr(bool is_eth_core, bool is_idle_eth) {
         jal_offset_bit_11 |
         jal_offset_bits_19_to_12;
 
+    if (is_eth_core) {
+        std::cout << "JAL: " << std::hex << (jal_offset | opcode) << " firmware base " << std::hex << firmware_base << std::dec << std::endl;
+    }
+
     return jal_offset | opcode;
 }
 
@@ -199,7 +212,7 @@ bool test_load_write_read_risc_binary(ll_api::memory &mem, chip_id_t chip_id, co
         case 2: local_init_addr = MEM_TRISC0_INIT_LOCAL_L1_BASE_SCRATCH; break;
         case 3: local_init_addr = MEM_TRISC1_INIT_LOCAL_L1_BASE_SCRATCH; break;
         case 4: local_init_addr = MEM_TRISC2_INIT_LOCAL_L1_BASE_SCRATCH; break;
-        case 5: local_init_addr = eth_l1_mem::address_map::FIRMWARE_BASE; break;
+        case 5: local_init_addr = MEM_IERISC_INIT_LOCAL_L1_BASE_SCRATCH; break; // fix this
         case 6: local_init_addr = MEM_IERISC_INIT_LOCAL_L1_BASE_SCRATCH; break;
 #ifdef ARCH_BLACKHOLE
         case 7: local_init_addr = MEM_SLAVE_IERISC_INIT_LOCAL_L1_BASE_SCRATCH; break;
@@ -209,17 +222,20 @@ bool test_load_write_read_risc_binary(ll_api::memory &mem, chip_id_t chip_id, co
     log_debug(tt::LogLLRuntime, "hex_vec size = {}, size_in_bytes = {}", mem.size(), mem.size()*sizeof(uint32_t));
     mem.process_spans([&](std::vector<uint32_t>::const_iterator mem_ptr, uint64_t addr, uint32_t len_words) {
         uint64_t relo_addr = relocate_dev_addr(addr, local_init_addr);
+        // if (riscv_id > 4) {
+        //     std::cout << "Relocate addr " << std::hex << relo_addr << std::dec << std::endl;
+        // }
 
         tt::Cluster::instance().write_core(&*mem_ptr, len_words * sizeof(uint32_t), tt_cxy_pair(chip_id, core), relo_addr);
     });
 
     log_debug(tt::LogLLRuntime, "wrote hex to core {}", core.str().c_str());
 
-    if (std::getenv("TT_METAL_KERNEL_READBACK_ENABLE") != nullptr) {
+    if (riscv_id > 4 /*std::getenv("TT_METAL_KERNEL_READBACK_ENABLE") != nullptr*/) {
         tt::Cluster::instance().l1_barrier(chip_id);
         ll_api::memory read_mem = read_mem_from_core(chip_id, core, mem, local_init_addr);
         log_debug(tt::LogLLRuntime, "read hex back from the core");
-        return mem == read_mem;
+        TT_FATAL(mem == read_mem, "Failed to readback binary from core {}", core.str());
     }
 
     return true;
@@ -257,6 +273,23 @@ static bool check_if_riscs_on_specified_core_done(chip_id_t chip_id, const CoreC
         is_active_eth_core = active_eth_cores.find(logical_core_from_ethernet_core(chip_id, core)) != active_eth_cores.end();
         is_inactive_eth_core = inactive_eth_cores.find(logical_core_from_ethernet_core(chip_id, core)) != inactive_eth_cores.end();
         //we should not be operating on any reserved cores here.
+
+        static bool printed_idle_eth = false;
+        static bool printed_active_eth = false;
+
+        std::vector<uint32_t> eth_pc0 =  read_hex_vec_from_core(chip_id, core, 0xFFB14000, sizeof(uint32_t));
+        std::vector<uint32_t> eth_pc1 =  read_hex_vec_from_core(chip_id, core, 0xFFB14008, sizeof(uint32_t));
+        if (is_inactive_eth_core and not printed_idle_eth) {
+            std::cout << "printing pcs for idle eth on core " << core.str() << std::endl;
+            std::cout << "PC0 " << std::hex << eth_pc0[0] << " PC1 " << eth_pc1[0] << std::dec << std::endl;
+            printed_idle_eth = true;
+        } else if (is_active_eth_core and not printed_active_eth) {
+            std::cout << "printing pcs for active eth on core " << core.str() << std::endl;
+            std::cout << "PC0 " << std::hex << eth_pc0[0] << " PC1 " << eth_pc1[0] << std::dec << std::endl;
+            printed_active_eth = true;
+        }
+
+
         assert(is_active_eth_core or is_inactive_eth_core);
     }
 
