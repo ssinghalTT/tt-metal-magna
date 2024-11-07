@@ -21,6 +21,7 @@ class TtLlamaMLP(LightweightModule):
         state_dict_prefix = state_dict_prefix or args.get_state_dict_prefix(self.__class__.__name__, layer_num)
         torch_weight = lambda name: torch.transpose(self.state_dict[f"{state_dict_prefix}.{name}.weight"], -2, -1)
         TG = args.is_galaxy
+        self.TG = TG
         if args.dummy_weights:
             cache_name = lambda _: None
         else:
@@ -89,7 +90,7 @@ class TtLlamaMLP(LightweightModule):
             self.w1,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
             core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_1 else None,
-            dtype=ttnn.bfloat16,
+            dtype=self.args.ccl_dtype if self.TG else ttnn.bfloat16,  # TODO: might be bad for accuracy
             program_config=pc_1,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
         )
@@ -101,7 +102,7 @@ class TtLlamaMLP(LightweightModule):
             self.w3,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
             core_grid=ttnn.CoreGrid(y=8, x=8) if not pc_3 else None,
-            dtype=ttnn.bfloat16,
+            dtype=self.args.ccl_dtype if self.TG else ttnn.bfloat16,  # TODO: might be bad for accuracy
             program_config=pc_3,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
         )
@@ -117,6 +118,7 @@ class TtLlamaMLP(LightweightModule):
             num_links=2,
             sharded=True if mode == "decode" else False,
             memory_config=self.model_config["FF1_OUT_GATHERED_MEMCFG"] if mode == "decode" else None,
+            dtype=self.args.ccl_dtype,
         )
         w3_out = tt_all_reduce(
             w3_out,
@@ -125,6 +127,7 @@ class TtLlamaMLP(LightweightModule):
             num_links=2,
             sharded=True if mode == "decode" else False,
             memory_config=self.model_config["FF1_OUT_GATHERED_MEMCFG"] if mode == "decode" else None,
+            dtype=self.args.ccl_dtype,
         )
 
         # w1_out = ttnn.to_memory_config(w1_out, self.model_config["FULL_GRID_MEMCFG"])
@@ -160,7 +163,7 @@ class TtLlamaMLP(LightweightModule):
             self.w2,
             compute_kernel_config=self.args.compute_kernel_config_hifi2_fp16,
             core_grid=ttnn.CoreGrid(y=1, x=8) if not pc_2 else None,
-            dtype=ttnn.bfloat16,
+            dtype=self.args.ccl_dtype if self.args.is_multichip else ttnn.bfloat16,
             program_config=pc_2,
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG,
         )
@@ -177,6 +180,7 @@ class TtLlamaMLP(LightweightModule):
             if TG
             else (ttnn.DRAM_MEMORY_CONFIG if mode == "prefill" else ttnn.L1_MEMORY_CONFIG),
             sharded=True if mode == "decode" else False,
+            dtype=self.args.ccl_dtype,
         )
         # Ensure dim 0 and 1 are 1
         original_shape = w2_out_reduced.shape

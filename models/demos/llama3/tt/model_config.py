@@ -745,6 +745,8 @@ class TtModelArgs:
             self.model_config["attention"] = set_attention_config(self.model_config, self.max_batch_size)
 
             self.is_multichip = self.num_devices > 1
+            self.ccl_dtype = ttnn.bfloat8_b
+            self.activation_dtype = ttnn.bfloat16
 
     def is_distributed_norm(self, mode):
         if not self.is_multichip:

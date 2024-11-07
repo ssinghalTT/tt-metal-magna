@@ -38,6 +38,7 @@ class TtLlamaAttention(LightweightModule):
         self.max_batch_size = configuration.max_batch_size
         self.n_kv_heads = configuration.n_kv_heads
         self.paged_attention_config = configuration.paged_attention_config
+        self.ccl_dtype = configuration.ccl_dtype
 
         self.num_device_groups = self.num_devices // self.n_kv_heads
         self.num_devices_per_group = self.n_kv_heads
@@ -314,7 +315,7 @@ class TtLlamaAttention(LightweightModule):
             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
             program_config=self.model_config["XQKV_DECODE_PROGCFG"],
             compute_kernel_config=self.compute_kernel_config_hifi2,
-            dtype=ttnn.bfloat16,
+            dtype=self.ccl_dtype if self.is_multichip else ttnn.bfloat16,
         )
         # print(xqkv_fused_sharded.shape)
         ttnn.deallocate(x)
@@ -326,6 +327,7 @@ class TtLlamaAttention(LightweightModule):
             num_links=2,
             memory_config=None if not TG else self.attention_config["QKV_OUT_GATHERED_MEMCFG"](4),
             sharded=True,
+            dtype=self.ccl_dtype,
         )
 
         if TG:
@@ -467,6 +469,7 @@ class TtLlamaAttention(LightweightModule):
                 num_links=2,
                 memory_config=self.attention_config["GATHER_USERS_MEMCFG"](4),
                 sharded=True,
+                dtype=self.ccl_dtype,
             )
             attn_output = ttnn.to_memory_config(attn_output, ttnn.L1_MEMORY_CONFIG)
             if TG:
@@ -501,6 +504,7 @@ class TtLlamaAttention(LightweightModule):
                 dim=0 if TG else 3,
                 memory_config=self.attention_config["SELF_OUT_GATHERED_MEMCFG"](8) if TG else ttnn.L1_MEMORY_CONFIG,
                 sharded=True,
+                dtype=self.ccl_dtype,
             )
 
             ttnn.deallocate(dense_out_sharded)
@@ -521,14 +525,19 @@ class TtLlamaAttention(LightweightModule):
         xqkv_fused = ttnn.linear(
             x_11SH,
             self.wqkv,
-            dtype=ttnn.bfloat16,
+            dtype=self.ccl_dtype if self.is_multichip else ttnn.bfloat16,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
             compute_kernel_config=self.compute_kernel_config_hifi2,
             program_config=self.model_config["XQKV_PREFILL_PROGCFG"](seq_len),
         )
 
         xqkv_fused = tt_all_reduce(
-            xqkv_fused, self.mesh_device, cluster_axis=1, num_links=2, memory_config=ttnn.DRAM_MEMORY_CONFIG
+            xqkv_fused,
+            self.mesh_device,
+            cluster_axis=1,
+            num_links=2,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            dtype=self.ccl_dtype,
         )
         # print("done qkv matmul", xqkv_fused.shape)
 
@@ -558,10 +567,16 @@ class TtLlamaAttention(LightweightModule):
         # Rotary embeddings
         ###
 
+        if q_heads_1QSD_pre_rot.dtype != ttnn.bfloat16:  # Rotary embeddings require bfloat16 inputs
+            q_heads_1QSD_pre_rot = ttnn.typecast(q_heads_1QSD_pre_rot, dtype=ttnn.bfloat16)
+
         q_heads_1QSD = ttnn.experimental.rotary_embedding_llama(
             q_heads_1QSD_pre_rot, rot_mats[0], rot_mats[1], transformation_mats
         )
         ttnn.deallocate(q_heads_1QSD_pre_rot)
+
+        if k_heads_1KSD_pre_rot.dtype != ttnn.bfloat16:  # Rotary embeddings require bfloat16 inputs
+            k_heads_1KSD_pre_rot = ttnn.typecast(k_heads_1KSD_pre_rot, dtype=ttnn.bfloat16)
 
         k_heads_1KSD = ttnn.experimental.rotary_embedding_llama(
             k_heads_1KSD_pre_rot, rot_mats[0], rot_mats[1], transformation_mats
@@ -691,8 +706,8 @@ class TtLlamaAttention(LightweightModule):
             dim=0 if TG else 3,
             num_links=2 if TG else 1,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            dtype=self.ccl_dtype,
         )
-        # print("done all reduce", dense_out_reduced.shape)
 
         ttnn.deallocate(output_11SH)
         return dense_out_reduced
