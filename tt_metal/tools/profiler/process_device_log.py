@@ -193,6 +193,8 @@ def extract_device_info(deviceInfo):
 
 def import_device_profile_log(logPath):
     devicesData = {"devices": {}}
+    global globallogpath
+    globallogpath = logPath
     doOpsDetection = True
     with open(logPath) as csvFile:
         csvReader = csv.reader(csvFile, delimiter=",")
@@ -318,7 +320,7 @@ def is_new_op_device(tsCore, coreOpMap):
     ):
         assert (
             core not in coreOpMap.keys()
-        ), f"Unexpected BRISC start in {tsCore} {coreOpMap[core]}, this could be caused by soft resets"
+        ), f"Unexpected BRISC start in {tsCore} {coreOpMap[core]}, this could be caused by soft resets" + open(globallogpath, "r").read()
         if not coreOpMap:
             isNewOp = True
         coreOpMap[core] = (tsValue,)
