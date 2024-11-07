@@ -112,7 +112,76 @@ inline void llk_unpack_reconfig_data_format(
     llk_unpack_reconfig_data_format_srcb<to_from_int8, is_fp32_dest_acc_en, is_tile_dim_reconfig_en>(srcb_old_operand, srcb_new_operand);
 }
 
+template <std::uint32_t srca_old_operand, std::uint32_t srca_new_operand, bool is_fp32_dest_acc_en = false, bool is_tile_dim_reconfig_en = false>
+inline void llk_unpack_reconfig_data_format_srca_v2() {
+    constexpr std::uint32_t old_srca_operand_id = get_operand_id_v2(srca_old_operand);
+    constexpr std::uint32_t new_srca_operand_id = get_operand_id_v2(srca_new_operand);
+
+    if constexpr ((get_operand_src_format_v2(old_srca_operand_id) != get_operand_src_format_v2(new_srca_operand_id))) {
+        // const std::uint32_t num_faces = get_operand_num_faces(new_srca_operand_id);
+        // const std::uint32_t face_r_dim = get_operand_face_r_dim(new_srca_operand_id);
+        const std::uint32_t tile_size = cb_interface[new_srca_operand_id].fifo_page_size;
+        _llk_unpack_reconfig_data_format_srca_impl_v2_<
+            get_operand_src_format_v2(old_srca_operand_id),
+            get_operand_dst_format_v2(old_srca_operand_id),
+            get_operand_src_format_v2(new_srca_operand_id),
+            get_operand_dst_format_v2(new_srca_operand_id),
+            is_fp32_dest_acc_en>(tile_size);
+    } else if constexpr (is_tile_dim_reconfig_en) {
+        // const std::uint32_t num_faces = get_operand_num_faces(new_srca_operand_id);
+        // const std::uint32_t face_r_dim = get_operand_face_r_dim(new_srca_operand_id);
+        const std::uint32_t tile_size = cb_interface[new_srca_operand_id].fifo_page_size;
+        _llk_unpack_reconfig_data_format_srca_impl_v2_<
+            get_operand_src_format_v2(old_srca_operand_id),
+            get_operand_dst_format_v2(old_srca_operand_id),
+            get_operand_src_format_v2(new_srca_operand_id),
+            get_operand_dst_format_v2(new_srca_operand_id),
+            is_fp32_dest_acc_en>(tile_size);
+    }
+}
+
+template <std::uint32_t srcb_old_operand, std::uint32_t srcb_new_operand, bool is_fp32_dest_acc_en = false, bool is_tile_dim_reconfig_en = false>
+inline void llk_unpack_reconfig_data_format_srcb_v2() {
+    constexpr std::uint32_t old_srcb_operand_id = get_operand_id_v2(srcb_old_operand);
+    constexpr std::uint32_t new_srcb_operand_id = get_operand_id_v2(srcb_new_operand);
+
+    if constexpr ((get_operand_src_format_v2(old_srcb_operand_id) != get_operand_src_format_v2(new_srcb_operand_id))) {
+        // const std::uint32_t num_faces = get_operand_num_faces(new_srcb_operand_id);
+        // const std::uint32_t face_r_dim = get_operand_face_r_dim(new_srcb_operand_id);
+        const std::uint32_t tile_size = cb_interface[new_srcb_operand_id].fifo_page_size;
+        _llk_unpack_reconfig_data_format_srcb_impl_v2_<
+            get_operand_src_format_v2(old_srcb_operand_id),
+            get_operand_dst_format_v2(old_srcb_operand_id),
+            get_operand_src_format_v2(new_srcb_operand_id),
+            get_operand_dst_format_v2(new_srcb_operand_id),
+            is_fp32_dest_acc_en>(tile_size);
+    } else if constexpr (is_tile_dim_reconfig_en) {
+        // const std::uint32_t num_faces = get_operand_num_faces(new_srcb_operand_id);
+        // const std::uint32_t face_r_dim = get_operand_face_r_dim(new_srcb_operand_id);
+        const std::uint32_t tile_size = cb_interface[new_srcb_operand_id].fifo_page_size;
+        _llk_unpack_reconfig_data_format_srcb_impl_v2_<
+            get_operand_src_format_v2(old_srcb_operand_id),
+            get_operand_dst_format_v2(old_srcb_operand_id),
+            get_operand_src_format_v2(new_srcb_operand_id),
+            get_operand_dst_format_v2(new_srcb_operand_id),
+            is_fp32_dest_acc_en>(tile_size);
+    }
+}
+
+template <
+    std::uint32_t srca_old_operand,
+    std::uint32_t srca_new_operand,
+    std::uint32_t srcb_old_operand,
+    std::uint32_t srcb_new_operand,
+    bool is_fp32_dest_acc_en = false,
+    bool is_tile_dim_reconfig_en = false>
+inline void llk_unpack_reconfig_data_format_v2() {
+    llk_unpack_reconfig_data_format_srca_v2<srca_old_operand, srca_new_operand, is_fp32_dest_acc_en, is_tile_dim_reconfig_en>();
+    llk_unpack_reconfig_data_format_srcb_v2<srcb_old_operand, srcb_new_operand, is_fp32_dest_acc_en, is_tile_dim_reconfig_en>();
+}
+
 inline void llk_unpack_dbg_feature_disable() { _llk_unpack_dbg_feature_disable_(); }
+
 inline void llk_unpack_clear_dbg_feature_disable() { _llk_unpack_clear_dbg_feature_disable_(); }
 
 inline void llk_enable_int8_fpu_math() { _llk_enable_int8_fpu_math_(); }

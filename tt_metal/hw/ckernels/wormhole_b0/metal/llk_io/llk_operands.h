@@ -21,6 +21,21 @@ inline const uint32_t get_operand_dst_format(const std::uint32_t operand_id)
    return unpack_dst_format[operand_id];
 }
 
+inline constexpr uint32_t get_operand_id_v2(uint32_t operand)
+{
+   return (operand);
+}
+
+inline constexpr uint32_t get_operand_src_format_v2(std::uint32_t operand_id)
+{
+   return unpack_src_format[operand_id];
+}
+
+inline constexpr uint32_t get_operand_dst_format_v2(std::uint32_t operand_id)
+{
+   return unpack_dst_format[operand_id];
+}
+
 inline const uint32_t get_operand_num_faces(const std::uint32_t operand_id)
 {
    return (uint32_t)unpack_tile_num_faces[operand_id];

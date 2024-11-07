@@ -123,6 +123,64 @@ inline void llk_math_reconfig_data_format_srcb(
     }
 }
 
+template <
+    std::uint32_t srca_old_operand,
+    std::uint32_t srca_new_operand,
+    std::uint32_t srcb_old_operand,
+    std::uint32_t srcb_new_operand,
+    bool is_fp32_dest_acc_en = false>
+inline void llk_math_reconfig_data_format_v2() {
+    constexpr std::uint32_t old_srca_operand_id = get_operand_id_v2(srca_old_operand);
+    constexpr std::uint32_t new_srca_operand_id = get_operand_id_v2(srca_new_operand);
+    constexpr std::uint32_t old_srcb_operand_id = get_operand_id_v2(srcb_old_operand);
+    constexpr std::uint32_t new_srcb_operand_id = get_operand_id_v2(srcb_new_operand);
+
+    if ((get_operand_dst_format_v2(old_srca_operand_id) != get_operand_dst_format_v2(new_srca_operand_id)) &&
+        (get_operand_dst_format_v2(old_srcb_operand_id) != get_operand_dst_format_v2(new_srcb_operand_id))) {
+        _llk_math_reconfig_data_format_v2_<
+            get_operand_dst_format_v2(old_srca_operand_id),
+            get_operand_dst_format_v2(new_srca_operand_id),
+            get_operand_dst_format_v2(old_srcb_operand_id),
+            get_operand_dst_format_v2(new_srcb_operand_id),
+            is_fp32_dest_acc_en>();
+    } else if ((get_operand_dst_format_v2(old_srca_operand_id) != get_operand_dst_format_v2(new_srca_operand_id))) {
+        _llk_math_reconfig_data_format_srca_v2_<
+            get_operand_dst_format_v2(old_srca_operand_id),
+            get_operand_dst_format_v2(new_srca_operand_id),
+            is_fp32_dest_acc_en>();
+    } else if ((get_operand_dst_format_v2(old_srcb_operand_id) != get_operand_dst_format_v2(new_srcb_operand_id))) {
+        _llk_math_reconfig_data_format_srcb_v2_<
+            get_operand_dst_format_v2(old_srcb_operand_id),
+            get_operand_dst_format_v2(new_srcb_operand_id),
+            is_fp32_dest_acc_en>();
+    }
+}
+
+template <std::uint32_t srca_old_operand, std::uint32_t srca_new_operand, bool is_fp32_dest_acc_en = false>
+inline void llk_math_reconfig_data_format_srca_v2() {
+    constexpr std::uint32_t old_srca_operand_id = get_operand_id_v2(srca_old_operand);
+    constexpr std::uint32_t new_srca_operand_id = get_operand_id_v2(srca_new_operand);
+
+    if constexpr ((get_operand_dst_format_v2(old_srca_operand_id) != get_operand_dst_format_v2(new_srca_operand_id))) {
+        _llk_math_reconfig_data_format_srca_v2_<
+            get_operand_dst_format_v2(old_srca_operand_id),
+            get_operand_dst_format_v2(new_srca_operand_id),
+            is_fp32_dest_acc_en>();
+    }
+}
+
+template <std::uint32_t srcb_old_operand, std::uint32_t srcb_new_operand, bool is_fp32_dest_acc_en = false>
+inline void llk_math_reconfig_data_format_srcb_v2() {
+    constexpr std::uint32_t old_srcb_operand_id = get_operand_id_v2(srcb_old_operand);
+    constexpr std::uint32_t new_srcb_operand_id = get_operand_id_v2(srcb_new_operand);
+
+    if constexpr ((get_operand_dst_format_v2(old_srcb_operand_id) != get_operand_dst_format_v2(new_srcb_operand_id))) {
+        _llk_math_reconfig_data_format_srcb_v2_<
+            get_operand_dst_format_v2(old_srcb_operand_id),
+            get_operand_dst_format_v2(new_srcb_operand_id),
+            is_fp32_dest_acc_en>();
+    }
+}
 
 inline std::uint32_t llk_math_get_compute_special_value_flags() {
     return _llk_math_get_compute_special_value_flags_();

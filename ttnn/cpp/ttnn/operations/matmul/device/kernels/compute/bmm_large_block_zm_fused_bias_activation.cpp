@@ -24,16 +24,15 @@
 
 namespace NAMESPACE {
 
+template <uint32_t in0_cb_id, uint32_t in1_cb_id, uint32_t mm_partials_cb_id>
 FORCE_INLINE void reload_from_cb_to_dst(
-    uint32_t in0_cb_id,
-    uint32_t in1_cb_id,
-    uint32_t mm_partials_cb_id,
     bool in1_transpose_tile,
     uint32_t out_subblock_num_tiles,
     uint32_t out_subblock_w,
     uint32_t out_subblock_h,
     uint32_t in0_block_w) {
     // Reconfigure input
+    reconfig_data_format_srca_v2<in1_cb_id, mm_partials_cb_id>();
     copy_tile_to_dst_init_short_with_dt(in1_cb_id, mm_partials_cb_id);
     cb_wait_front(mm_partials_cb_id, out_subblock_num_tiles);
 
@@ -43,6 +42,7 @@ FORCE_INLINE void reload_from_cb_to_dst(
 
     cb_pop_front(mm_partials_cb_id, out_subblock_num_tiles);
     // Reconfigure srcA back
+    reconfig_data_format_srca_v2<mm_partials_cb_id, in1_cb_id>();
     mm_block_init_short_with_dt(
         in0_cb_id, in1_cb_id, mm_partials_cb_id, in1_transpose_tile, out_subblock_w, out_subblock_h, in0_block_w);
 }
@@ -172,10 +172,9 @@ void MAIN {
                 for (uint32_t in1_subblock = 0; in1_subblock < in1_num_subblocks; in1_subblock++) {
                     tile_regs_acquire();
                     if (enable_reload) {
-                        reload_from_cb_to_dst(
+                        reload_from_cb_to_dst<
                             in0_cb_id,
-                            in1_cb_id,
-                            mm_partials_cb_id,
+                            in1_cb_id,mm_partials_cb_id>(
                             in1_transpose_tile,
                             out_subblock_num_tiles,
                             out_subblock_w,
@@ -318,7 +317,7 @@ void MAIN {
         PACK((llk_pack_reconfig_l1_acc(0)));
 #endif
 
-        reconfig_data_format(in1_cb_id, mm_partials_cb_id, in0_cb_id, bias_cb_id);
+        reconfig_data_format_v2<in1_cb_id, mm_partials_cb_id, in0_cb_id, bias_cb_id>();
         add_bcast_rows_init_short();
         // reconfigure unpacker df for src B
         cb_wait_front(bias_cb_id, in1_per_core_w);
@@ -368,7 +367,7 @@ void MAIN {
             PACK((llk_pack_relu_config(ReluType::NO_RELU)));
 #endif  // PACK_RELU
 #ifndef FUSE_BIAS
-            reconfig_data_format_srca(in1_cb_id, mm_partials_cb_id);
+            reconfig_data_format_srca_v2<in1_cb_id, mm_partials_cb_id>();
 #if defined FP32_DEST_ACC_EN or defined PACKER_L1_ACC
             PACK((pack_reconfig_data_format(out_cb_id)));
 #endif
@@ -389,10 +388,10 @@ void MAIN {
             mm_block_init_short(in0_cb_id, in1_cb_id, 0, out_subblock_w, out_subblock_h, in0_block_w);
 #ifdef FUSE_BIAS
             // reconfigure unpacker df for src A and src B
-            reconfig_data_format(mm_partials_cb_id, in1_cb_id, bias_cb_id, in0_cb_id);
+            reconfig_data_format_v2<mm_partials_cb_id, in1_cb_id, bias_cb_id, in0_cb_id>();
 #else
             // reconfigure unpacker df for src A
-            reconfig_data_format_srca(mm_partials_cb_id, in1_cb_id);
+            reconfig_data_format_srca_v2<mm_partials_cb_id, in1_cb_id>();
 #endif
         }
     }

@@ -62,4 +62,31 @@ ALWI void reconfig_data_format_srcb(const uint32_t srcb_old_operand, const uint3
     MATH(( llk_math_reconfig_data_format_srcb<to_from_int8, DST_ACCUM_MODE>(srcb_old_operand, srcb_new_operand) ));
 }
 
+/**
+ * Helper function to reconfigure srca/srcb data formats, only if they differ from existing formats.
+*/
+template <uint32_t srca_old_operand, uint32_t srca_new_operand, uint32_t srcb_old_operand, uint32_t srcb_new_operand>
+ALWI void reconfig_data_format_v2() {
+    UNPACK(( llk_unpack_reconfig_data_format_v2<srca_old_operand, srca_new_operand, srcb_old_operand, srcb_new_operand, DST_ACCUM_MODE>() ));
+    MATH(( llk_math_reconfig_data_format_v2<srca_old_operand, srca_new_operand, srcb_old_operand, srcb_new_operand, DST_ACCUM_MODE>() ));
+}
+
+/**
+ * Helper function to reconfigure srca input data format, only if it differs from existing format.
+ */
+template <uint32_t srca_old_operand, uint32_t srca_new_operand>
+ALWI void reconfig_data_format_srca_v2() {
+    UNPACK(( llk_unpack_reconfig_data_format_srca_v2<srca_old_operand, srca_new_operand, DST_ACCUM_MODE>() ));
+    MATH(( llk_math_reconfig_data_format_srca_v2<srca_old_operand, srca_new_operand, DST_ACCUM_MODE>() ));
+}
+
+/**
+ * Helper function to reconfigure srcb input data format, only if it differs from existing format.
+ */
+template <uint32_t srcb_old_operand, uint32_t srcb_new_operand>
+ALWI void reconfig_data_format_srcb_v2() {
+    UNPACK(( llk_unpack_reconfig_data_format_srcb_v2<srcb_old_operand, srcb_new_operand, DST_ACCUM_MODE>() ));
+    MATH(( llk_math_reconfig_data_format_srcb_v2<srcb_old_operand, srcb_new_operand, DST_ACCUM_MODE>() ));
+}
+
 }
