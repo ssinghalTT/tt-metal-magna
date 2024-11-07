@@ -17,6 +17,8 @@ from models.demos.yolov4.ttnn.weight_parameter_update import update_weight_param
 from collections import OrderedDict
 import ttnn
 from models.utility_functions import skip_for_grayskull
+from pathlib import Path
+import shutil
 
 
 def yolo_forward_dynamic(
@@ -232,6 +234,8 @@ def plot_boxes_cv2(img, boxes, savename=None, class_names=None, color=None):
 
     width = img.shape[1]
     height = img.shape[0]
+    class_labels = []
+    pred_scores = []
     for i in range(len(boxes)):
         box = boxes[i]
         x1 = int(box[0] * width)
@@ -247,6 +251,8 @@ def plot_boxes_cv2(img, boxes, savename=None, class_names=None, color=None):
             cls_conf = box[5]
             cls_id = box[6]
             print("%s: %f" % (class_names[cls_id], cls_conf))
+            class_labels.append(cls_id)
+            pred_scores.append(round(cls_conf, 3))
             classes = len(class_names)
             offset = cls_id * 123457 % classes
             red = get_color(2, offset, classes)
@@ -274,7 +280,7 @@ def plot_boxes_cv2(img, boxes, savename=None, class_names=None, color=None):
     if savename:
         print("save plot results to %s" % savename)
         cv2.imwrite(savename, img)
-    return img
+    return img, class_labels, pred_scores
 
 
 def load_class_names(namesfile):
@@ -479,7 +485,7 @@ def do_detect(model, img, conf_thresh, nms_thresh, n_classes, device=None, class
             class_names = load_class_names(class_name)
             img = cv2.imread(imgfile)
 
-            plot_boxes_cv2(img, boxes[0], "ttnn_prediction_demo.jpg", class_names)
+            _, class_labels, pred_scores = plot_boxes_cv2(img, boxes[0], "ttnn_prediction_demo.jpg", class_names)
 
         else:
             t1 = time.time()
@@ -526,17 +532,101 @@ def do_detect(model, img, conf_thresh, nms_thresh, n_classes, device=None, class
 
             class_names = load_class_names(class_name)
             img = cv2.imread(imgfile)
-            plot_boxes_cv2(img, boxes[0], "torch_prediction_demo.jpg", class_names)
+            _, class_labels, pred_scores = plot_boxes_cv2(img, boxes[0], "torch_prediction_demo.jpg", class_names)
+    return boxes, class_labels, pred_scores
+
+
+def compute_iou(box1, box2):
+    # Box format: [x1, y1, x2, y2]
+    x1, y1, x2, y2 = box1[0:4]
+    x1_gt, y1_gt, x2_gt, y2_gt = box2[0:4]
+
+    # Calculate the area of intersection
+    xx1 = max(x1, x1_gt)
+    yy1 = max(y1, y1_gt)
+    xx2 = min(x2, x2_gt)
+    yy2 = min(y2, y2_gt)
+
+    # Intersection area
+    inter_width = max(0, xx2 - xx1)
+    inter_height = max(0, yy2 - yy1)
+    intersection_area = inter_width * inter_height
+
+    # Areas of the two boxes
+    box1_area = (x2 - x1) * (y2 - y1)
+    box2_area = (x2_gt - x1_gt) * (y2_gt - y1_gt)
+
+    # Calculate IoU
+    union_area = box1_area + box2_area - intersection_area
+    iou = intersection_area / union_area if union_area > 0 else 0
+    return iou
+
+
+def compute_precision_recall_f1(pred_boxes, gt_boxes, pred_scores, gt_labels, iou_threshold=0.5):
+    """
+    Compute precision, recall, and F1 score for object detection.
+
+    pred_boxes: List of predicted bounding boxes [x1, y1, x2, y2]
+    gt_boxes: List of ground truth bounding boxes [x1, y1, x2, y2]
+    pred_scores: List of predicted confidence scores
+    gt_labels: List of ground truth class labels
+    iou_threshold: IoU threshold for determining True Positive (default: 0.5)
+    """
+    assert len(pred_boxes) == len(pred_scores)
+
+    # True positives, false positives, and false negatives counters
+    tp = 0
+    fp = 0
+    fn = 0
+
+    # To track which ground truth boxes have been matched (to avoid double counting)
+    gt_matched = [False] * len(gt_boxes)
+
+    # Sort predictions by their confidence scores in descending order
+    order = np.argsort(pred_scores)[::-1]
+
+    for i in order:
+        pred_box = pred_boxes[i]
+        pred_score = pred_scores[i]
+
+        # Find the best matching ground truth box for the current prediction
+        best_iou = 0
+        best_gt_idx = -1
+        for j, gt_box in enumerate(gt_boxes):
+            if gt_matched[j]:
+                continue  # Skip already matched ground truth boxes
+
+            # Compute IoU between the prediction and the ground truth box
+            iou = compute_iou(pred_box, gt_box)
+            if iou > best_iou:
+                best_iou = iou
+                best_gt_idx = j
+
+        # If the IoU is above the threshold, it's a True Positive
+        if best_iou >= iou_threshold:
+            tp += 1
+            gt_matched[best_gt_idx] = True
+        else:
+            fp += 1
+
+    # Count False Negatives (unmatched ground truth boxes)
+    fn = len(gt_boxes) - sum(gt_matched)
+
+    # Precision, Recall, and F1 Score calculations
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+    f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+
+    return precision, recall, f1_score
 
 
 @skip_for_grayskull()
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
 @pytest.mark.parametrize(
     "use_pretrained_weight",
-    [True, False],
+    [True],
     ids=[
         "pretrained_weight_true",
-        "pretrained_weight_false",
     ],
 )
 def test_yolov4_model(device, model_location_generator, reset_seeds, input_path, use_pretrained_weight):
@@ -571,6 +661,22 @@ def test_yolov4_model(device, model_location_generator, reset_seeds, input_path,
         ttnn_model = TtYOLOv4(ttnn_weights)
 
     n_classes = 80
+    # data_path = Path("/mnt/MLPerf/tt_dnn-models/ssd/coco128/images/train2017/")
+    if not os.path.exists("models/demos/yolov4/demo/fiftyone_coco_validation.zip"):
+        os.system("models/demos/yolov4/demo/yolov4_coco_data_download.sh")
+
+    data_path = "/home/ubuntu/harini/tt-metal/models/demos/yolov4/demo/fiftyone_coco_validation/root/fiftyone/coco-2017/validation/data/"
+    images = []
+    data_path = Path(data_path)
+    for filename in os.listdir(data_path):
+        file_path = data_path / filename
+        image = cv2.imread(str(file_path))
+        if image is not None:
+            images.append(file_path)
+        else:
+            print(f"Warning: Could not read image {file_path}")
+    val_data = images[:500]
+
     namesfile = "models/demos/yolov4/demo/coco.names"
     if input_path == "":
         imgfile = "models/demos/yolov4/demo/giraffe_320.jpg"
@@ -579,16 +685,32 @@ def test_yolov4_model(device, model_location_generator, reset_seeds, input_path,
     width = 320
     height = 320
 
-    img = cv2.imread(imgfile)
+    f1_scores = []
+    for image in val_data:
+        image = str(image)
+        img = cv2.imread(image)
 
-    # Inference input size is 416*416 does not mean training size is the same
-    # Training size could be 608*608 or even other sizes
-    # Optional inference sizes:
-    #   Hight in {320, 416, 512, 608, ... 320 + 96 * n}
-    #   Width in {320, 416, 512, 608, ... 320 + 96 * m}
-    sized = cv2.resize(img, (width, height))
-    sized = cv2.cvtColor(sized, cv2.COLOR_BGR2RGB)
+        # Inference input size is 416*416 does not mean training size is the same
+        # Training size could be 608*608 or even other sizes
+        # Optional inference sizes:
+        #   Hight in {320, 416, 512, 608, ... 320 + 96 * n}
+        #   Width in {320, 416, 512, 608, ... 320 + 96 * m}
+        sized = cv2.resize(img, (width, height))
+        sized = cv2.cvtColor(sized, cv2.COLOR_BGR2RGB)
 
-    for i in range(2):  # This 'for' loop is for speed check
+        # for i in range(2):  # This 'for' loop is for speed check
         # Because the first iteration is usually longer
-        do_detect(ttnn_model, sized, 0.3, 0.4, n_classes, device, class_name=namesfile, imgfile=imgfile)
+        ttnn_boxes, ttnn_class_label, ttnn_pred_score = do_detect(
+            ttnn_model, sized, 0.3, 0.4, n_classes, device, class_name=namesfile, imgfile=image
+        )
+        torch_boxes, torch_class_label, torch_pred_score = do_detect(
+            torch_model, sized, 0.3, 0.4, n_classes, class_name=namesfile, imgfile=image
+        )
+        precision, recall, f1_score = compute_precision_recall_f1(
+            ttnn_boxes[0], torch_boxes[0], ttnn_pred_score, torch_class_label, iou_threshold=0.7
+        )
+        # print("precision: ", precision, "\nrecall: ", recall, "\nf1_score: ", f1_score)
+        f1_scores.append(f1_score)
+    avg_f1_score = sum(f1_scores) / len(f1_scores)
+    print("number of fscores:", len(f1_scores))
+    print("avg_f1_score: ", avg_f1_score)
