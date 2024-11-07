@@ -174,12 +174,8 @@ int main(int argc, char **argv) {
             core,
             {
                 src0_dram_buffer->address(),
-                static_cast<uint32_t>(src0_dram_buffer->noc_coordinates().x),
-                static_cast<uint32_t>(src0_dram_buffer->noc_coordinates().y),
                 num_tiles,
                 src1_dram_buffer->address(),
-                static_cast<uint32_t>(src1_dram_buffer->noc_coordinates().x),
-                static_cast<uint32_t>(src1_dram_buffer->noc_coordinates().y),
                 num_tiles,
                 0
             }
@@ -200,8 +196,6 @@ int main(int argc, char **argv) {
             core,
             {
                 dst_dram_buffer->address(),
-                static_cast<uint32_t>(dst_dram_buffer->noc_coordinates().x),
-                static_cast<uint32_t>(dst_dram_buffer->noc_coordinates().y),
                 num_tiles
             }
         );
@@ -277,12 +271,8 @@ int main(int argc, char **argv) {
             core,
             {
                 src0_dram_buffer->address(),
-                static_cast<uint32_t>(src0_dram_buffer->noc_coordinates().x),
-                static_cast<uint32_t>(src0_dram_buffer->noc_coordinates().y),
                 num_tiles,
                 src1_dram_buffer->address(),
-                static_cast<uint32_t>(src1_dram_buffer->noc_coordinates().x),
-                static_cast<uint32_t>(src1_dram_buffer->noc_coordinates().y),
                 num_tiles,
                 0
             }
@@ -303,8 +293,6 @@ int main(int argc, char **argv) {
             core,
             {
                 dst_dram_buffer->address(),
-                static_cast<uint32_t>(dst_dram_buffer->noc_coordinates().x),
-                static_cast<uint32_t>(dst_dram_buffer->noc_coordinates().y),
                 num_tiles
             }
         );

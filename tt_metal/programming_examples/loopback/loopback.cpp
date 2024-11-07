@@ -81,12 +81,9 @@ int main(int argc, char **argv) {
         const std::vector<uint32_t> runtime_args = {
             l1_buffer->address(),
             input_dram_buffer->address(),
-            static_cast<uint32_t>(input_dram_buffer->noc_coordinates().x),
-            static_cast<uint32_t>(input_dram_buffer->noc_coordinates().y),
             output_dram_buffer->address(),
-            static_cast<uint32_t>(output_dram_buffer->noc_coordinates().x),
-            static_cast<uint32_t>(output_dram_buffer->noc_coordinates().y),
-            l1_buffer->size()
+            l1_buffer->size(),
+            dram_buffer_size
         };
 
         SetRuntimeArgs(
