@@ -32,22 +32,22 @@ parameters = {
         + gen_shapes([1, 256, 256], [12, 512, 512], [1, 256, 256], 4)
         + gen_shapes([256, 256], [512, 512], [256, 256], 4),
         "input_a_dtype": [ttnn.bfloat16, ttnn.bfloat8_b],
+        "input_b_dtype": [ttnn.bfloat16, ttnn.bfloat8_b],
         "input_layout": [ttnn.TILE_LAYOUT, ttnn.ROW_MAJOR_LAYOUT],
         "sharding_strategy": [ttnn.ShardStrategy.BLOCK, ttnn.ShardStrategy.HEIGHT, ttnn.ShardStrategy.WIDTH],
         "shard_orientation": [ttnn.ShardOrientation.ROW_MAJOR, ttnn.ShardOrientation.COL_MAJOR],
-        "input_a_memory_config": [ttnn.DRAM_MEMORY_CONFIG, ttnn.L1_MEMORY_CONFIG],
-        "output_memory_config": [ttnn.DRAM_MEMORY_CONFIG, ttnn.L1_MEMORY_CONFIG],
+        "output_memory_config": [ttnn.DRAM_MEMORY_CONFIG, ttnn.L1_MEMORY_CONFIG, "sharded"],
     },
     "xfail": {
         "input_shape": gen_shapes([1, 1, 96, 96], [6, 12, 512, 512], [1, 1, 16, 16], 4)
         + gen_shapes([1, 96, 96], [12, 512, 512], [1, 16, 16], 4)
         + gen_shapes([96, 96], [512, 512], [16, 16], 4),
         "input_a_dtype": [ttnn.bfloat16, ttnn.bfloat8_b],
+        "input_b_dtype": [ttnn.bfloat16, ttnn.bfloat8_b],
         "input_layout": [ttnn.TILE_LAYOUT, ttnn.ROW_MAJOR_LAYOUT],
         "sharding_strategy": [ttnn.ShardStrategy.BLOCK, ttnn.ShardStrategy.HEIGHT, ttnn.ShardStrategy.WIDTH],
         "shard_orientation": [ttnn.ShardOrientation.ROW_MAJOR, ttnn.ShardOrientation.COL_MAJOR],
-        "input_a_memory_config": [ttnn.DRAM_MEMORY_CONFIG, ttnn.L1_MEMORY_CONFIG],
-        "output_memory_config": [ttnn.DRAM_MEMORY_CONFIG, ttnn.L1_MEMORY_CONFIG],
+        "output_memory_config": [ttnn.DRAM_MEMORY_CONFIG, ttnn.L1_MEMORY_CONFIG, "sharded"],
     },
 }
 
@@ -80,10 +80,10 @@ def invalidate_vector(test_vector) -> Tuple[bool, Optional[str]]:
 def run(
     input_shape,
     input_a_dtype,
+    input_b_dtype,
     input_layout,
     sharding_strategy,
     shard_orientation,
-    input_a_memory_config,
     output_memory_config,
     *,
     device,
@@ -100,19 +100,14 @@ def run(
     torch_input_tensor_a = gen_func_with_cast_tt(
         partial(torch_random, low=-100, high=100, dtype=torch.float32), input_a_dtype
     )(input_shape)
+    torch_input_tensor_b = gen_func_with_cast_tt(
+        partial(torch_random, low=-100, high=100, dtype=torch.float32), input_a_dtype
+    )(input_shape)
 
     scalar = torch.tensor(1, dtype=torch.bfloat16).uniform_(-100, 100).item()
 
-    golden_function = ttnn.get_golden_function(ttnn.add)
-    torch_output_tensor = golden_function(torch_input_tensor_a, scalar)
-
-    input_tensor_a = ttnn.from_torch(
-        torch_input_tensor_a,
-        dtype=input_a_dtype,
-        layout=input_layout,
-        device=device,
-        memory_config=input_a_memory_config,
-    )
+    golden_function = ttnn.get_golden_function(ttnn.subtract)
+    torch_output_tensor = golden_function(torch_input_tensor_a, torch_input_tensor_b)
 
     sharded_config = ttnn.create_sharded_memory_config(
         shape=input_shape,
@@ -122,10 +117,30 @@ def run(
         use_height_and_width_as_shard_shape=False,
     )
 
+    input_tensor_a = ttnn.from_torch(
+        torch_input_tensor_a,
+        dtype=input_a_dtype,
+        layout=input_layout,
+        device=device,
+        memory_config=sharded_config,
+    )
+
+    input_tensor_b = ttnn.from_torch(
+        torch_input_tensor_b,
+        dtype=input_b_dtype,
+        layout=input_layout,
+        device=device,
+        memory_config=sharded_config,
+    )
+
     input_tensor_a = ttnn.to_memory_config(input_tensor_a, sharded_config)
+    input_tensor_b = ttnn.to_memory_config(input_tensor_b, sharded_config)
+
+    if output_memory_config == "sharded":
+        output_memory_config = sharded_config
 
     start_time = start_measuring_time()
-    output_tensor = ttnn.add(input_tensor_a, scalar)
+    output_tensor = ttnn.subtract(input_tensor_a, input_tensor_b, memory_config=output_memory_config)
     e2e_perf = stop_measuring_time(start_time)
 
     output_tensor = ttnn.to_torch(output_tensor)

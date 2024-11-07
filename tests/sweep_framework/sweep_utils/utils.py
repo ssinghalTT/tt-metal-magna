@@ -259,3 +259,35 @@ def get_device_grid_size():
         y, x = 8, 8
 
     return y, x
+
+
+def get_memory_config(mem_config_string, input_shape, coregrid, height_and_width_as_shard_shape=False):
+    if mem_config_string == "l1_interleaved":
+        return ttnn.L1_MEMORY_CONFIG
+    elif mem_config_string == "dram_interleaved":
+        return ttnn.DRAM_MEMORY_CONFIG
+    elif mem_config_string == "l1_height_sharded":
+        return ttnn.create_sharded_memory_config(
+            shape=input_shape,
+            core_grid=coregrid,
+            strategy=ttnn.ShardStrategy.HEIGHT,
+            orientation=ttnn.ShardOrientation.ROW_MAJOR,
+            use_height_and_width_as_shard_shape=height_and_width_as_shard_shape,
+        )
+    elif mem_config_string == "l1_width_sharded":
+        return ttnn.create_sharded_memory_config(
+            shape=input_shape,
+            core_grid=coregrid,
+            strategy=ttnn.ShardStrategy.WIDTH,
+            orientation=ttnn.ShardOrientation.ROW_MAJOR,
+            use_height_and_width_as_shard_shape=height_and_width_as_shard_shape,
+        )
+    elif mem_config_string == "l1_block_sharded":
+        return ttnn.create_sharded_memory_config(
+            shape=input_shape,
+            core_grid=coregrid,
+            strategy=ttnn.ShardStrategy.BLOCK,
+            orientation=ttnn.ShardOrientation.ROW_MAJOR,
+            use_height_and_width_as_shard_shape=height_and_width_as_shard_shape,
+        )
+    raise ("Input mem_config_string is not valid!")
