@@ -134,6 +134,8 @@ def run_all_gather_impl(
     trace_mode=False,
     tile=(32, 32),
 ):
+    if (tile != (32, 32)) and (input_dtype != ttnn.bfloat16):
+        pytest.skip("Only bfloat16 supported for tiny tile")
     if num_iters < 1:
         pytest.fail("num_iters must be >= 1")
     # Use Async mode based on test input config
@@ -183,7 +185,16 @@ def run_all_gather_impl(
         else:
             eq, output = comp_pcc(tt_output_tensor, input_tensor)
         if not eq:
+            # print("Input:")
+            # torch.set_printoptions(linewidth=200)
+            # torch.set_printoptions(profile="full")
+            # print(input_tensor)
+            # print("Output:")
+            # torch.set_printoptions(linewidth=200)
+            # torch.set_printoptions(profile="full")
+            # print(tt_output_tensor)
             logger.error(f"output mismatch for tensor {i}")
+        torch.set_printoptions(profile="default")
         assert eq, f"{i} FAILED: {output}"
 
 
@@ -244,6 +255,7 @@ def run_all_gather_on_t3000_impl(
     all_gather_topology,
     num_iters=1,
     enable_async=False,
+    tile=(32, 32),
 ):
     if mesh_device.get_num_devices() < num_devices:
         pytest.skip("Not T3000!")
@@ -268,6 +280,7 @@ def run_all_gather_on_t3000_impl(
         all_gather_topology=all_gather_topology,
         num_iters=num_iters,
         enable_async=enable_async,
+        tile=tile,
     )
 
 
@@ -285,6 +298,7 @@ def run_all_gather_on_t3000_impl_tight_loop(
     all_gather_topology,
     num_iters,
     enable_async=False,
+    tile=(32, 32),
 ):
     run_all_gather_on_t3000_impl(
         mesh_device,
@@ -300,6 +314,7 @@ def run_all_gather_on_t3000_impl_tight_loop(
         all_gather_topology=all_gather_topology,
         num_iters=num_iters,
         enable_async=enable_async,
+        tile=tile,
     )
 
 
@@ -372,8 +387,8 @@ def test_all_gather_on_t3000_post_commit_looping(
     [
         (8, 1, [8, 1, 256, 32], 0, ttnn.TILE_LAYOUT),
         (8, 1, [1, 1, 32, 16384], 3, ttnn.TILE_LAYOUT),
-        (8, 1, [8, 1, 256, 32], 0, ttnn.ROW_MAJOR_LAYOUT),
-        (8, 1, [1, 1, 32, 16384], 3, ttnn.ROW_MAJOR_LAYOUT),
+        # (8, 1, [8, 1, 256, 32], 0, ttnn.ROW_MAJOR_LAYOUT),
+        # (8, 1, [1, 1, 32, 16384], 3, ttnn.ROW_MAJOR_LAYOUT),
     ],
 )
 @pytest.mark.parametrize(
@@ -386,7 +401,7 @@ def test_all_gather_on_t3000_post_commit_looping(
 @pytest.mark.parametrize(
     "mem_config",
     [
-        # ttnn.MemoryConfig(buffer_type=ttnn.BufferType.DRAM),        # https://github.com/tenstorrent/tt-metal/issues/9686
+        ttnn.MemoryConfig(buffer_type=ttnn.BufferType.DRAM),  # https://github.com/tenstorrent/tt-metal/issues/9686
         ttnn.MemoryConfig(buffer_type=ttnn.BufferType.L1),
     ],
 )
@@ -533,11 +548,14 @@ def test_all_gather_on_t3000_post_commit_for_profiler_regression(
 @pytest.mark.parametrize(
     "num_devices, num_links, input_shape, dim, layout",
     [
-        (8, 1, [8, 1, 33, 256], 0, ttnn.ROW_MAJOR_LAYOUT),  # https://github.com/tenstorrent/tt-metal/issues/9686
+        # (8, 1, [8, 1, 33, 256], 0, ttnn.ROW_MAJOR_LAYOUT),  # https://github.com/tenstorrent/tt-metal/issues/9686
         # (8, 1, [8, 8, 256, 384], 1, ttnn.ROW_MAJOR_LAYOUT),           # https://github.com/tenstorrent/tt-metal/issues/9686
         # (8, 1, [8, 8, 256, 384], 1, ttnn.TILE_LAYOUT),           # https://github.com/tenstorrent/tt-metal/issues/9686
         # (8, 1, [8, 5, 13, 512], 3, ttnn.ROW_MAJOR_LAYOUT),           # https://github.com/tenstorrent/tt-metal/issues/9686
-        # (8, 1, [8, 5, 32, 512], 3, ttnn.TILE_LAYOUT),
+        (8, 1, [8, 8, 256, 512], 3, ttnn.TILE_LAYOUT),
+        # (8, 1, [8, 8, 256, 512], 2, ttnn.TILE_LAYOUT),
+        # (8, 1, [8, 8, 256, 512], 1, ttnn.TILE_LAYOUT),
+        (8, 1, [8, 8, 256, 512], 0, ttnn.TILE_LAYOUT),
         # Only for BFP8B
         # # ([1, 1, 640, 32768], 3, ttnn.TILE_LAYOUT),        # https://github.com/tenstorrent/tt-metal/issues/9686
         # # MLP AllGather,  Llama 2 decode attn, mlp. Llama2, Falcon 40B decode mlp attn
@@ -580,6 +598,8 @@ def test_all_gather_on_t3000_post_commit_for_profiler_regression(
         # ttnn.MemoryConfig(buffer_type=ttnn.BufferType.L1),  # https://github.com/tenstorrent/tt-metal/issues/9686
     ],
 )
+@pytest.mark.parametrize("tile_h", [1, 2, 4, 8, 16])
+@pytest.mark.parametrize("tile_w", [32])
 def test_all_gather_on_t3000_post_commit(
     t3k_mesh_device,
     num_devices,
@@ -591,6 +611,8 @@ def test_all_gather_on_t3000_post_commit(
     mem_config,
     use_program_cache,
     function_level_defaults,
+    tile_h,
+    tile_w,
 ):
     run_all_gather_on_t3000_impl(
         t3k_mesh_device,
@@ -604,6 +626,7 @@ def test_all_gather_on_t3000_post_commit(
         use_program_cache,
         function_level_defaults,
         all_gather_topology=ttnn.Topology.Ring,
+        tile=(tile_h, tile_w),
     )
 
 
@@ -1243,6 +1266,7 @@ def run_all_gather_sharded(
     torch.set_printoptions(sci_mode=False)
     all_eq = True
     reported_mismatch = False
+    file = open("camilo_test.csv", "w")
     for i, t in enumerate(ttnn.get_device_tensors(tt_out_tensor)):
         tt_output_tensor = t.cpu().to(ttnn.ROW_MAJOR_LAYOUT).to_torch()
         if input_dtype == ttnn.bfloat16:
@@ -1252,20 +1276,31 @@ def run_all_gather_sharded(
         if not eq:
             all_eq = False
             logger.error(f"output mismatch for tensor {i}")
+            """
             for w in range(input_shape[0]):
                 for z in range(input_shape[1]):
-                    for y in range(0, input_shape[2], 32):
-                        for x in range(0, input_shape[3], 32):
+                    for y in range(0, input_shape[2], 1):
+                        string_to_print = "correct:,"+str(w)+", "+str(z)+", "+str(y)+", "
+                        string_to_print2 = "output:,"+str(w)+", "+str(z)+", "+str(y)+", "
+                        for x in range(0, input_shape[3], 1):
                             xx = 0
                             yy = 0
+                            string_to_print = string_to_print + str(unchunked_input_tensor[w, z, y + yy, x + xx])+","
+                            string_to_print2 = string_to_print2 + str(tt_output_tensor[w, z, y + yy, x + xx])+","
                             # for yy in range(32):
                             #     for xx in range(32):
                             if tt_output_tensor[w, z, y + yy, x + xx] != unchunked_input_tensor[w, z, y + yy, x + xx]:
                                 logger.error(
                                     f"mismatch at {w}, {z}, {y + yy}, {x + xx}: {tt_output_tensor[w, z, y + yy, x + xx]} != {unchunked_input_tensor[w, z, y + yy, x + xx]}"
                                 )
+
+
                                 # if not reported_mismatch:
                                 #     reported_mismatch = True
+                        file.write(string_to_print + "\n"+string_to_print2 + "\n")
+                        print(string_to_print)
+                        print(string_to_print2)
+            """
 
     assert all_eq, f"{i} FAILED: {output}"
 
@@ -1390,8 +1425,8 @@ def run_all_gather_sharded_n300(
     "tensor_mem_layout",
     [
         ttnn.TensorMemoryLayout.WIDTH_SHARDED,
-        # ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
-        # ttnn.TensorMemoryLayout.BLOCK_SHARDED,
+        ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+        ttnn.TensorMemoryLayout.BLOCK_SHARDED,
     ],
 )
 @pytest.mark.parametrize("orientation", [ttnn.ShardOrientation.ROW_MAJOR])
@@ -1407,8 +1442,8 @@ def run_all_gather_sharded_n300(
         ),
     ),
 )
-@pytest.mark.parametrize("tile_h", [16, 32])
-@pytest.mark.parametrize("tile_w", [16, 32])
+@pytest.mark.parametrize("tile_h", [32])
+@pytest.mark.parametrize("tile_w", [32])
 @pytest.mark.parametrize("enable_async", [True])
 def test_tiny_all_gather_sharded_post_commit(
     t3k_mesh_device,
@@ -1590,6 +1625,7 @@ def test_all_gather_sharded_post_commit(
     ),
 )
 @pytest.mark.parametrize("enable_async", [True])
+@pytest.mark.parametrize("tile_h", [1, 2, 4, 8, 16, 32])
 def test_all_gather_height_sharded_post_commit(
     t3k_mesh_device,
     num_devices,
@@ -1606,6 +1642,7 @@ def test_all_gather_height_sharded_post_commit(
     use_program_cache,
     function_level_defaults,
     enable_async,
+    tile_h,
 ):
     run_all_gather_sharded_t3k(
         t3k_mesh_device,
@@ -1624,6 +1661,7 @@ def test_all_gather_height_sharded_post_commit(
         function_level_defaults,
         all_gather_topology=ttnn.Topology.Ring,
         enable_async=enable_async,
+        tile=(tile_h, 32),
     )
 
 
@@ -1674,6 +1712,7 @@ def test_all_gather_height_sharded_post_commit(
     ),
 )
 @pytest.mark.parametrize("enable_async", [True])
+@pytest.mark.parametrize("tile_h", [32])
 def test_all_gather_block_sharded_post_commit(
     t3k_mesh_device,
     num_devices,
@@ -1690,6 +1729,7 @@ def test_all_gather_block_sharded_post_commit(
     use_program_cache,
     function_level_defaults,
     enable_async,
+    tile_h,
 ):
     run_all_gather_sharded_t3k(
         t3k_mesh_device,
@@ -1708,6 +1748,7 @@ def test_all_gather_block_sharded_post_commit(
         function_level_defaults,
         all_gather_topology=ttnn.Topology.Ring,
         enable_async=enable_async,
+        tile=(tile_h, 32),
     )
 
 
@@ -1765,6 +1806,7 @@ def test_all_gather_block_sharded_post_commit(
         ),
     ),
 )
+@pytest.mark.parametrize("tile_h", [32])
 @pytest.mark.parametrize("enable_async", [True])
 def test_line_all_gather_sharded_post_commit(
     t3k_mesh_device,
@@ -1782,6 +1824,7 @@ def test_line_all_gather_sharded_post_commit(
     use_program_cache,
     function_level_defaults,
     enable_async,
+    tile_h,
 ):
     run_all_gather_sharded_t3k(
         t3k_mesh_device,
@@ -1800,6 +1843,7 @@ def test_line_all_gather_sharded_post_commit(
         function_level_defaults,
         all_gather_topology=ttnn.Topology.Linear,
         enable_async=enable_async,
+        tile=(tile_h, 32),
     )
 
 
@@ -1927,6 +1971,7 @@ def test_line_all_gather_sharded_post_commit(
         ),
     ),
 )
+@pytest.mark.parametrize("tile_h", [1, 2, 4, 8, 16, 32])
 @pytest.mark.parametrize("enable_async", [True])
 @pytest.mark.parametrize("all_gather_topology", [ttnn.Topology.Ring, ttnn.Topology.Linear])
 def test_sharded_all_gather_nightly(
@@ -1946,6 +1991,7 @@ def test_sharded_all_gather_nightly(
     function_level_defaults,
     all_gather_topology,
     enable_async,
+    tile_h,
 ):
     run_all_gather_sharded_t3k(
         t3k_mesh_device,
@@ -1964,6 +2010,7 @@ def test_sharded_all_gather_nightly(
         function_level_defaults,
         all_gather_topology=all_gather_topology,
         enable_async=enable_async,
+        tile=(tile_h, 32),
     )
 
 

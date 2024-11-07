@@ -24,8 +24,9 @@ from ttnn import ShardTensorToMesh
         (8, 1, [8, 1, 33, 256], 0, ttnn.ROW_MAJOR_LAYOUT),
         (8, 1, [8, 1, 256, 32], 0, ttnn.TILE_LAYOUT),
         (8, 1, [8, 8, 256, 384], 1, ttnn.ROW_MAJOR_LAYOUT),
-        # (4, 2, [8, 8, 256, 384], 1, ttnn.TILE_LAYOUT),
+        (4, 2, [8, 8, 256, 384], 1, ttnn.TILE_LAYOUT),
         (8, 1, [8, 8, 256, 384], 1, ttnn.TILE_LAYOUT),
+        (8, 1, [8, 4, 256, 384], 3, ttnn.TILE_LAYOUT),
         (4, 1, [8, 5, 13, 384], 3, ttnn.ROW_MAJOR_LAYOUT),
         (8, 1, [8, 5, 13, 512], 3, ttnn.ROW_MAJOR_LAYOUT),
         (4, 1, [8, 5, 32, 384], 3, ttnn.TILE_LAYOUT),
@@ -48,6 +49,7 @@ from ttnn import ShardTensorToMesh
     ],
 )
 @pytest.mark.parametrize("enable_async", [True, False])
+@pytest.mark.parametrize("tile_h", [1, 2, 4, 8, 16, 32])
 def test_line_all_gather_on_t3000_nightly(
     t3k_mesh_device,
     num_devices,
@@ -60,8 +62,11 @@ def test_line_all_gather_on_t3000_nightly(
     use_program_cache,
     function_level_defaults,
     enable_async,
+    tile_h,
     num_iters=1,
 ):
+    if (tile_h != 32) and (input_shape == [8, 8, 256, 384]) and (dim == 1):
+        pytest.skip("Skipping unsupported case")
     run_all_gather_on_t3000_impl(
         t3k_mesh_device,
         num_devices,
@@ -76,6 +81,7 @@ def test_line_all_gather_on_t3000_nightly(
         all_gather_topology=ttnn.Topology.Linear,
         enable_async=enable_async,
         num_iters=num_iters,
+        tile=(tile_h, 32),
     )
 
 

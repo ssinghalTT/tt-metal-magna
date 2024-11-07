@@ -55,13 +55,14 @@ class CclOpTensorConfig {
     CclOpTensorConfig(Tensor const& tensor);
     uint32_t get_page_size() const;
     Tile get_tile() const;
-
+    uint32_t get_tile_size() const;
     uint32_t get_buffer_start_address() const;
 
     virtual ~CclOpTensorConfig()=default;
 
    protected:
     uint32_t page_size;
+    uint32_t tile_size;
     Tile tile;
     uint32_t buffer_start_address;
     tt::DataFormat df;
@@ -396,7 +397,6 @@ class InterleavedRingAllGatherTensorSlicer : public LegacyCclTensorSlicer {
         this->row_major = input_tensor.get_layout() == Layout::ROW_MAJOR;
         this->slice_dim_is_width = input_tensor.get_legacy_shape().rank() - 1 == slice_dim;
         this->is_sharded = input_tensor.is_sharded();
-
         this->input_page_size = input_tensor.buffer()->page_size();
 
         if (row_major) {
@@ -410,18 +410,18 @@ class InterleavedRingAllGatherTensorSlicer : public LegacyCclTensorSlicer {
                     output_shape.begin() + slice_dim, output_shape.end() - 1, 1, std::multiplies<uint32_t>()) -
                 num_rows;
         } else {
-            this->num_cols = input_tensor.get_legacy_shape()[-1] / tt::constants::TILE_WIDTH;
+            this->num_cols = input_tensor.get_legacy_shape()[-1] / input_tensor.get_tile().get_width();
             auto input_shape = input_tensor.get_legacy_shape();
             auto output_shape = output_tensor.get_legacy_shape();
-            uint32_t num_output_cols = output_tensor.get_legacy_shape()[-1] / tt::constants::TILE_WIDTH;
+            uint32_t num_output_cols = output_tensor.get_legacy_shape()[-1] / output_tensor.get_tile().get_width();
             this->num_rows =
                 std::accumulate(
                     input_shape.begin() + slice_dim, input_shape.end() - 1, 1, std::multiplies<uint32_t>()) /
-                tt::constants::TILE_HEIGHT;
+                input_tensor.get_tile().get_height();
             this->row_offset =
                 (std::accumulate(
                      output_shape.begin() + slice_dim, output_shape.end() - 1, 1, std::multiplies<uint32_t>()) /
-                     tt::constants::TILE_HEIGHT -
+                     output_tensor.get_tile().get_height() -
                  num_rows) *
                 num_output_cols;
             this->col_offset = num_output_cols - num_cols;

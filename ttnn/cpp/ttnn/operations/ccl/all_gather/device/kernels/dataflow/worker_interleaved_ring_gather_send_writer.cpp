@@ -4,7 +4,6 @@
 
 #include <cstdint>
 #include "dataflow_api.h"
-#include "debug/waypoint.h"
 #include "debug/assert.h"
 #include "ttnn/cpp/ttnn/operations/ccl/all_gather/device/kernels/dataflow/worker_ring_gather_utils.hpp"
 #include "ttnn/cpp/ttnn/operations/ccl/shared_with_host/sharded_tensor_addr_gen.hpp"
@@ -13,7 +12,6 @@
 
 
 void kernel_main() {
-    WAYPOINT("DAAA");
     uint32_t arg_idx = 0;
     const uint32_t dst_addr = get_arg_val<uint32_t>(arg_idx++);
     const uint32_t eth_sender_l1_base_addr = get_arg_val<uint32_t>(arg_idx++);
@@ -71,7 +69,6 @@ void kernel_main() {
     constexpr uint32_t output_tensor_shard_pages_per_shard_x = get_compile_time_arg_val(13);
     constexpr bool output_tensor_shard_grid_transposed = get_compile_time_arg_val(14) != 0;
     #endif
-    WAYPOINT("DAAB");
     constexpr uint32_t cb_id_in0 = tt::CB::c_in0;
     #ifdef ROW_MAJOR_LAYOUT
         #ifdef INTERLEAVED_MEM_LAYOUT
@@ -98,7 +95,7 @@ void kernel_main() {
         #ifdef INTERLEAVED_MEM_LAYOUT
         const DataFormat in0_df = get_dataformat(cb_id_in0);
 
-        const InterleavedAddrGenFast<dst_is_dram> d = {
+        const InterleavedAddrGenFast<dst_is_dram,OUTPUT_TILE_SIZE> d = {
             .bank_base_address = dst_addr,
             .page_size = output_page_size,
             .data_format = in0_df
@@ -120,7 +117,6 @@ void kernel_main() {
             );
         #endif
     #endif
-    WAYPOINT("DAAC");
     ccl::edm::WorkerToEdmSender<ttnn::ccl::EriscDataMoverTerminationMode::MESSAGE_COUNT_REACHED> sender(
         ttnn::ccl::WorkerXY(eth_sender_noc_x, eth_sender_noc_y),
         eth_sender_l1_base_addr,
@@ -142,7 +138,6 @@ void kernel_main() {
             write_and_send_chunk(output_page_idx, col_idx, row_idx, cb_id_in0, d, num_cols, num_rows, col_offset, row_offset, num_pages_per_full_chunk, page_size, sender);
         }
     }
-    WAYPOINT("DAAD");
     if (rem_num_pages > 0) {
         sender.wait_for_empty_write_slot();
         write_and_send_chunk(output_page_idx, col_idx, row_idx, cb_id_in0, d, num_cols, num_rows, col_offset, row_offset, rem_num_pages, page_size, sender);
@@ -150,12 +145,10 @@ void kernel_main() {
         ASSERT(half_cb_n_pages > rem_num_pages);
         pop_filler_pages_from_cb(cb_id_in0, half_cb_n_pages - rem_num_pages);
     }
-    WAYPOINT("DAAE");
     if (fuse_op) {
         // Synchronize and signal that the local tensor slice is available
         op_signaler.synchronize_workers_and_signal_op(input_start_ring_idx);
     }
-    WAYPOINT("DAAF");
     // num_transfers = num_devices - 1
     for (uint32_t i = 1; i < num_transfers; ++i) {
         if (num_full_chunks > 0) {
@@ -172,7 +165,6 @@ void kernel_main() {
             pop_filler_pages_from_cb(cb_id_in0, half_cb_n_pages - rem_num_pages);
         }
     }
-    WAYPOINT("DAAG");
 
     sender.close();
 }

@@ -857,3 +857,80 @@ def test_block_sharded_reduce_scatter_post_commit(
         enable_async=enable_async,
         num_iters=num_iters,
     )
+
+
+@skip_for_grayskull("Requires eth connected devices to run")
+@pytest.mark.timeout(120)
+@pytest.mark.parametrize(
+    "num_devices, num_links",
+    [
+        (8, 1),
+    ],
+)
+@pytest.mark.parametrize("dim", [3])
+@pytest.mark.parametrize(
+    "tensor_mem_layout",
+    [
+        ttnn.TensorMemoryLayout.BLOCK_SHARDED,
+    ],
+)
+@pytest.mark.parametrize("tensor_layout", [ttnn.TILE_LAYOUT])
+@pytest.mark.parametrize("orientation", [ttnn.ShardOrientation.ROW_MAJOR])
+@pytest.mark.parametrize(
+    "input_dtype",
+    [
+        ttnn.bfloat16,
+    ],
+)
+@pytest.mark.parametrize(
+    "per_chip_output_shape,output_shard_shape,shard_grid",
+    (
+        # LLama
+        (
+            (1, 1, 256, 512),
+            (64, 64),
+            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 3))}),
+        ),
+    ),
+)
+@pytest.mark.parametrize("tile_h", [1, 2, 4, 8, 16, 32])
+@pytest.mark.parametrize("math_op", [ttnn.ReduceType.Sum])
+@pytest.mark.parametrize("enable_async", [True])
+def test_tiny_block_sharded_reduce_scatter_post_commit(
+    t3k_mesh_device,
+    num_devices,
+    per_chip_output_shape,
+    output_shard_shape,
+    dim,
+    num_links,
+    math_op,
+    shard_grid,
+    orientation,
+    input_dtype,
+    tensor_layout,
+    tensor_mem_layout,
+    use_program_cache,
+    function_level_defaults,
+    enable_async,
+    tile_h,
+    num_iters=1,
+):
+    run_reduce_scatter_sharded_test(
+        t3k_mesh_device,
+        num_devices,
+        per_chip_output_shape,
+        output_shard_shape,
+        dim,
+        num_links,
+        math_op,
+        shard_grid,
+        orientation,
+        input_dtype,
+        tensor_layout,
+        tensor_mem_layout,
+        use_program_cache=use_program_cache,
+        function_level_defaults=function_level_defaults,
+        enable_async=enable_async,
+        num_iters=num_iters,
+        tile=(tile_h, 32),
+    )
