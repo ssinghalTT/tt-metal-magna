@@ -65,15 +65,16 @@ void kernel_main() {
      * that unit of data can be readback for accumulation with the outputs from the opposite line directoin
      */
     constexpr bool is_line_reduce_scatter = get_compile_time_arg_val(3) != 0;
+    constexpr bool tile_size = get_compile_time_arg_val(4);
 
     #ifdef SHARDED_MEM_LAYOUT
-    constexpr uint32_t output_tensor_shard_grid_height = get_compile_time_arg_val(4);
-    constexpr uint32_t output_tensor_shard_grid_width = get_compile_time_arg_val(5);
-    constexpr uint32_t output_tensor_shard_grid_start_y_logical = get_compile_time_arg_val(6);
-    constexpr uint32_t output_tensor_shard_grid_start_x_logical = get_compile_time_arg_val(7);
-    constexpr uint32_t output_tensor_shard_pages_per_shard_y = get_compile_time_arg_val(8);
-    constexpr uint32_t output_tensor_shard_pages_per_shard_x = get_compile_time_arg_val(9);
-    constexpr bool output_tensor_shard_grid_transposed = get_compile_time_arg_val(10) != 0;
+    constexpr uint32_t output_tensor_shard_grid_height = get_compile_time_arg_val(5);
+    constexpr uint32_t output_tensor_shard_grid_width = get_compile_time_arg_val(6);
+    constexpr uint32_t output_tensor_shard_grid_start_y_logical = get_compile_time_arg_val(7);
+    constexpr uint32_t output_tensor_shard_grid_start_x_logical = get_compile_time_arg_val(8);
+    constexpr uint32_t output_tensor_shard_pages_per_shard_y = get_compile_time_arg_val(9);
+    constexpr uint32_t output_tensor_shard_pages_per_shard_x = get_compile_time_arg_val(10);
+    constexpr bool output_tensor_shard_grid_transposed = get_compile_time_arg_val(11) != 0;
     #endif
 
 
@@ -138,7 +139,7 @@ void kernel_main() {
         #endif
 #elif defined TILED_LAYOUT
     #ifdef INTERLEAVED_MEM_LAYOUT
-    InterleavedAddrGenFast<dst_is_dram> d = {
+    InterleavedAddrGenFast<dst_is_dram,tile_size> d = {
         .bank_base_address = dst_addr, .page_size = page_size, .data_format = in0_df};
     #elif defined SHARDED_MEM_LAYOUT
     auto d = tt::tt_metal::address_generators::build_sharded_addr_gen<output_tensor_memory_layout>(

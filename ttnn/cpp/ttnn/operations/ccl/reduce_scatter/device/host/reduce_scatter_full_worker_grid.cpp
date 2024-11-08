@@ -521,7 +521,8 @@ create_worker_circular_buffers(
     uint32_t src0_cb_index = tt::CB::c_in0;
     tt::tt_metal::CircularBufferConfig cb_src0_config =
         tt::tt_metal::CircularBufferConfig(worker_pages_per_transfer * page_size_bytes, {{src0_cb_index, df}})
-            .set_page_size(src0_cb_index, page_size_bytes);
+            .set_page_size(src0_cb_index, page_size_bytes)
+            .set_tile_dims(src0_cb_index, op_config.get_tile());
     CBHandle cb_src0_workers = CreateCircularBuffer(program, worker_core_range, cb_src0_config);
     std::optional<CBHandle> cb_src0_workers_2;
     if (second_worker_core_range.has_value()) {
@@ -532,7 +533,8 @@ create_worker_circular_buffers(
     uint32_t src1_cb_index = tt::CB::c_in1;
     tt::tt_metal::CircularBufferConfig cb_src1_config =
         tt::tt_metal::CircularBufferConfig(worker_pages_per_transfer * page_size_bytes, {{src1_cb_index, df}})
-            .set_page_size(src1_cb_index, page_size_bytes);
+            .set_page_size(src1_cb_index, page_size_bytes)
+            .set_tile_dims(src1_cb_index, op_config.get_tile());
     CBHandle cb_src1_workers = CreateCircularBuffer(program, worker_core_range, cb_src1_config);
     std::optional<CBHandle> cb_src1_workers_2;
     if (second_worker_core_range.has_value()) {
@@ -543,7 +545,8 @@ create_worker_circular_buffers(
     uint32_t cb_dst0_index = tt::CB::c_out0;
     tt::tt_metal::CircularBufferConfig cb_dst0_config =
         tt::tt_metal::CircularBufferConfig(worker_pages_per_transfer * page_size_bytes, {{cb_dst0_index, df}})
-            .set_page_size(cb_dst0_index, page_size_bytes);
+            .set_page_size(cb_dst0_index, page_size_bytes)
+            .set_tile_dims(src1_cb_index, op_config.get_tile());
     CBHandle cb_dst0_sender_workers = CreateCircularBuffer(program, worker_core_range, cb_dst0_config);
     std::optional<CBHandle> cb_dst0_sender_workers_2;
     if (second_worker_core_range.has_value()) {
@@ -557,7 +560,8 @@ create_worker_circular_buffers(
     tt::tt_metal::CircularBufferConfig cb_short_circuit_config =
         tt::tt_metal::CircularBufferConfig(
             (worker_pages_per_transfer * page_size_bytes) * 2, {{cb_short_circuit_index, df}})
-            .set_page_size(cb_short_circuit_index, page_size_bytes);
+            .set_page_size(cb_short_circuit_index, page_size_bytes)
+            .set_tile_dims(cb_short_circuit_index, op_config.get_tile());
     CBHandle cb_short_circuit_sender_workers =
         CreateCircularBuffer(program, worker_core_range, cb_short_circuit_config);
 
@@ -613,7 +617,7 @@ operation::ProgramWithCallbacks reduce_scatter_with_workers(
     // // The input tensor is fractured by ring_size so we divi
     std::size_t input_tensor_n_elems_per_slice = input_tensor.volume() / ring_size;
     std::size_t input_tensor_num_units_per_tensor_slice =
-        input_tensor_n_elems_per_slice / (tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT);
+        input_tensor_n_elems_per_slice / (op_config.get_tile_size());
 
     TT_ASSERT(input_tensor_num_units_per_tensor_slice > 0);
     constexpr bool enable_bidirectional = true;

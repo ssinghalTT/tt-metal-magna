@@ -280,7 +280,8 @@ std::vector<uint32_t> ReduceScatterWorkerArgBuilder::generate_sender_kernel_ct_a
             this->op_config.get_output_tensor(0).memory_config().buffer_type == BufferType::DRAM ? 1 : 0),
         static_cast<uint32_t>(this->num_buffers_per_channel),
         static_cast<uint32_t>(local_output_tensor.memory_config().memory_layout),
-        static_cast<uint32_t>(this->topology_config.is_linear)
+        static_cast<uint32_t>(this->topology_config.is_linear),
+        static_cast<uint32_t>(this->op_config.get_tile_size())
     };
 
     std::size_t i = 0;
@@ -289,6 +290,7 @@ std::vector<uint32_t> ReduceScatterWorkerArgBuilder::generate_sender_kernel_ct_a
     log_trace(tt::LogOp, "\tnum_buffers_per_channel: {}", args.at(i++));
     log_trace(tt::LogOp, "\ttensor_memory_layout: {}", args.at(i++));
     log_trace(tt::LogOp, "\tis_linear: {}", args.at(i++));
+    log_trace(tt::LogOp, "\ttile_size: {}", args.at(i++));
     TT_ASSERT(args.size() == i, "Missed some args");
 
     if (local_output_tensor.is_sharded()) {
