@@ -766,7 +766,8 @@ static void adjust_conv_op_config_for_auto_shard(
     const std::array<uint32_t, 2>& kernel_size,
     const std::array<uint32_t, 2>& stride,
     const CoreCoord& compute_grid_size,
-    Conv2dConfig& conv_config) {
+    Conv2dConfig& conv_config,
+    Layout input_tensor_layout) {
     ShardOrientation shard_orientation =
         conv_config.transpose_shards ? ShardOrientation::COL_MAJOR : ShardOrientation::ROW_MAJOR;
     conv_config.shard_layout = select_shard_spec(
@@ -785,10 +786,11 @@ static void adjust_conv_op_config_for_auto_shard(
 
     if (conv_config.act_block_h_override == 0 && conv_config.shard_layout != TensorMemoryLayout::WIDTH_SHARDED) {
         if (in_channels <= constants::TILE_WIDTH / 2 && conv_config.input_channels_alignment == constants::TILE_WIDTH &&
-            !is_mm_conv && conv_config.shard_layout == TensorMemoryLayout::HEIGHT_SHARDED) {
+            !is_mm_conv && conv_config.shard_layout == TensorMemoryLayout::HEIGHT_SHARDED && input_tensor_layout == Layout::ROW_MAJOR) {
             log_debug(LogOp, "Auto shard, enable shallow conv");
             // height sharded, non matmul conv, with input channels <= 16, and default setting for
             // input_channels_alignment
+            // Currently data-movement ops have too many restrictions to support shallow convs with tiled input.
             conv_config.input_channels_alignment = constants::TILE_WIDTH / 2;
         }
 
@@ -836,7 +838,8 @@ std::tuple<ttnn::Tensor, uint32_t, uint32_t, ttnn::Tensor, std::optional<ttnn::T
             kernel_size,
             stride,
             device->compute_with_storage_grid_size(),
-            conv_config);
+            conv_config,
+            input_tensor.layout());
     }
 
     auto [input_tensor_post_tm, parallel_config, tensor_manipulated, use_non_tile_height] = shard_or_reshard_tensor_if_required(
