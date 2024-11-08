@@ -6,6 +6,10 @@ import sqlite3
 from pathlib import Path
 from tabulate import tabulate
 import argparse
+import tt_smi_util
+
+
+ARCH = os.getenv("ARCH_NAME")
 
 
 def find_pytorch2_files(parent_folder):
@@ -27,19 +31,22 @@ def run_commands(module_name, args):
         f"python3 tests/sweep_framework/sweeps_runner.py --elastic {args.elastic} --module-name {module_name} --suite-name {args.suite_name}",
         f"python3 tests/sweep_framework/framework/export_to_sqlite.py --elastic {args.elastic} --dump_path {args.dump_path} --filter-string {module_name}",
     ]
-    for cmd in commands:
-        print(f"Running command: {cmd}")
-        attempts = 0
-        success = False
-        while attempts < 3 and not success:
-            attempts = attempts + 1
-            try:
+    attempts = 0
+    success = False
+    while attempts < 3 and not success:
+        attempts += 1
+        try:
+            for cmd in commands:
+                print(f"Running command: {cmd}")
                 subprocess.run(cmd, shell=True, check=True)
-                success = True
-            except subprocess.CalledProcessError as e:
-                print(f"Command failed with {e}. Attempt {attempts} of 3.")
-                if attempts == 3:
-                    print(f"Unable to process {cmd}.  Giving up....")
+            success = True
+        except subprocess.CalledProcessError as e:
+            print(f"Command failed with {e}. Attempt {attempts} of 3.")
+            tt_smi_util.run_tt_smi(ARCH)
+            if attempts == 3:
+                print(f"Unable to process commands for module {module_name}. Giving up....")
+            else:
+                print("Retrying the commands from the beginning...")
 
 
 def process_directory(pytorch2_file, sweeps_dir, args):
