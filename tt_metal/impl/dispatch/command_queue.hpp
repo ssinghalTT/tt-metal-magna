@@ -564,6 +564,7 @@ class HWCommandQueue {
     void terminate();
     void increment_num_entries_in_completion_q();
     void set_exit_condition();
+    static void init_config_buffer_mgr(WorkerConfigBufferMgr& config_buffer_mgr);
     WorkerConfigBufferMgr& get_config_buffer_mgr() { return this->config_buffer_mgr; }
     friend void EnqueueTraceImpl(CommandQueue& cq, uint32_t trace_id, bool blocking);
     friend void EnqueueProgramImpl(

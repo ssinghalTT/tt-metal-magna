@@ -14,6 +14,7 @@
 #include <variant>
 
 #include "allocator/allocator.hpp"
+#include "command_queue.hpp"
 #include "debug_tools.hpp"
 #include "dev_msgs.h"
 #include "llrt/hal.hpp"
@@ -1871,9 +1872,12 @@ HWCommandQueue::HWCommandQueue(Device* device, uint32_t id, NOC noc_index) :
     // Set the affinity of the completion queue reader.
     set_device_thread_affinity(this->completion_queue_thread, device->completion_queue_reader_core);
     this->expected_num_workers_completed = 0;
+    init_config_buffer_mgr(config_buffer_mgr);
+}
 
+void HWCommandQueue::init_config_buffer_mgr(WorkerConfigBufferMgr& config_buffer_mgr) {
     for (uint32_t index = 0; index < tt::tt_metal::hal.get_programmable_core_type_count(); index++) {
-        this->config_buffer_mgr.init_add_buffer(
+        config_buffer_mgr.init_add_buffer(
             tt::tt_metal::hal.get_dev_addr(
                 tt::tt_metal::hal.get_programmable_core_type(index), tt::tt_metal::HalL1MemAddrType::KERNEL_CONFIG),
             tt::tt_metal::hal.get_dev_size(
@@ -1881,7 +1885,7 @@ HWCommandQueue::HWCommandQueue(Device* device, uint32_t id, NOC noc_index) :
     }
     // Subtract 1 from the number of entries, so the watcher can read information (e.g. fired asserts) from the previous
     // launch message.
-    this->config_buffer_mgr.init_add_buffer(0, launch_msg_buffer_num_entries - 1);
+    config_buffer_mgr.init_add_buffer(0, launch_msg_buffer_num_entries - 1);
 }
 
 void HWCommandQueue::set_unicast_only_cores_on_dispatch(const std::vector<uint32_t>& unicast_only_noc_encodings) {
@@ -2330,7 +2334,7 @@ void HWCommandQueue::enqueue_program(Program& program, bool blocking) {
         program,
         this->physical_enqueue_program_dispatch_core,
         this->manager,
-        this->config_buffer_mgr,
+        this->trace_ctx ? this->trace_ctx->config_buffer_mgr : this->config_buffer_mgr,
         expected_workers_completed,
         // The assembled program command will encode the location of the launch messages in the ring buffer
         this->device->worker_launch_message_buffer_state.get_mcast_wptr(),
@@ -2431,10 +2435,8 @@ void HWCommandQueue::enqueue_trace(const uint32_t trace_id, bool blocking) {
         this->device->worker_launch_message_buffer_state.set_unicast_wptr(
             trace_inst->desc->num_traced_programs_needing_go_signal_unicast);
     }
-    // The config buffer manager is unaware of what memory is used inside the trace, so mark all memory as used so that
-    // it will force a stall and avoid stomping on in-use state.
-    // TODO(jbauman): Reuse old state from the trace.
-    this->config_buffer_mgr.mark_completely_full(this->expected_num_workers_completed);
+    // The ringbuffer state is now identical to the state when the trace finished being recorded.
+    this->config_buffer_mgr = trace_inst->desc->config_buffer_mgr;
 
     if (blocking) {
         this->finish();
@@ -2729,32 +2731,11 @@ volatile bool HWCommandQueue::is_dprint_server_hung() { return dprint_server_han
 volatile bool HWCommandQueue::is_noc_hung() { return illegal_noc_txn_hang; }
 
 void HWCommandQueue::record_begin(const uint32_t tid, std::shared_ptr<detail::TraceDescriptor> ctx) {
-    // Issue event as a barrier and a counter reset
-    uint32_t cmd_sequence_sizeB = CQ_PREFETCH_CMD_BARE_MIN_SIZE;
-    if (this->device->distributed_dispatcher()) {
-        // wait on dispatch_s before issuing counter reset
-        cmd_sequence_sizeB += CQ_PREFETCH_CMD_BARE_MIN_SIZE;
-    }
-    void* cmd_region = this->manager.issue_queue_reserve(cmd_sequence_sizeB, this->id);
-    HugepageDeviceCommand command_sequence(cmd_region, cmd_sequence_sizeB);
-
-    CoreType dispatch_core_type = dispatch_core_manager::instance().get_dispatch_core_type(this->device->id());
-    uint32_t dispatch_message_addr = dispatch_constants::get(
-        dispatch_core_type).get_device_command_queue_addr(CommandQueueDeviceAddrType::DISPATCH_MESSAGE);
-    if (this->device->distributed_dispatcher()) {
-        // wait on dispatch_s before issuing counter reset
-        command_sequence.add_dispatch_wait(false, dispatch_message_addr, this->expected_num_workers_completed, true, false, true, 1);
-    }
-    // dispatch_d waits for latest non-zero counter from dispatch_s and then clears its local counter
-    command_sequence.add_dispatch_wait(false, dispatch_message_addr, this->expected_num_workers_completed, true);
-
-    this->manager.issue_queue_push_back(cmd_sequence_sizeB, this->id);
-    this->manager.fetch_queue_reserve_back(this->id);
-    this->manager.fetch_queue_write(cmd_sequence_sizeB, this->id);
-    this->expected_num_workers_completed = 0;
     // Record commands using bypass mode
     this->tid = tid;
     this->trace_ctx = ctx;
+
+    init_config_buffer_mgr(this->trace_ctx->config_buffer_mgr);
     // Record original value of launch msg wptr
     this->multicast_cores_launch_message_wptr_reset = this->device->worker_launch_message_buffer_state.get_mcast_wptr();
     this->unicast_cores_launch_message_wptr_reset = this->device->worker_launch_message_buffer_state.get_unicast_wptr();
@@ -2762,8 +2743,6 @@ void HWCommandQueue::record_begin(const uint32_t tid, std::shared_ptr<detail::Tr
     // reset their rptr to be in sync with device.
     this->device->worker_launch_message_buffer_state.reset();
     this->manager.set_bypass_mode(true, true);  // start
-    // Sync values in the trace need to match up with the counter starting at 0 again.
-    this->config_buffer_mgr.mark_completely_full(this->expected_num_workers_completed);
 }
 
 void HWCommandQueue::record_end() {
@@ -2775,9 +2754,6 @@ void HWCommandQueue::record_end() {
     this->device->worker_launch_message_buffer_state.set_mcast_wptr(this->multicast_cores_launch_message_wptr_reset);
     this->device->worker_launch_message_buffer_state.set_unicast_wptr(this->unicast_cores_launch_message_wptr_reset);
     this->manager.set_bypass_mode(false, false);  // stop
-    // config_buffer_mgr reflects the state inside the trace, not on the current device, so reset it.
-    // TODO(jbauman): Use a temporary WorkingBufferSetMgr when recording a trace.
-    this->config_buffer_mgr.mark_completely_full(this->expected_num_workers_completed);
 }
 
 void HWCommandQueue::terminate() {
