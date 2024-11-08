@@ -294,7 +294,7 @@ static void generate_data_format_descriptors(JitBuildOptions& options, const tt:
     ExpPrecision exp_prec = tt::get_data_exp_precision(desc.buf_dataformat_arr);
     DataFormat unpack_conditional_dst_format = (exp_prec == ExpPrecision::A) ? DataFormat::Float16 : DataFormat::Float16_b;
 
-    if (tt::is_all_fp32_formats(desc.buf_dataformat_arr) && options.fp32_dest_acc_en) {
+    if (options.fp32_dest_acc_en && (tt::is_all_fp32_formats(desc.buf_dataformat_arr) || (exp_prec == ExpPrecision::B))) {
         unpack_conditional_dst_format = DataFormat::Tf32;
     }
 
