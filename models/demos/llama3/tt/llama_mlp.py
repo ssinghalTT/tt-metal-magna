@@ -5,6 +5,7 @@
 import torch
 import ttnn
 from models.common.lightweightmodule import LightweightModule
+from models.demos.llama3.tt.llama_common import first_five
 
 
 class TtLlamaMLP(LightweightModule):
@@ -48,7 +49,7 @@ class TtLlamaMLP(LightweightModule):
             "w3_sharded", ttnn.bfloat4_b if self.args.is_large_model else ttnn.bfloat8_b, dim=-1
         )
 
-    def forward(self, x: ttnn.Tensor, mode) -> ttnn.Tensor:
+    def forward(self, x: ttnn.Tensor, mode, debug_tensor=None) -> ttnn.Tensor:
         """
         w1 -> gate_proj
         w2 -> down_proj
@@ -126,9 +127,17 @@ class TtLlamaMLP(LightweightModule):
         ttnn.deallocate(w2_in)
 
         if mode == "decode":
+            if debug_tensor is not None:
+                first_five_before = first_five(debug_tensor, self.mesh_device)
             w2_out = ttnn.sharded_to_interleaved(
                 w2_out, ttnn.L1_MEMORY_CONFIG
-            )  # FIXME: When h is L1 interleaved in decoder, this call corrupts it!
+            )  # NOTE: writing this out to DRAM interleaved avoids corrupting h!
+            if debug_tensor is not None:
+                first_five_after = first_five(debug_tensor, self.mesh_device)
+                if not torch.allclose(first_five_before, first_five_after):
+                    print(f"{first_five_before=}")
+                    print(f"{first_five_after=}")
+                    assert False, "h was corrupted during sharded_to_interleaved"
 
         if seq_len >= 1024:  # Reshape back to intended shape
             w2_out = ttnn.reshape(w2_out, [1, 1, seq_len, -1])

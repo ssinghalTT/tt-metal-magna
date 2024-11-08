@@ -90,10 +90,12 @@ class TtTransformerBlock(LightweightModule):
     ) -> ttnn.Tensor:
         # x is fractured across devices and interleaved in DRAM (for prefill) and L1 (for decode)
         # FIXME: move to sharded residuals once support for this is added
-        # FIXME: Currently, for decode mode, we are using DRAM intereleaved as L1 interleaved results in h being corrupted in MLP
         skip_mem_cfg = (
-            ttnn.DRAM_MEMORY_CONFIG
-            # self.model_config["DEC_SKIP_OUTPUT_MEMCFG"] if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG
+            # ttnn.DRAM_MEMORY_CONFIG
+            # NOTE: placing this in DRAM interleaved avoids h being corrupted in MLP
+            self.model_config["DEC_SKIP_OUTPUT_MEMCFG"]
+            if mode == "decode"
+            else ttnn.DRAM_MEMORY_CONFIG
         )
 
         # Norms take fractured inputs and output replicated across devices
@@ -108,18 +110,15 @@ class TtTransformerBlock(LightweightModule):
             mode,
             page_table,
         )
-
         # Here x and attn_out are both fractured across devices
         h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg)
 
-        # TODO: This deallocate may cause ND output. The reason seems to be related to either the input being on DRAM/L1 and the sharded spec in MLP using 32 cores instead of 16.
-        # ttnn.deallocate(attn_out)
+        ttnn.deallocate(attn_out)  # NOTE: Commenting out this deallocate avoids the bad output
 
         # Norms take fractured inputs and output replicated across devices
         ff_in = self.ff_norm(h, mode)
         # MLP takes replicated inputs and produces fractured outputs
-        ff_out = self.feed_forward.forward(ff_in, mode)
+        ff_out = self.feed_forward.forward(ff_in, mode, debug_tensor=h)
         # ff_out and h are both fractured across devices
         out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)
-
         return out  # fractured across devices
