@@ -65,15 +65,19 @@ CCLOpConfig::CCLOpConfig(
         if(input_tensors.at(0).get_layout() == Layout::TILE) {
             this->tile = input_tensors.at(0).get_tile();
             this->page_size = this->tile.get_tile_size(this->df);
-            //this->page_size = input_tensors.at(0).buffer()->page_size();
+            this->tile_size = this->tile.get_tile_hw();
         } else {
+            this->tile = Tile({32,32});
             this->page_size = input_tensors.at(0).buffer()->page_size();
+            this->tile_size = 1024;
         }
 }
 
-
+//Get the size of the page/tile in bytes
 uint32_t CCLOpConfig::get_page_size() const { return this->page_size; }
-
+//Get the size of the page/tile in number of elements (height * width)
+uint32_t CCLOpConfig::get_tile_size() const { return this->tile_size; }
+Tile CCLOpConfig::get_tile() const { return this->tile; }
 Topology CCLOpConfig::get_topology() const { return this->topology; }
 
 bool CCLOpConfig::is_input_sharded() const { return this->input_sharded; }
