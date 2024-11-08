@@ -97,6 +97,10 @@ void kernel_main() {
                 in1_base_addr, l1_read_addr_in1, l1_write_addr_in1, curr_block_trid);
             l1_read_addr_in1 += in1_page_size;
             l1_write_addr_in1 += in1_page_size;
+
+            // for (volatile uint32_t i = 0; i < 100; ++i) {
+
+            // }
         }
 
         if (num_free_blocks_in_buffer == 2) {

@@ -341,7 +341,7 @@ inline __attribute__((always_inline)) void ncrisc_noc_fast_read_with_transaction
     src_addr_ = src_base_addr + src_addr;
 
     while (!noc_cmd_buf_ready(noc, cmd_buf));
-    while (NOC_STATUS_READ_REG(noc, NIU_MST_REQS_OUTSTANDING_ID(trid)) > ((NOC_MAX_TRANSACTION_ID_COUNT+1)/2));
+    while (NOC_STATUS_READ_REG(noc, NIU_MST_REQS_OUTSTANDING_ID(trid)) > ((NOC_MAX_TRANSACTION_ID_COUNT+1)/4));
 
     NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_RET_ADDR_LO, dest_addr);
     NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_TARG_ADDR_LO, src_addr_);      // (uint32_t)src_addr
