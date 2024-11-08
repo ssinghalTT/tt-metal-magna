@@ -9,6 +9,7 @@
 #include "tt_metal/detail/tt_metal.hpp"
 #include "tt_metal/detail/util.hpp"
 #include "tt_metal/host_api.hpp"
+#include "ttnn/operations/matmul/device/matmul_op.hpp"
 
 using namespace tt::constants;
 
@@ -1320,6 +1321,7 @@ operation::ProgramWithCallbacks multi_core_optimized_conv_sharded_v2_impl(
 
     // Compile compute kernel for active cores only
     // Compile blank kernel for noop cores
+    bmm_op_utils::add_mm_throttle_defines_if_needed(device->arch(), math_fidelity, compute_defines);
     auto compute_id = CreateKernel(
         program,
         compute_kernel,

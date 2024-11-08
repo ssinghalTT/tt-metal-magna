@@ -9,6 +9,7 @@
 #include "compute_kernel_api/pack_untilize.h"
 #include "compute_kernel_api/tile_move_copy.h"
 #include "compute_kernel_api/matmul.h"
+#include "tools/profiler/kernel_profiler.hpp"
 // #include "debug/dprint.h"
 
 #ifdef FUSE_BIAS
@@ -204,6 +205,9 @@ void MAIN {
                 cb_wait_front(mm_in0_cb_id, in0_block_num_tiles);
                 cb_wait_front(in1_cb_id, in1_block_num_tiles);
 
+                {
+                DeviceZoneScopedN("MATH-BLOCK");
+
                 if (last_out) {
                     #if defined PACK_RELU and not defined FUSE_BIAS
                     // if last block we pack the final result with relu enabled
@@ -338,7 +342,7 @@ void MAIN {
                         #endif
                     }
                 #endif
-
+                } // MATH-BLOCK
                 cb_pop_front(mm_in0_cb_id, in0_block_num_tiles);
                 cb_pop_front(in1_cb_id, in1_block_num_tiles);
             } // for in0_num_blocks_w
