@@ -10,6 +10,12 @@ LM head: `WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest tests/didt/t
 
 Resnet Convolution: `WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest tests/didt/test_resnet_conv.py::test_resnet_conv -k "2chips"`
 
+
+TT_MM_THROTTLE_PCT=50
+
+python -m tracy -r -m "pytest tests/didt/test_lm_head_matmul.py::test_lm_head_matmul -k \"1chips\" --iterations 1"
+
+
 ## Variations
 
 ### Supported systems
@@ -64,6 +70,53 @@ FF1 without gelu: `WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest mod
 FF1 with gelu: `WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest tests/didt/test_sharded_ff1.py -k "test_reproduce_matmul_2d_hang and 8chips"`
 
 LM head: `WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest models/demos/falcon7b/tests/test_falcon_hang.py -k "test_reproduce_lm_head_nd_32 and 8chips"`
+
+
+reading core (9, 5):
+00: 0x00015240 => 0x00baba01
+01: 0x00015244 => 0x00000000
+02: 0x00015248 => 0xa4bc311b
+03: 0x0001524c => 0xa3903f60
+
+TT_MATMUL_STAGGER_TYPE=1 TT_MATMUL_STAGGER_VALUE=500
+
+pytest tests/didt/test_resnet_conv.py::test_resnet_conv -k "1chips" --iterations 1
+python -m tracy -r -m "pytest tests/didt/test_resnet_conv.py::test_resnet_conv -k \"1chips\" --iterations 1"
+
+export TT_METAL_ARC_DEBUG_BUFFER_SIZE=16000000
+
+// max
+export TT_METAL_ARC_DEBUG_BUFFER_SIZE=100000000
+
+ttp load_arc_dbg_fw
+ttp arc_logger --args start=1,pmon_id=0,ro_id=27,stop_on_flatline=1
+bin/arc-dbg.py read
+python3 -c 'print("\n".join(f"{byte}" for byte in open("out-0-0.bin", "rb").read()))' > out.csv
+
+// bgd-lab-09 board 1
+RO_SEL=27
+PMON_SEL=0
+a = 0.0410675886821849
+b = -13.470956232050119
+c = 1801.0176411251837
+
+
+ttnn/cpp/ttnn/operations/conv/conv2d/device/kernels/conv_bmm_tilize_col_major_out_blocks.cpp
+'ttnn/cpp/ttnn/operations/conv/conv2d/device/kernels/reader_writer_tiled_out_1d_mcast_sender_conv_weights_tiled_col_to_rm_blocks.cpp'
+'ttnn/cpp/ttnn/operations/conv/conv2d/device/kernels/reader_writer_tiled_out_1d_mcast_receiver_conv_weights_tiled_col_to_rm_blocks.cpp'
+'ttnn/cpp/ttnn/operations/conv/conv2d/device/kernels/reader_conv_activations_padded_with_halo_3x3_weights_v2.cpp'
+
+['ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/reader_bmm_tile_layout_in0_sender_padding.cpp';
+'ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/reader_bmm_tile_layout_in0_receiver.cpp';
+'ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/reader_bmm_tile_layout_in1_sender_writer_padding.cpp']
+
+
+sudo apt update
+sudo apt install software-properties-common build-essential libyaml-cpp-dev libboost-all-dev libhwloc-dev libzmq3-dev libgtest-dev libgmock-dev xxd -y
+pip uninstall -y debuda
+pip install git+https://github.com/tenstorrent/tt-debuda.git
+
+ppopovic/supersynced_first_block
 
 
 
