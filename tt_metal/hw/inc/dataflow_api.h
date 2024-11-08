@@ -1777,8 +1777,10 @@ uint32_t noc_async_read_tile_dram_sharded_set_state(uint32_t bank_base_address, 
     uint32_t src_addr_;
     uint32_t src_noc_xy;
 
-    src_addr_ = bank_base_address + bank_to_dram_offset[bank_id];
-    src_noc_xy = dram_bank_to_noc_xy[noc][bank_id];
+    // src_addr_ = bank_base_address + bank_to_dram_offset[bank_id];
+    // src_noc_xy = dram_bank_to_noc_xy[noc][bank_id];
+    src_addr_ = bank_base_address;
+    src_noc_xy = l1_bank_to_noc_xy[noc][bank_id];
 
     WAYPOINT("NRTW");
     while (!noc_cmd_buf_ready(noc, read_cmd_buf));

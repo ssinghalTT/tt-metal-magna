@@ -1068,7 +1068,7 @@ operation::ProgramWithCallbacks create_program_dram_sharded(
         bool is_worker_core = true;
         std::vector<uint32_t> mm_in1_sender_writer_args;
         mm_in1_sender_writer_args.push_back((std::uint32_t)is_worker_core);
-        mm_in1_sender_writer_args.push_back(in1_buffer->address());
+        mm_in1_sender_writer_args.push_back(in0_buffer->address());
         if (bias_buffer != nullptr) {
             mm_in1_sender_writer_args.push_back(bias_buffer->address());
         } else {
