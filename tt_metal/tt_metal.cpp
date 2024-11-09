@@ -843,7 +843,8 @@ DeviceAddr AllocateBuffer(Buffer *buffer) {
             buffer->sub_device_manager_id(),
             buffer->device()->get_active_sub_device_manager_id());
     }
-    auto& allocator = buffer->device()->get_initialized_allocator(buffer->sub_device_id());
+    const auto& sub_device_id = buffer->sub_device_id();
+    auto& allocator = sub_device_id.has_value() ? buffer->device()->get_initialized_allocator(sub_device_id.value()) : buffer->device()->get_initialized_allocator();
     DeviceAddr allocated_addr;
     if (is_sharded(buffer->buffer_layout())) {
         allocated_addr = allocator::allocate_buffer(
@@ -887,7 +888,8 @@ void DeallocateBuffer(Buffer *buffer) {
             buffer->sub_device_manager_id(),
             buffer->device()->get_active_sub_device_manager_id());
     }
-    auto& allocator = buffer->device()->get_initialized_allocator(buffer->sub_device_id());
+    const auto& sub_device_id = buffer->sub_device_id();
+    auto& allocator = sub_device_id.has_value() ? buffer->device()->get_initialized_allocator(sub_device_id.value()) : buffer->device()->get_initialized_allocator();
     allocator::deallocate_buffer(*allocator, buffer);
 }
 

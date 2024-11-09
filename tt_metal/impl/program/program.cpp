@@ -751,8 +751,12 @@ void detail::Program_::validate_circular_buffer_region(const Device *device) {
     // State when there is no active manager is normally treated as having 1 sub_device, which is used to query state
     // For allocator, we don't have a sub_device allocator when there is no active manager, only the global allocator
     // TODO: Circular buffer allocation and validation could be better optimized by determining usage per sub-device
-    const auto &sub_device_ids = device->get_active_sub_device_manager_id().has_value() ? this->determine_sub_device_ids(device) : std::vector<uint32_t>();
-    std::optional<DeviceAddr> lowest_address = device->lowest_occupied_compute_l1_address(sub_device_ids);
+    std::optional<DeviceAddr> lowest_address;
+    if (device->get_active_sub_device_manager_id().has_value()) {
+        lowest_address = device->lowest_occupied_compute_l1_address(this->determine_sub_device_ids(device));
+    } else {
+        lowest_address = device->lowest_occupied_compute_l1_address();
+    }
     uint32_t max_l1_size = device->l1_size_per_core();
 
     for (const CircularBufferAllocator &cb_allocator : this->cb_allocators_) {

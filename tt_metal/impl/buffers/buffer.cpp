@@ -414,12 +414,20 @@ bool Buffer::is_trace() const {
 
 uint32_t Buffer::dram_channel_from_bank_id(uint32_t bank_id) const {
     TT_FATAL(this->is_dram(), "Expected DRAM buffer!");
-    return this->device_->dram_channel_from_bank_id(bank_id, this->sub_device_id_);
+    if (this->sub_device_id_.has_value()) {
+        return this->device_->dram_channel_from_bank_id(bank_id, *this->sub_device_id_);
+    } else {
+        return this->device_->dram_channel_from_bank_id(bank_id);
+    }
 }
 
 CoreCoord Buffer::logical_core_from_bank_id(uint32_t bank_id) const {
     TT_FATAL(this->is_l1(), "Expected L1 buffer!");
-    return this->device_->logical_core_from_bank_id(bank_id, this->sub_device_id_);
+    if (this->sub_device_id_.has_value()) {
+        return this->device_->logical_core_from_bank_id(bank_id, *this->sub_device_id_);
+    } else {
+        return this->device_->logical_core_from_bank_id(bank_id);
+    }
 }
 
 CoreCoord Buffer::noc_coordinates(uint32_t bank_id) const {
@@ -444,7 +452,12 @@ CoreCoord Buffer::noc_coordinates(uint32_t bank_id) const {
 CoreCoord Buffer::noc_coordinates() const { return this->noc_coordinates(0); }
 
 DeviceAddr Buffer::page_address(uint32_t bank_id, uint32_t page_index) const {
-    auto num_banks = this->device_->num_banks(this->buffer_type_, this->sub_device_id_);
+    uint32_t num_banks;
+    if (this->sub_device_id_.has_value()) {
+        num_banks = this->device_->num_banks(this->buffer_type_, *this->sub_device_id_);
+    } else {
+        num_banks = this->device_->num_banks(this->buffer_type_);
+    }
     TT_FATAL(bank_id < num_banks, "Invalid Bank ID: {} exceeds total numbers of banks ({})!", bank_id, num_banks);
     int pages_offset_within_bank = (int)page_index / num_banks;
     auto offset = (round_up(this->page_size(), this->alignment()) * pages_offset_within_bank);
@@ -452,8 +465,13 @@ DeviceAddr Buffer::page_address(uint32_t bank_id, uint32_t page_index) const {
 }
 
 uint32_t Buffer::alignment() const {
-    return this->device_->get_allocator_alignment(this->sub_device_id_);
+    if (this->sub_device_id_.has_value()) {
+        return this->device_->get_allocator_alignment(*this->sub_device_id_);
+    } else {
+        return this->device_->get_allocator_alignment();
+    }
 }
+
 DeviceAddr Buffer::aligned_page_size() const {
     return align(page_size(), this->alignment());
 }
@@ -488,8 +506,13 @@ std::optional<uint32_t> Buffer::num_cores() const {
 }
 
 DeviceAddr Buffer::translate_page_address(uint64_t offset, uint32_t bank_id) const {
-    DeviceAddr base_page_address = this->address() + this->device_->bank_offset(this->buffer_type_, bank_id, this->sub_device_id_);
-    return base_page_address + offset;
+    if (this->sub_device_id_.has_value()) {
+        DeviceAddr base_page_address = this->address() + this->device_->bank_offset(this->buffer_type_, bank_id, *this->sub_device_id_);
+        return base_page_address + offset;
+    } else {
+        DeviceAddr base_page_address = this->address() + this->device_->bank_offset(this->buffer_type_, bank_id);
+        return base_page_address + offset;
+    }
 }
 
 const std::shared_ptr<const BufferPageMapping>& Buffer::get_buffer_page_mapping() {

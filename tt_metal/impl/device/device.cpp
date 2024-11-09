@@ -3170,41 +3170,31 @@ uint32_t Device::get_noc_multicast_encoding(uint8_t noc_index, const CoreRange& 
     }
 }
 
-void Device::check_allocator_is_initialized(std::optional<uint32_t> sub_device_id) const {
-    if (sub_device_id.has_value()) {
-        TT_FATAL(this->active_sub_device_manager_id_.has_value(), "Specifying sub-device id requires an active sub-device manager");
-        auto& sub_device_manager = this->sub_device_managers_.at(*this->active_sub_device_manager_id_);
-        TT_FATAL(*sub_device_id < sub_device_manager->num_sub_devices(), "Invalid sub-device id {}", *sub_device_id);
-        auto& allocator = sub_device_manager->sub_device_allocator(*sub_device_id);
-        if (!allocator) {
-            TT_THROW("No memory allocator! Allocator has not been initialized");
-        }
-    } else {
-        if (!this->allocator_) {
-            TT_THROW("No memory allocator! Allocator has not been initialized");
-        }
+const std::unique_ptr<Allocator> &Device::get_initialized_allocator() const {
+
+    if (!this->allocator_) {
+        TT_THROW("No memory allocator! Allocator has not been initialized");
     }
+    return this->allocator_;
 }
 
-const std::unique_ptr<Allocator> &Device::get_initialized_allocator(std::optional<uint32_t> sub_device_id) const {
-    if (sub_device_id.has_value()) {
-        TT_FATAL(this->active_sub_device_manager_id_.has_value(), "Specifying sub-device id requires an active sub-device manager");
-        auto& sub_device_manager = this->sub_device_managers_.at(*this->active_sub_device_manager_id_);
-        TT_FATAL(*sub_device_id < sub_device_manager->num_sub_devices(), "Invalid sub-device id {}", *sub_device_id);
-        auto& allocator = sub_device_manager->sub_device_allocator(*sub_device_id);
-        if (!allocator) {
-            TT_THROW("No memory allocator! Allocator has not been initialized");
-        }
-        return allocator;
-    } else {
-        if (!this->allocator_) {
-            TT_THROW("No memory allocator! Allocator has not been initialized");
-        }
-        return this->allocator_;
+const std::unique_ptr<Allocator> &Device::get_initialized_allocator(uint32_t sub_device_id) const {
+    TT_FATAL(this->active_sub_device_manager_id_.has_value(), "Specifying sub-device id requires an active sub-device manager");
+    auto& sub_device_manager = this->sub_device_managers_.at(*this->active_sub_device_manager_id_);
+    TT_FATAL(sub_device_id < sub_device_manager->num_sub_devices(), "Invalid sub-device id {}", sub_device_id);
+    auto& allocator = sub_device_manager->sub_device_allocator(sub_device_id);
+    if (!allocator) {
+        TT_THROW("No memory allocator! Allocator has not been initialized");
     }
+    return allocator;
+
 }
 
-std::unique_ptr<Allocator> &Device::get_initialized_allocator(std::optional<uint32_t> sub_device_id) {
+std::unique_ptr<Allocator> &Device::get_initialized_allocator() {
+    return const_cast<std::unique_ptr<Allocator>&>(const_cast<const Device*>(this)->get_initialized_allocator());
+}
+
+std::unique_ptr<Allocator> &Device::get_initialized_allocator(uint32_t sub_device_id) {
     return const_cast<std::unique_ptr<Allocator>&>(const_cast<const Device*>(this)->get_initialized_allocator(sub_device_id));
 }
 
@@ -3234,17 +3224,32 @@ uint32_t Device::num_sub_devices() const {
     }
 }
 
-uint32_t Device::num_banks(const BufferType &buffer_type, std::optional<uint32_t> sub_device_id) const {
+uint32_t Device::num_banks(const BufferType &buffer_type) const {
+    const auto& allocator = this->get_initialized_allocator();
+    return allocator::num_banks(*allocator, buffer_type);
+}
+
+uint32_t Device::num_banks(const BufferType &buffer_type, uint32_t sub_device_id) const {
     const auto& allocator = this->get_initialized_allocator(sub_device_id);
     return allocator::num_banks(*allocator, buffer_type);
 }
 
-uint32_t Device::bank_size(const BufferType &buffer_type, std::optional<uint32_t> sub_device_id) const {
+uint32_t Device::bank_size(const BufferType &buffer_type) const {
+    const auto& allocator = this->get_initialized_allocator();
+    return allocator::bank_size(*allocator, buffer_type);
+}
+
+uint32_t Device::bank_size(const BufferType &buffer_type, uint32_t sub_device_id) const {
     const auto& allocator = this->get_initialized_allocator(sub_device_id);
     return allocator::bank_size(*allocator, buffer_type);
 }
 
-uint32_t Device::dram_channel_from_bank_id(uint32_t bank_id, std::optional<uint32_t> sub_device_id) const {
+uint32_t Device::dram_channel_from_bank_id(uint32_t bank_id) const {
+    const auto& allocator = this->get_initialized_allocator();
+    return allocator::dram_channel_from_bank_id(*allocator, bank_id);
+}
+
+uint32_t Device::dram_channel_from_bank_id(uint32_t bank_id, uint32_t sub_device_id) const {
     const auto& allocator = this->get_initialized_allocator(sub_device_id);
     return allocator::dram_channel_from_bank_id(*allocator, bank_id);
 }
@@ -3263,87 +3268,143 @@ uint32_t Device::dram_channel_from_logical_core(const CoreCoord& logical_core) c
     return tt::Cluster::instance().get_soc_desc(id_).get_dram_channel_from_logical_core(logical_core);
 }
 
-int32_t Device::bank_offset(BufferType buffer_type, uint32_t bank_id, std::optional<uint32_t> sub_device_id) const {
+int32_t Device::bank_offset(BufferType buffer_type, uint32_t bank_id) const {
+    const auto& allocator = this->get_initialized_allocator();
+    return allocator::bank_offset(*allocator, buffer_type, bank_id);
+}
+
+int32_t Device::bank_offset(BufferType buffer_type, uint32_t bank_id, uint32_t sub_device_id) const {
     const auto& allocator = this->get_initialized_allocator(sub_device_id);
     return allocator::bank_offset(*allocator, buffer_type, bank_id);
 }
 
-CoreCoord Device::logical_core_from_bank_id(uint32_t bank_id, std::optional<uint32_t> sub_device_id) const {
+CoreCoord Device::logical_core_from_bank_id(uint32_t bank_id) const {
+    const auto& allocator = this->get_initialized_allocator();
+    return allocator::logical_core_from_bank_id(*allocator, bank_id);
+}
+
+CoreCoord Device::logical_core_from_bank_id(uint32_t bank_id, uint32_t sub_device_id) const {
     const auto& allocator = this->get_initialized_allocator(sub_device_id);
     return allocator::logical_core_from_bank_id(*allocator, bank_id);
 }
 
-const std::vector<uint32_t> &Device::bank_ids_from_dram_channel(uint32_t dram_channel, std::optional<uint32_t> sub_device_id) const {
+const std::vector<uint32_t> &Device::bank_ids_from_dram_channel(uint32_t dram_channel) const {
+    const auto& allocator = this->get_initialized_allocator();
+    return allocator::bank_ids_from_dram_channel(*allocator, dram_channel);
+}
+
+const std::vector<uint32_t> &Device::bank_ids_from_dram_channel(uint32_t dram_channel, uint32_t sub_device_id) const {
     const auto& allocator = this->get_initialized_allocator(sub_device_id);
     return allocator::bank_ids_from_dram_channel(*allocator, dram_channel);
 }
 
 const std::vector<uint32_t> &Device::bank_ids_from_logical_core(
-    BufferType buffer_type, const CoreCoord &logical_core, std::optional<uint32_t> sub_device_id) const {
+    BufferType buffer_type, const CoreCoord &logical_core) const {
+    const auto& allocator = this->get_initialized_allocator();
+    return allocator::bank_ids_from_logical_core(*allocator, buffer_type, logical_core);
+}
+
+const std::vector<uint32_t> &Device::bank_ids_from_logical_core(
+    BufferType buffer_type, const CoreCoord &logical_core, uint32_t sub_device_id) const {
     const auto& allocator = this->get_initialized_allocator(sub_device_id);
     return allocator::bank_ids_from_logical_core(*allocator, buffer_type, logical_core);
 }
 
-allocator::Statistics Device::get_memory_allocation_statistics(const BufferType &buffer_type, std::optional<uint32_t> sub_device_id) const {
+allocator::Statistics Device::get_memory_allocation_statistics(const BufferType &buffer_type) const {
+    const auto& allocator = this->get_initialized_allocator();
+    return allocator::get_statistics(*allocator, buffer_type);
+}
+
+allocator::Statistics Device::get_memory_allocation_statistics(const BufferType &buffer_type, uint32_t sub_device_id) const {
     const auto& allocator = this->get_initialized_allocator(sub_device_id);
     return allocator::get_statistics(*allocator, buffer_type);
 }
 
-uint32_t Device::get_allocator_alignment(std::optional<uint32_t> sub_device_id) const {
+uint32_t Device::get_allocator_alignment() const {
+    const auto& allocator = this->get_initialized_allocator();
+    return allocator->config.alignment;
+}
+
+uint32_t Device::get_allocator_alignment(uint32_t sub_device_id) const {
     const auto& allocator = this->get_initialized_allocator(sub_device_id);
     return allocator->config.alignment;
 }
 
-size_t Device::get_l1_small_size(std::optional<uint32_t> sub_device_id) const {
+size_t Device::get_l1_small_size() const {
+    const auto& allocator = this->get_initialized_allocator();
+    return allocator->config.l1_small_size;
+}
+
+size_t Device::get_l1_small_size(uint32_t sub_device_id) const {
     const auto& allocator = this->get_initialized_allocator(sub_device_id);
     return allocator->config.l1_small_size;
 }
 
-void Device::dump_memory_blocks(const BufferType &buffer_type, std::ofstream &out, std::optional<uint32_t> sub_device_id) const {
+void Device::dump_memory_blocks(const BufferType &buffer_type, std::ofstream &out) const {
+    const auto& allocator = this->get_initialized_allocator();
+    return allocator::dump_memory_blocks(*allocator, buffer_type, out);
+}
+
+void Device::dump_memory_blocks(const BufferType &buffer_type, std::ofstream &out, uint32_t sub_device_id) const {
     const auto& allocator = this->get_initialized_allocator(sub_device_id);
     return allocator::dump_memory_blocks(*allocator, buffer_type, out);
 }
 
-const std::unordered_set<Buffer *> &Device::get_allocated_buffers(std::optional<uint32_t> sub_device_id) const {
+const std::unordered_set<Buffer *> &Device::get_allocated_buffers() const {
+    const auto& allocator = this->get_initialized_allocator();
+    return allocator::get_allocated_buffers(*allocator);
+}
+
+const std::unordered_set<Buffer *> &Device::get_allocated_buffers(uint32_t sub_device_id) const {
     const auto& allocator = this->get_initialized_allocator(sub_device_id);
     return allocator::get_allocated_buffers(*allocator);
 }
 
-void Device::deallocate_buffers(std::optional<uint32_t> sub_device_id) {
+void Device::deallocate_buffers() {
+    auto& allocator = this->get_initialized_allocator();
+    allocator::deallocate_buffers(*allocator);
+}
+
+void Device::deallocate_buffers(uint32_t sub_device_id) {
     auto& allocator = this->get_initialized_allocator(sub_device_id);
     allocator::deallocate_buffers(*allocator);
 }
 
-std::optional<DeviceAddr> Device::lowest_occupied_compute_l1_address(tt::stl::Span<const uint32_t> sub_device_ids) const {
-    this->check_allocator_is_initialized(std::nullopt);
+std::optional<DeviceAddr> Device::lowest_occupied_compute_l1_address() const {
     // Global bank id needs to look up a bank from the compute grid (not the storage grid)
-    // Sub-device banks are currently all compute banks
     // Since banks are lockstep in an allocator it doesn't matter if the actual core matches or not
     auto global_bank_id =
         this->bank_ids_from_logical_core(BufferType::L1, *this->compute_cores_.begin())[0];
+    auto& allocator = this->get_initialized_allocator();
+    return allocator::lowest_occupied_l1_address(*allocator, global_bank_id);
+}
+
+std::optional<DeviceAddr> Device::lowest_occupied_compute_l1_address(tt::stl::Span<const uint32_t> sub_device_ids) const {
+    // Sub-device banks are currently all compute banks
+    // Since banks are lockstep in an allocator it doesn't matter which core is used
     uint32_t sub_device_bank_id = 0;
-    if (this->active_sub_device_manager_id_.has_value()) {
-        DeviceAddr lowest_addr = std::numeric_limits<DeviceAddr>::max();
-        const auto& sub_device_manager = this->sub_device_managers_.at(*this->active_sub_device_manager_id_);
-        for (const auto& sub_device_id : sub_device_ids) {
-            TT_FATAL(sub_device_id < sub_device_manager->num_sub_devices(), "Invalid sub-device id {}", sub_device_id);
-            const auto& allocator = sub_device_manager->sub_device_allocator(sub_device_id);
-            if (allocator) {
-                auto found_addr = allocator::lowest_occupied_l1_address(*allocator, sub_device_bank_id);
-                if (found_addr.has_value()) {
-                    lowest_addr = std::min(lowest_addr, *found_addr);
-                }
+    TT_FATAL(this->active_sub_device_manager_id_.has_value(), "Specifying sub_device_ids requires an active sub-device manager");
+    DeviceAddr lowest_addr = std::numeric_limits<DeviceAddr>::max();
+    const auto& sub_device_manager = this->sub_device_managers_.at(*this->active_sub_device_manager_id_);
+    for (const auto& sub_device_id : sub_device_ids) {
+        TT_FATAL(sub_device_id < sub_device_manager->num_sub_devices(), "Invalid sub-device id {}", sub_device_id);
+        const auto& allocator = sub_device_manager->sub_device_allocator(sub_device_id);
+        if (allocator) {
+            auto found_addr = allocator::lowest_occupied_l1_address(*allocator, sub_device_bank_id);
+            if (found_addr.has_value()) {
+                lowest_addr = std::min(lowest_addr, *found_addr);
             }
         }
-        // sub-device allocators sit below global allocator. If an address is found for a sub-device, no need to check the global allocator
-        if (lowest_addr != std::numeric_limits<DeviceAddr>::max()) {
-            return lowest_addr;
-        } else {
-            return allocator::lowest_occupied_l1_address(*this->allocator_, global_bank_id);
-        }
+    }
+    // sub-device allocators sit below global allocator. If an address is found for a sub-device, no need to check the global allocator
+    if (lowest_addr != std::numeric_limits<DeviceAddr>::max()) {
+        return lowest_addr;
     } else {
-        TT_FATAL(sub_device_ids.size() == 0, "Invalid number of sub-devices {}", sub_device_ids.size());
-        return allocator::lowest_occupied_l1_address(*this->allocator_, global_bank_id);
+        auto &allocator = this->get_initialized_allocator();
+        // Global bank id needs to look up a bank from the compute grid (not the storage grid)
+        auto global_bank_id =
+            this->bank_ids_from_logical_core(BufferType::L1, *this->compute_cores_.begin())[0];
+        return allocator::lowest_occupied_l1_address(*allocator, global_bank_id);
     }
 }
 
