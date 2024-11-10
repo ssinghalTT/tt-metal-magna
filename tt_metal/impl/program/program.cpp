@@ -138,7 +138,7 @@ class Program_ {
 
     ProgramConfig& get_program_config(uint32_t programmable_core_type_index);
 
-    const std::vector<uint32_t> &determine_sub_device_ids(const Device *device);
+    const std::vector<SubDeviceId> &determine_sub_device_ids(const Device *device);
 
     // debug/test
     uint32_t get_sem_base_addr(Device *device, CoreCoord logical_core, CoreType core_type);
@@ -162,7 +162,7 @@ class Program_ {
     bool finalized_;
     bool cached_;
 
-    std::unordered_map<std::optional<SubDeviceManagerId>, std::vector<uint32_t>> sub_device_ids_;
+    std::unordered_map<SubDeviceManagerId, std::vector<SubDeviceId>> sub_device_ids_;
 
     struct CircularBufferAllocator {
         CircularBufferAllocator(const CoreRange &core_range_) : core_range(core_range_) {}
@@ -746,17 +746,8 @@ void Program::allocate_circular_buffers(const Device *device) { pimpl_->allocate
 void detail::Program_::validate_circular_buffer_region(const Device *device) {
     //ZoneScoped;
 
-    // Only pass sub_device_ids if sub-device manager is active
-    // Allocator is handled differently from other sub_device apis since the global allocator is always active
-    // State when there is no active manager is normally treated as having 1 sub_device, which is used to query state
-    // For allocator, we don't have a sub_device allocator when there is no active manager, only the global allocator
     // TODO: Circular buffer allocation and validation could be better optimized by determining usage per sub-device
-    std::optional<DeviceAddr> lowest_address;
-    if (device->get_active_sub_device_manager_id().has_value()) {
-        lowest_address = device->lowest_occupied_compute_l1_address(this->determine_sub_device_ids(device));
-    } else {
-        lowest_address = device->lowest_occupied_compute_l1_address();
-    }
+    std::optional<DeviceAddr> lowest_address = device->lowest_occupied_compute_l1_address(this->determine_sub_device_ids(device));
     uint32_t max_l1_size = device->l1_size_per_core();
 
     for (const CircularBufferAllocator &cb_allocator : this->cb_allocators_) {
@@ -1301,7 +1292,7 @@ uint32_t& detail::Program_::get_program_config_size(uint32_t programmable_core_t
     return this->program_config_sizes_[programmable_core_type_index];
 }
 
-const std::vector<uint32_t> &detail::Program_::determine_sub_device_ids(const Device *device) {
+const std::vector<SubDeviceId> &detail::Program_::determine_sub_device_ids(const Device *device) {
     // We need to calculate the sub_device_id when we haven't compiled the program yet, or this is the first time we
     // are getting the sub_device_ids after compilation
     auto sub_device_manager_id = device->get_active_sub_device_manager_id();
@@ -1310,22 +1301,22 @@ const std::vector<uint32_t> &detail::Program_::determine_sub_device_ids(const De
         if (!this->compiled_.empty()) {
             TT_FATAL(this->sub_device_ids_.empty(), "Multiple sub device managers are not currently supported for a single program");
         }
-        if (std::getenv("TT_METAL_SLOW_DISPATCH_MODE") != nullptr || !sub_device_manager_id.has_value()) {
+        if (std::getenv("TT_METAL_SLOW_DISPATCH_MODE") != nullptr || sub_device_manager_id == device->get_default_sub_device_manager_id()) {
             // No sub device manager, nothing to validate
-            auto [sub_device_ids, _] = this->sub_device_ids_.insert_or_assign(sub_device_manager_id, std::vector<uint32_t>{0});
+            auto [sub_device_ids, _] = this->sub_device_ids_.insert_or_assign(sub_device_manager_id, std::vector<SubDeviceId>{SubDeviceId{0}});
             return sub_device_ids->second;
         } else {
-            std::unordered_set<uint32_t> used_sub_device_ids;
+            std::unordered_set<SubDeviceId> used_sub_device_ids;
             auto find_sub_device_ids = [&] (HalProgrammableCoreType core_type) {
                 const auto& program_kgs = this->get_kernel_groups(hal.get_programmable_core_type_index(core_type));
                 uint32_t num_intersections = 0;
                 uint32_t num_cores = 0;
                 for (const auto& kg : program_kgs) {
-                    for (uint32_t i = 0; i < device->num_sub_devices(); ++i) {
-                        const auto& sub_device_cores = device->worker_cores(core_type, i);
+                    for (uint8_t i = 0; i < device->num_sub_devices(); ++i) {
+                        const auto& sub_device_cores = device->worker_cores(core_type, SubDeviceId{i});
                         auto intersection = sub_device_cores.intersection(kg.core_ranges);
                         if (intersection.size() > 0) {
-                            used_sub_device_ids.insert(i);
+                            used_sub_device_ids.insert(SubDeviceId{i});
                             num_intersections += intersection.num_cores();
                         }
                     }
@@ -1337,7 +1328,7 @@ const std::vector<uint32_t> &detail::Program_::determine_sub_device_ids(const De
             };
             find_sub_device_ids(HalProgrammableCoreType::TENSIX);
             find_sub_device_ids(HalProgrammableCoreType::ACTIVE_ETH);
-            auto [sub_device_ids, _] = this->sub_device_ids_.insert_or_assign(sub_device_manager_id, std::vector<uint32_t>(used_sub_device_ids.begin(), used_sub_device_ids.end()));
+            auto [sub_device_ids, _] = this->sub_device_ids_.insert_or_assign(sub_device_manager_id, std::vector<SubDeviceId>(used_sub_device_ids.begin(), used_sub_device_ids.end()));
             return sub_device_ids->second;
         }
     }
@@ -1680,7 +1671,7 @@ bool Program::is_finalized() const { return pimpl_->is_finalized(); }
 bool Program::is_cached() const { return pimpl_->is_cached(); }
 void Program::set_cached() { pimpl_->set_cached(); }
 
-const std::vector<uint32_t> & Program::determine_sub_device_ids(const Device *device) { return pimpl_->determine_sub_device_ids(device); }
+const std::vector<SubDeviceId> &Program::determine_sub_device_ids(const Device *device) { return pimpl_->determine_sub_device_ids(device); }
 
 const ProgramTransferInfo &Program::get_program_transfer_info() const noexcept { return pimpl_->program_transfer_info; }
 

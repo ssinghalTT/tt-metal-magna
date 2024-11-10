@@ -205,15 +205,13 @@ BufferPageMapping generate_buffer_page_mapping(const Buffer& buffer) {
     return buffer_page_mapping;
 }
 
-void validate_sub_device_id(std::optional<uint32_t> sub_device_id, Device *device, BufferType buffer_type, const std::optional<ShardSpecBuffer>& shard_parameters) {
+void validate_sub_device_id(std::optional<SubDeviceId> sub_device_id, Device *device, BufferType buffer_type, const std::optional<ShardSpecBuffer>& shard_parameters) {
     // No need to validate if we're using the global allocator or not sharding
     if (!sub_device_id.has_value()) {
         return;
     }
     TT_FATAL(shard_parameters.has_value(), "Specifying sub-device for buffer requires buffer to be sharded");
     TT_FATAL(is_l1(buffer_type), "Specifying sub-device for buffer requires buffer to be L1");
-    auto sub_device_manager_id = device->get_active_sub_device_manager_id();
-    TT_FATAL(sub_device_manager_id.has_value(), "Specifying sub-device for buffer requires device to have an active sub-device manager");
     const auto &sub_device_cores = device->worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id.value());
     const auto &shard_cores = shard_parameters->grid();
     TT_FATAL(sub_device_cores.contains(shard_cores), "Shard cores specified {} do not match sub-device cores {}", shard_cores, sub_device_cores);
@@ -227,7 +225,7 @@ Buffer::Buffer(
     const TensorMemoryLayout buffer_layout,
     const std::optional<ShardSpecBuffer>& shard_parameters,
     const std::optional<bool> bottom_up,
-    const std::optional<uint32_t> sub_device_id,
+    const std::optional<SubDeviceId> sub_device_id,
     const bool owns_data,
     Private) :
     device_(device),
@@ -240,7 +238,7 @@ Buffer::Buffer(
     sub_device_id_(sub_device_id),
     owns_data_(owns_data),
     buffer_page_mapping_(nullptr) {
-    TT_FATAL(this->device_ != nullptr && this->device_->allocator_ != nullptr, "Device and allocator need to not be null.");
+    TT_FATAL(this->device_ != nullptr, "Device needs to not be null.");
     if (this->sub_device_id_.has_value()) {
         validate_sub_device_id(this->sub_device_id_, this->device_, buffer_type, shard_parameters);
         this->sub_device_manager_id_ = this->device_->get_active_sub_device_manager_id();
@@ -258,7 +256,7 @@ std::shared_ptr<Buffer> Buffer::create(
     const TensorMemoryLayout buffer_layout,
     const std::optional<ShardSpecBuffer>& shard_parameters,
     const std::optional<bool> bottom_up,
-    const std::optional<uint32_t> sub_device_id) {
+    const std::optional<SubDeviceId> sub_device_id) {
     auto* bufferPtr = new Buffer(device, size, page_size, buffer_type, buffer_layout, shard_parameters, bottom_up, sub_device_id, true /* owns data */, Private());
     // Using a custom deleter to properly clean up the owned datas
     auto buffer = std::shared_ptr<Buffer>(bufferPtr, deleter);
@@ -299,7 +297,7 @@ std::shared_ptr<Buffer> Buffer::create(
     const TensorMemoryLayout buffer_layout,
     const std::optional<ShardSpecBuffer>& shard_parameters,
     const std::optional<bool> bottom_up,
-    const std::optional<uint32_t> sub_device_id) {
+    const std::optional<SubDeviceId> sub_device_id) {
     // Not using a custom deleter, because it doesn't own any data to cleanup
     auto buffer = std::make_shared<Buffer>(device, size, page_size, buffer_type, buffer_layout, shard_parameters, bottom_up, sub_device_id, false /* owns data */, Private());
     buffer->weak_self = buffer;

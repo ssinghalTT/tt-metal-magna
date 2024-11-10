@@ -13,6 +13,8 @@
 
 namespace tt::tt_metal {
 
+inline namespace v0 {
+
 class SubDevice {
    public:
     SubDevice(const std::array<CoreRangeSet, NumHalProgrammableCoreTypes>& cores);
@@ -38,4 +40,6 @@ class SubDevice {
     std::array<CoreRangeSet, NumHalProgrammableCoreTypes> cores_;
 };
 
-}
+}  // namespace v0
+
+}  // namespace tt::tt_metal
