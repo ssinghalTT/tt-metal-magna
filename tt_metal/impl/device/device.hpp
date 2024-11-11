@@ -383,6 +383,7 @@ class Device {
     void load_sub_device_manager(SubDeviceManagerId sub_device_manager_id);
     void clear_loaded_sub_device_manager();
     void remove_sub_device_manager(SubDeviceManagerId sub_device_manager_id);
+    const std::vector<SubDeviceId> &get_sub_device_ids() const;
    private:
     void reset_worker_launch_message_buffer_state(uint32_t num_entries);
     SubDeviceManagerId get_next_sub_device_manager_id();

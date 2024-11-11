@@ -3678,6 +3678,10 @@ void Device::remove_sub_device_manager(SubDeviceManagerId sub_device_manager_id)
     this->sub_device_managers_.erase(sub_device_manager);
 }
 
+const std::vector<SubDeviceId> &Device::get_sub_device_ids() const {
+    return this->active_sub_device_manager_->get_sub_device_ids();
+}
+
 }  // namespace tt_metal
 
 }  // namespace tt

@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+#include <vector>
+
 #include "tt_metal/impl/sub_device/sub_device_manager.hpp"
 
 #include "tt_metal/common/assert.hpp"
@@ -26,6 +28,7 @@ SubDeviceManager::SubDeviceManager(
     device_(device) {
     TT_ASSERT(device != nullptr, "Device must not be null");
     this->validate_sub_devices();
+    this->populate_sub_device_ids();
     this->populate_num_cores();
     this->populate_sub_allocators();
     this->populate_noc_data();
@@ -45,6 +48,7 @@ SubDeviceManager::SubDeviceManager(Device *device) : device_(device) {
     this->sub_devices_ = {SubDevice(std::array{
         CoreRangeSet(CoreRange({0, 0}, {compute_grid_size.x - 1, compute_grid_size.y - 1})),
         CoreRangeSet(std::move(active_eth_core_ranges))})};
+    this->populate_sub_device_ids();
     // No need to validate sub-devices since this constructs a sub-device of the entire grid
     this->populate_num_cores();
     // Sub-device manager does not own the global allocator
@@ -65,6 +69,10 @@ SubDeviceManager::~SubDeviceManager() {
 }
 
 uint8_t SubDeviceManager::num_sub_devices() const { return this->sub_devices_.size(); }
+
+const std::vector<SubDeviceId> &SubDeviceManager::get_sub_device_ids() const {
+    return this->sub_device_ids_;
+}
 
 const SubDevice& SubDeviceManager::sub_device(SubDeviceId sub_device_id) const {
     auto sub_device_index = this->get_sub_device_index(sub_device_id);
@@ -141,6 +149,7 @@ uint8_t SubDeviceManager::get_sub_device_index(SubDeviceId sub_device_id) const 
 }
 
 void SubDeviceManager::validate_sub_devices() const {
+    TT_FATAL(this->sub_devices_.size() <= SubDeviceManager::MAX_NUM_SUB_DEVICES, "Too many sub devices specified");
     // Validate sub device cores fit inside the device grid
     const auto& compute_grid_size = this->device_->compute_with_storage_grid_size();
     CoreRange device_worker_cores = CoreRange({0, 0}, {compute_grid_size.x - 1, compute_grid_size.y - 1});
@@ -176,6 +185,13 @@ void SubDeviceManager::validate_sub_devices() const {
                     "SubDevices specified for SubDeviceManager intersect");
             }
         }
+    }
+}
+
+void SubDeviceManager::populate_sub_device_ids() {
+    this->sub_device_ids_.resize(this->num_sub_devices());
+    for (uint8_t i = 0; i < this->num_sub_devices(); ++i) {
+        this->sub_device_ids_[i] = SubDeviceId{i};
     }
 }
 

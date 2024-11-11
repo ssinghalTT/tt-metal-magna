@@ -42,6 +42,8 @@ class SubDeviceManager {
 
     ~SubDeviceManager();
 
+    const std::vector<SubDeviceId> &get_sub_device_ids() const;
+
     const SubDevice &sub_device(SubDeviceId sub_device_id) const;
     const vector_memcpy_aligned<uint32_t> &noc_mcast_data(SubDeviceId sub_device_id) const;
     const vector_memcpy_aligned<uint32_t> &noc_unicast_data(SubDeviceId sub_device_id) const;
@@ -65,12 +67,14 @@ class SubDeviceManager {
    private:
     void validate_sub_devices() const;
     uint8_t get_sub_device_index(SubDeviceId sub_device_id) const;
+    void populate_sub_device_ids();
     void populate_num_cores();
     void populate_sub_allocators();
     void populate_noc_data();
 
     // TODO: We have a max number of sub-devices, so we can use a fixed size array
     std::vector<SubDevice> sub_devices_;
+    std::vector<SubDeviceId> sub_device_ids_;
     Device *device_;
 
     DeviceAddr local_l1_size_;
