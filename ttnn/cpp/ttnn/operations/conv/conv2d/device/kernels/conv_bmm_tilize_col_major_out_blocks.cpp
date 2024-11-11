@@ -113,12 +113,11 @@ inline void reblock_and_untilize(
             }
             tile_regs_commit();
             tile_regs_wait();
-            pack_untilize_dst<2, 2>(out_cb_id, 1, n, rows_to_copy);
+            pack_untilize_dst<out_subblock_w, out_block_w>(out_cb_id, 1, n, rows_to_copy);
             tile_regs_release();
-            cb_push_back(out_cb_id, 2);
             block_offset += out_subblock_num_tiles;
         }
-        //cb_push_back(out_cb_id, out_sub_block_rows_h);
+        cb_push_back(out_cb_id, out_sub_block_rows_h);
         //print_full_tile(out_cb_id);
         output_rows_h -= out_sub_block_rows_h;
         within_block_index += out_subblock_w;
@@ -450,14 +449,17 @@ void MAIN {
                 #if defined PACKER_L1_ACC and not defined FUSE_BIAS
                 pack_reconfig_data_format(matmul_partials_cb, out_cb_id);
                 pack_reconfig_l1_acc(0);
+                UNPACK(DPRINT << "452");
                 #endif
                 #ifdef PACK_RELU
                 PACK(( llk_pack_relu_config(ReluType::NO_RELU) ));
                 #endif
                 #ifndef FUSE_BIAS
                 reconfig_data_format_srca(in1_cb_id, matmul_partials_cb);
+                UNPACK(DPRINT << "FUSE_BIAS_TESTING");
                 #endif
-                pack_untilize_dst_init_short<2, 2>(out_cb_id);
+                //reconfig_data_format_srca(matmul_partials_cb, in1_cb_id);
+                pack_untilize_dst_init_short<out_subblock_w, out_block_w>(out_cb_id);
                 copy_tile_to_dst_init_short();
                 uint32_t curr_tile_output_rows_h = 0;
                 uint32_t TILE_SIZE = is_non_tile_height ? 32 : out_block_w;
@@ -478,8 +480,10 @@ void MAIN {
             if constexpr((in1_num_blocks_w > 1 || in0_num_blocks_h > 1)) {
                 #ifdef FUSE_BIAS
                 reconfig_data_format(matmul_partials_cb, in1_cb_id, bias_cb_id, mm_in0_cb_id);
+                UNPACK(DPRINT << "482 ");
                 #else
                 reconfig_data_format_srca(matmul_partials_cb, in1_cb_id);
+                UNPACK(DPRINT << "482 ");
                 #endif
 
                 if constexpr (!tilize_in0) {
