@@ -99,6 +99,373 @@ def test_upsample_single_core(device, input_shapes, scale_h, scale_w):
     assert isequal
 
 
+# Test 1 - atleast one of the width / height is even & scale factor = 2
+
+
+@pytest.mark.parametrize(
+    "input_shapes",
+    [
+        [1, 128, 10, 10],
+        [1, 64, 20, 20],
+        [1, 256, 10, 10],
+        [1, 128, 20, 20],
+        [1, 384, 10, 10],
+        [1, 192, 20, 20],
+        [1, 512, 10, 10],
+        [1, 256, 20, 20],
+        [1, 640, 10, 10],
+        [1, 320, 20, 20],
+        [1, 64, 40, 40],
+        [1, 128, 40, 40],
+        [1, 384, 20, 20],
+        [1, 192, 40, 40],
+        [1, 512, 20, 20],
+        [1, 256, 40, 40],
+        [1, 640, 20, 20],
+        [1, 320, 40, 40],
+        [1, 64, 30, 30],
+        [1, 128, 30, 30],
+        [1, 192, 30, 30],
+        [1, 256, 30, 30],
+        [1, 320, 30, 30],
+        [1, 128, 80, 80],
+        [1, 256, 14, 14],
+        [1, 128, 28, 28],
+        [1, 64, 56, 56],
+        [1, 32, 112, 112],
+        [1, 256, 30, 40],
+        [1, 256, 80, 80],
+        [1, 256, 8, 8],
+        [1, 16, 28, 28],
+        [1, 32, 14, 14],
+        [1, 18, 28, 28],
+        [1, 36, 14, 14],
+        [1, 30, 28, 28],
+        [1, 32, 28, 28],
+        [1, 64, 14, 14],
+        [1, 40, 28, 28],
+        [1, 80, 14, 14],
+        [1, 44, 28, 28],
+        [1, 88, 14, 14],
+        [1, 48, 28, 28],
+        [1, 96, 14, 14],
+        [1, 64, 28, 28],
+        [1, 128, 14, 14],
+        [1, 256, 15, 20],
+    ],
+)
+@pytest.mark.parametrize("scale_h", [2])
+@pytest.mark.parametrize("scale_w", [2])
+def test_upsample_single_core_even(device, input_shapes, scale_h, scale_w):
+    batch_size, height, width, num_channels = input_shapes
+
+    torch.manual_seed(0)
+    input = torch.rand(input_shapes, dtype=torch.bfloat16)
+    print("shape of input", input.shape)
+    tt_input = input.permute(0, 3, 1, 2)
+
+    scale_factor = (scale_h, scale_w)
+    m = nn.Upsample(scale_factor=scale_factor, mode="nearest")
+    torch_result = m(tt_input)
+    torch_result = torch_result.permute(0, 2, 3, 1)
+    print("torch output shape", torch_result.shape)
+
+    ## ttnn uses NHWC, so need to set scale_factor_c = 1
+    scale_factor = (scale_h, scale_w, 1)
+    input_tensor = ttnn.from_torch(input, device=device)
+    output_tensor = ttnn.upsample(input_tensor, scale_factor)
+    output_tensor = ttnn.to_torch(output_tensor)
+    print("ttnn output shape", output_tensor.shape)
+
+    assert_with_pcc(torch_result, output_tensor)
+
+    allclose = torch.allclose(output_tensor, torch_result)
+    isclose = torch.all(torch.isclose(output_tensor, torch_result))
+    isequal = torch.equal(output_tensor, torch_result)
+
+    assert allclose
+    assert isclose
+    assert isequal
+
+    import torch.nn.functional as F
+
+    cout = F.interpolate(tt_input, scale_factor=2, mode="nearest")
+    cout = cout.permute(0, 2, 3, 1)
+    print("interpolate output shape", cout.shape)
+
+    allclose = torch.allclose(output_tensor, cout)
+    isclose = torch.all(torch.isclose(output_tensor, cout))
+    isequal = torch.equal(output_tensor, cout)
+
+    assert allclose
+    assert isclose
+    assert isequal
+
+
+# Test 2 - both width and height is odd & scale factor = 2
+
+
+@pytest.mark.parametrize(
+    "input_shapes",
+    [
+        [1, 128, 15, 15],
+        [1, 256, 15, 15],
+        [1, 384, 15, 15],
+        [1, 512, 15, 15],
+        [1, 640, 15, 15],
+        [1, 2048, 7, 7],
+        [1, 64, 7, 7],
+        [1, 72, 7, 7],
+        [1, 120, 7, 7],
+        [1, 128, 7, 7],
+        [1, 160, 7, 7],
+        [1, 176, 7, 7],
+        [1, 192, 7, 7],
+        [1, 256, 7, 7],
+    ],
+)
+@pytest.mark.parametrize("scale_h", [2])
+@pytest.mark.parametrize("scale_w", [2])
+def test_upsample_single_core_odd(device, input_shapes, scale_h, scale_w):
+    batch_size, height, width, num_channels = input_shapes
+
+    torch.manual_seed(0)
+    input = torch.rand(input_shapes, dtype=torch.bfloat16)
+    print("shape of input", input.shape)
+    tt_input = input.permute(0, 3, 1, 2)
+
+    scale_factor = (scale_h, scale_w)
+    m = nn.Upsample(scale_factor=scale_factor, mode="nearest")
+    torch_result = m(tt_input)
+    torch_result = torch_result.permute(0, 2, 3, 1)
+    print("torch output shape", torch_result.shape)
+
+    ## ttnn uses NHWC, so need to set scale_factor_c = 1
+    scale_factor = (scale_h, scale_w, 1)
+    input_tensor = ttnn.from_torch(input, device=device)
+    output_tensor = ttnn.upsample(input_tensor, scale_factor)
+    output_tensor = ttnn.to_torch(output_tensor)
+    print("ttnn output shape", output_tensor.shape)
+
+    assert_with_pcc(torch_result, output_tensor)
+
+    allclose = torch.allclose(output_tensor, torch_result)
+    isclose = torch.all(torch.isclose(output_tensor, torch_result))
+    isequal = torch.equal(output_tensor, torch_result)
+
+    assert allclose
+    assert isclose
+    assert isequal
+
+    import torch.nn.functional as F
+
+    cout = F.interpolate(tt_input, scale_factor=2, mode="nearest")
+    cout = cout.permute(0, 2, 3, 1)
+    print("interpolate output shape", cout.shape)
+
+    allclose = torch.allclose(output_tensor, cout)
+    isclose = torch.all(torch.isclose(output_tensor, cout))
+    isequal = torch.equal(output_tensor, cout)
+
+    assert allclose
+    assert isclose
+    assert isequal
+
+
+# Test 3 - scale factor = 4
+@pytest.mark.parametrize(
+    "input_shapes",
+    [
+        [1, 256, 16, 16],
+        [1, 16, 14, 14],
+        [1, 32, 7, 7],
+        [1, 18, 14, 14],
+        [1, 36, 7, 7],
+        [1, 30, 14, 14],
+        [1, 60, 7, 7],
+        [1, 32, 14, 14],
+        [1, 64, 7, 7],
+        [1, 40, 14, 14],
+        [1, 80, 7, 7],
+        [1, 44, 14, 14],
+        [1, 88, 7, 7],
+        [1, 48, 14, 14],
+        [1, 96, 7, 7],
+        [1, 64, 14, 14],
+        [1, 128, 7, 7],
+    ],
+)
+@pytest.mark.parametrize("scale_h", [4])
+@pytest.mark.parametrize("scale_w", [4])
+def test_upsample_single_core_sf4(device, input_shapes, scale_h, scale_w):
+    batch_size, height, width, num_channels = input_shapes
+
+    torch.manual_seed(0)
+    input = torch.rand(input_shapes, dtype=torch.bfloat16)
+    print("shape of input", input.shape)
+    tt_input = input.permute(0, 3, 1, 2)
+
+    scale_factor = (scale_h, scale_w)
+    m = nn.Upsample(scale_factor=scale_factor, mode="nearest")
+    torch_result = m(tt_input)
+    torch_result = torch_result.permute(0, 2, 3, 1)
+    print("torch output shape", torch_result.shape)
+
+    ## ttnn uses NHWC, so need to set scale_factor_c = 1
+    scale_factor = (scale_h, scale_w, 1)
+    input_tensor = ttnn.from_torch(input, device=device)
+    output_tensor = ttnn.upsample(input_tensor, scale_factor)
+    output_tensor = ttnn.to_torch(output_tensor)
+    print("ttnn output shape", output_tensor.shape)
+
+    assert_with_pcc(torch_result, output_tensor)
+
+    allclose = torch.allclose(output_tensor, torch_result)
+    isclose = torch.all(torch.isclose(output_tensor, torch_result))
+    isequal = torch.equal(output_tensor, torch_result)
+
+    assert allclose
+    assert isclose
+    assert isequal
+
+    import torch.nn.functional as F
+
+    cout = F.interpolate(tt_input, scale_factor=2, mode="nearest")
+    cout = cout.permute(0, 2, 3, 1)
+    print("interpolate output shape", cout.shape)
+
+    allclose = torch.allclose(output_tensor, cout)
+    isclose = torch.all(torch.isclose(output_tensor, cout))
+    isequal = torch.equal(output_tensor, cout)
+
+    assert allclose
+    assert isclose
+    assert isequal
+
+
+# Test 4 - scale factor = 8
+
+
+@pytest.mark.parametrize(
+    "input_shapes",
+    [
+        [1, 16, 7, 7],
+        [1, 18, 7, 7],
+        [1, 30, 7, 7],
+        [1, 32, 7, 7],
+        [1, 40, 7, 7],
+        [1, 44, 7, 7],
+        [1, 48, 7, 7],
+        [1, 64, 7, 7],
+    ],
+)
+@pytest.mark.parametrize("scale_h", [8])
+@pytest.mark.parametrize("scale_w", [8])
+def test_upsample_single_core_sf8(device, input_shapes, scale_h, scale_w):
+    batch_size, height, width, num_channels = input_shapes
+
+    torch.manual_seed(0)
+    input = torch.rand(input_shapes, dtype=torch.bfloat16)
+    print("shape of input", input.shape)
+    tt_input = input.permute(0, 3, 1, 2)
+
+    scale_factor = (scale_h, scale_w)
+    m = nn.Upsample(scale_factor=scale_factor, mode="nearest")
+    torch_result = m(tt_input)
+    torch_result = torch_result.permute(0, 2, 3, 1)
+    print("torch output shape", torch_result.shape)
+
+    ## ttnn uses NHWC, so need to set scale_factor_c = 1
+    scale_factor = (scale_h, scale_w, 1)
+    input_tensor = ttnn.from_torch(input, device=device)
+    output_tensor = ttnn.upsample(input_tensor, scale_factor)
+    output_tensor = ttnn.to_torch(output_tensor)
+    print("ttnn output shape", output_tensor.shape)
+
+    assert_with_pcc(torch_result, output_tensor)
+
+    allclose = torch.allclose(output_tensor, torch_result)
+    isclose = torch.all(torch.isclose(output_tensor, torch_result))
+    isequal = torch.equal(output_tensor, torch_result)
+
+    assert allclose
+    assert isclose
+    assert isequal
+
+    import torch.nn.functional as F
+
+    cout = F.interpolate(tt_input, scale_factor=2, mode="nearest")
+    cout = cout.permute(0, 2, 3, 1)
+    print("interpolate output shape", cout.shape)
+
+    allclose = torch.allclose(output_tensor, cout)
+    isclose = torch.all(torch.isclose(output_tensor, cout))
+    isequal = torch.equal(output_tensor, cout)
+
+    assert allclose
+    assert isclose
+    assert isequal
+
+
+# Test 5 - mode =  bilinear & atleast one of the width / height is even & scale factor = 2
+
+
+@pytest.mark.parametrize(
+    "input_shapes",
+    [
+        [1, 64, 112, 112],  # height and width not divisble by 32
+        [1, 128, 64, 128],  # height and width divisble by 32 but not equal
+        [1, 256, 64, 64],  # height and width divisble by 32 & equal
+    ],
+)
+@pytest.mark.parametrize("scale_h", [2])
+@pytest.mark.parametrize("scale_w", [2])
+def test_upsample_single_core_bilinear(device, input_shapes, scale_h, scale_w):
+    batch_size, height, width, num_channels = input_shapes
+
+    torch.manual_seed(0)
+    input = torch.rand(input_shapes, dtype=torch.bfloat16)
+    print("shape of input", input.shape)
+    tt_input = input.permute(0, 3, 1, 2)
+
+    scale_factor = (scale_h, scale_w)
+    m = nn.Upsample(scale_factor=scale_factor, mode="bilinear")
+    torch_result = m(tt_input)
+    torch_result = torch_result.permute(0, 2, 3, 1)
+    print("torch output shape", torch_result.shape)
+
+    ## ttnn uses NHWC, so need to set scale_factor_c = 1
+    scale_factor = (scale_h, scale_w, 1)
+    input_tensor = ttnn.from_torch(input, device=device)
+    output_tensor = ttnn.upsample(input_tensor, scale_factor)
+    output_tensor = ttnn.to_torch(output_tensor)
+    print("ttnn output shape", output_tensor.shape)
+
+    assert_with_pcc(torch_result, output_tensor)
+
+    allclose = torch.allclose(output_tensor, torch_result)
+    isclose = torch.all(torch.isclose(output_tensor, torch_result))
+    isequal = torch.equal(output_tensor, torch_result)
+
+    assert allclose
+    assert isclose
+    assert isequal
+
+    import torch.nn.functional as F
+
+    cout = F.interpolate(tt_input, scale_factor=2, mode="nearest")
+    cout = cout.permute(0, 2, 3, 1)
+    print("interpolate output shape", cout.shape)
+
+    allclose = torch.allclose(output_tensor, cout)
+    isclose = torch.all(torch.isclose(output_tensor, cout))
+    isequal = torch.equal(output_tensor, cout)
+
+    assert allclose
+    assert isclose
+    assert isequal
+
+
 @pytest.mark.parametrize(
     "input_shape",
     [
