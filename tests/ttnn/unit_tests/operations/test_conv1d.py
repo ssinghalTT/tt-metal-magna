@@ -35,6 +35,7 @@ def run_conv(
     padding,
     use_1d_systolic_array,
     config_override,
+    layout,
     use_shallow_conv_variant=False,
     transpose_mcast=True,
     enable_auto_formatting=False,
@@ -48,7 +49,7 @@ def run_conv(
     auto_shard=False,
 ):
     # has_bias = False
-    has_bias = False
+    has_bias = True
     torch.manual_seed(0)
     conv_input_shape = [batch_size, input_channels, input_length]
     conv_weight_shape = [output_channels, input_channels // groups, kernel_size]
@@ -68,16 +69,28 @@ def run_conv(
 
     reader_patterns_cache = {}
 
+    inputs_mesh_mapper = ttnn.ShardTensorToMesh(device, dim=0)
+    weights_mesh_mapper = ttnn.ReplicateTensorToMesh(device)
+    output_mesh_composer = ttnn.ConcatMeshToTensor(device, dim=0)
+
     tt_weight_tensor = ttnn.from_torch(
-        torch_weight_tensor, weights_dtype if weights_dtype != ttnn.bfloat8_b else ttnn.float32
+        torch_weight_tensor,
+        weights_dtype if weights_dtype != ttnn.bfloat8_b else ttnn.float32,
+        device=device,
+        mesh_mapper=weights_mesh_mapper,
+        layout=layout,
     )
     tt_bias_tensor = None
     if has_bias:
         tt_bias_tensor = ttnn.from_torch(
-            torch_bias_tensor, weights_dtype if weights_dtype != ttnn.bfloat8_b else ttnn.float32
+            torch_bias_tensor,
+            weights_dtype if weights_dtype != ttnn.bfloat8_b else ttnn.float32,
+            device=device,
+            mesh_mapper=weights_mesh_mapper,
+            layout=layout,
         )
 
-    tt_input_tensor = ttnn.from_torch(torch_input_tensor, ttnn.bfloat16)
+    tt_input_tensor = ttnn.from_torch(torch_input_tensor, ttnn.bfloat16, device=device, mesh_mapper=inputs_mesh_mapper)
 
     shard_layout = (
         ttnn.TensorMemoryLayout.HEIGHT_SHARDED if use_1d_systolic_array else ttnn.TensorMemoryLayout.BLOCK_SHARDED
@@ -114,7 +127,7 @@ def run_conv(
         kernel_size=kernel_size,
         stride=stride,
         padding=padding,
-        batch_size=batch_size,
+        batch_size=tt_input_tensor.shape[0],
         input_length=input_length,
         conv_config=conv_config,
         conv_op_cache=reader_patterns_cache,
@@ -123,7 +136,7 @@ def run_conv(
     )
 
     tt_output_tensor = ttnn.from_device(tt_output_tensor_on_device)
-    torch_output_tensor = torch.Tensor(ttnn.to_torch(tt_output_tensor))
+    torch_output_tensor = torch.Tensor(ttnn.to_torch(tt_output_tensor, mesh_composer=output_mesh_composer))
 
     # torch_output_tensor is in row major layout and NLC shape
     # NLC to NCL
@@ -290,6 +303,81 @@ def test_conv1d(
         padding,
         use_1d_systolic_array,
         config_override,
+        use_shallow_conv_variant=use_shallow_conv_variant,
+        transpose_mcast=use_1d_systolic_array,  ## use RM (transpose_mcast=False) with 2D on WH
+        padded_input_channels=None,
+        output_layout=output_layout,
+        groups=groups,
+    )
+
+
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
+@pytest.mark.parametrize(
+    "batch_size, output_channels, input_channels, input_length, kernel_size, stride, padding, groups, use_1d_systolic_array, config_override, use_shallow_conv_variant",
+    ((8, 512, 80, 3000, 3, 1, 1, 1, True, None, False),),
+)
+@pytest.mark.parametrize(
+    "weights_dtype",
+    [ttnn.bfloat8_b],
+)
+@pytest.mark.parametrize(
+    "activations_dtype",
+    [ttnn.bfloat16],
+)
+@pytest.mark.parametrize(
+    "output_dtype",
+    [ttnn.bfloat16],
+)
+@pytest.mark.parametrize(
+    "layout",
+    [ttnn.ROW_MAJOR_LAYOUT, ttnn.TILE_LAYOUT],
+)
+@pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.HiFi4])
+@pytest.mark.parametrize("output_layout", [ttnn.TILE_LAYOUT])
+def test_whisper_dp_conv1d(
+    mesh_device,
+    use_program_cache,
+    math_fidelity,
+    activations_dtype,
+    weights_dtype,
+    output_dtype,
+    batch_size,
+    output_channels,
+    input_channels,
+    input_length,
+    kernel_size,
+    stride,
+    padding,
+    groups,
+    use_1d_systolic_array,
+    config_override,
+    use_shallow_conv_variant,
+    output_layout,
+    layout,
+):
+    if activations_dtype == ttnn.bfloat8_b:
+        pytest.skip("Row major layout not compatible with bfloat8_b")
+    if groups > 5120 or input_channels > 5120 or output_channels > 5120:
+        pytest.skip("OOM")
+    if (input_channels > 2560 or output_channels > 2560) and output_dtype == ttnn.bfloat16:
+        pytest.skip("OOM")
+
+    run_conv(
+        mesh_device,
+        math_fidelity,
+        activations_dtype,
+        weights_dtype,
+        output_dtype,
+        batch_size,
+        output_channels,
+        input_channels,
+        input_length,
+        kernel_size,
+        stride,
+        padding,
+        use_1d_systolic_array,
+        config_override,
+        layout,
         use_shallow_conv_variant=use_shallow_conv_variant,
         transpose_mcast=use_1d_systolic_array,  ## use RM (transpose_mcast=False) with 2D on WH
         padded_input_channels=None,
