@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "ttnn/cpp/ttnn/deprecated/tt_dnn/kernels/compute/moreh_common.hpp"
-#include "tools/profiler/kernel_profiler.hpp”
+#include "tools/profiler/kernel_profiler.hpp"
 
 #define LOOP_COUNT 10
 
