@@ -50,8 +50,8 @@ def run_moreh_softmax_test(
 
     torch_output = torch.softmax(torch_input, dim)
     if compute_kernel_options is None:
-        print("Ditmemay")
-        compute_kernel_config = get_compute_kernel_options(True)
+        print("---------------------------")
+        compute_kernel_config = get_compute_kernel_options(False)
         ttnn_output = ttnn.operations.moreh.softmax(ttnn_input, dim, compute_kernel_config=compute_kernel_config)
     else:
         if use_optional_output_tensor == True:
@@ -109,10 +109,10 @@ def run_moreh_softmax_backward_test(
 
     torch_y.backward(torch_dy)
     if compute_kernel_options is None:
-        print("Ditmemay")
+        print("-------------------------")
         compute_kernel_config = get_compute_kernel_options(False)
         ttnn_output = ttnn.operations.moreh.softmax_backward(
-            ttnn_y, ttnn_dy, dim, compute_kernel_config=compute_kernel_config
+            ttnn_y, ttnn_dy, dim, compute_kernel_config=compute_kernel_config, strategy=strategy
         )
     else:
         if use_optional_output_tensor == True:
@@ -468,7 +468,7 @@ def test_softmax_callback(shape_dim_strategy, dtype, device, use_program_cache):
 @pytest.mark.parametrize(
     "shape_dim_strategy",
     [
-        # [[32, 32], 1, ttnn.operations.moreh.SoftmaxBackwardOpParallelizationStrategy.SMALL_W],
+        [[32, 32], 1, ttnn.operations.moreh.SoftmaxBackwardOpParallelizationStrategy.SMALL_W],
         # [[32, 32], 0, ttnn.operations.moreh.SoftmaxBackwardOpParallelizationStrategy.SMALL_H],
         # [[32, 32], 1, ttnn.operations.moreh.SoftmaxBackwardOpParallelizationStrategy.LARGE_W],
         # [[32, 32], 0, ttnn.operations.moreh.SoftmaxBackwardOpParallelizationStrategy.LARGE_H],
@@ -476,7 +476,7 @@ def test_softmax_callback(shape_dim_strategy, dtype, device, use_program_cache):
         # [[3, 32, 160], 2],
         # [[5, 6, 32, 32], 3],
         # [[2, 3, 128, 160], 3],
-        [[10, 20, 96, 160], 3],
+        # [[10, 20, 96, 160], 3],
     ],
 )
 @pytest.mark.parametrize(
@@ -486,12 +486,12 @@ def test_softmax_callback(shape_dim_strategy, dtype, device, use_program_cache):
     ],
 )
 def test_softmax_backward_callback(shape_dim_strategy, dtype, device, use_program_cache):
-    shape, dim = shape_dim_strategy
+    shape, dim, strategy = shape_dim_strategy
     torch.manual_seed(0)
     rtol = atol = 0.05
 
     # for i in range(2):
-    run_moreh_softmax_backward_test(shape, dim, dtype, ttnn.TILE_LAYOUT, device, rtol, atol, True)
+    run_moreh_softmax_backward_test(shape, dim, dtype, ttnn.TILE_LAYOUT, device, rtol, atol, True, strategy=strategy)
     # if i == 0:
     #     num_program_cache_entries = device.num_program_cache_entries()
     #     assert num_program_cache_entries > 0
