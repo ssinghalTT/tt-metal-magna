@@ -264,6 +264,13 @@ MorehLayerNormBackwardGammaBetaGradOperation::ProgramFactory::create(
         tile_offset += num_cols_per_core;
     }
 
+    const int loop_count = 10;
+    for (int i = 0; i < PROFILER_OP_SUPPORT_COUNT * kernel_profiler::PROFILER_L1_GUARANTEED_MARKER_COUNT / loop_count;
+         i++) {
+        EnqueueProgram(device->command_queue(), program, false);
+    }
+    tt::tt_metal::detail::DumpDeviceProfileResults(device);
+
     return {std::move(program), {reader_kernels_id, writer_kernels_id, num_cores, num_cores_y}};
 }
 
