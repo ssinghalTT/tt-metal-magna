@@ -24,6 +24,8 @@ async def root():
 async def startup():
     device_id = 0
     device = ttnn.CreateDevice(device_id, l1_small_size=24576, trace_region_size=1617920, num_command_queues=2)
+    device.enable_program_cache()
+    device.enable_async(True)
     global model
     model = Yolov4Trace2CQ()
     model.initialize_yolov4_trace_2cqs_inference(device)
