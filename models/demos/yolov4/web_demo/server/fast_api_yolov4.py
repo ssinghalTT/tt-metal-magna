@@ -6,6 +6,8 @@ from models.demos.yolov4.tests.yolov4_perfomant import Yolov4Trace2CQ
 
 import cv2
 import numpy as np
+import ttnn
+
 
 app = FastAPI(
     title="YOLOv4 object detection",
@@ -22,14 +24,16 @@ async def root():
 @app.on_event("startup")
 async def startup():
     device_id = 0
-    device = ttnn.CreateDevice(device_id=device_id)
+    device = ttnn.CreateDevice(
+        device_id=device_id, l1_small_size=24576, trace_region_size=1617920, num_command_queues=2
+    )
     global model
     model = Yolov4Trace2CQ()
     model.initialize_yolov4_trace_2cqs_inference(
         device,
-        batch_size=1,
-        act_dtype=DataType.BFLOAT16,
-        weight_dtype=DataType.BFLOAT16,
+        device_batch_size=1,
+        act_dtype=ttnn.bfloat16,
+        weight_dtype=ttnn.bfloat16,
         model_location_generator=None,
     )
 

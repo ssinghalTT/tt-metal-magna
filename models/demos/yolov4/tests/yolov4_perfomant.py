@@ -304,6 +304,12 @@ class Yolov4Trace2CQ:
         ttnn.record_event(0, self.op_event)
         ttnn.execute_trace(self.device, self.tid, cq_id=0, blocking=False)
         ttnn.synchronize_devices(self.device)
+        # TODO: figure out the output type that is passed on to fast_api as repsonse.
+        # TODO: will be need to do jsonify; convert from torch tesnor to list to be recieved on the client side?
+        # TODO: double check the post processing on the client side.
+        print("\n\n\n\n\n\n")
+        print("self.test_infra.output_tensor: ", self.test_infra.output_tensor)
+        print("\n\n\n\n\n\n")
         return self.test_infra.output_tensor
 
         # if use_signpost:

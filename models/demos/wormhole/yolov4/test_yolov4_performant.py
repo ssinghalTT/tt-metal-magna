@@ -89,6 +89,10 @@ def test_run_yolov4_trace_2cqs_inference(
 
         t0 = time.time()
         output = yolov4_trac2_2cq.execute_yolov4_trace_2cqs_inference(tt_inputs_host)
+        print("\n\n\n\n")
+        print("the raw output type is: ", type(output))
+        print("the raw output is: ", output)
+        print("\n\n\n\n")
         t1 = time.time()
         print("TIME", t1 - t0)
 
