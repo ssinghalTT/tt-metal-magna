@@ -27,6 +27,19 @@ def _nearest_32(x):
 from tests.ttnn.ttnn_utility_fuction import get_shard_grid_from_num_cores
 
 
+def write_to_file(file_name, data):
+    data = data.cpu().numpy()
+    with open(file_name, "w") as file_name:
+        for i in range(1):
+            for k in range(data.shape[2]):
+                for l in range(data.shape[3]):
+                    for j in range(data.shape[1]):
+                        file_name.write(str(data[i][j][k][l]) + "   ")
+                    file_name.write("\n")
+                file_name.write("\n")
+            file_name.write("\n")
+
+
 def run_conv(
     device,
     math_fidelity,
@@ -69,9 +82,20 @@ def run_conv(
     # torch_input_tensor_nchw = torch.ones(conv_input_shape, dtype=torch.bfloat16).float()
     # torch_input_tensor_nchw = torch.tensor(range(input_height * input_width)).reshape([1,1,input_height,input_width]).float()
     # torch_input_tensor_nchw = torch_input_tensor_nchw.broadcast_to(conv_input_shape).float()
+    for i in range(batch_size):
+        for j in range(input_channels):
+            for k in range(input_height):
+                for l in range(input_width):
+                    torch_input_tensor_nchw[i][j][k][l] = 0.01 * (l % 11)
 
     torch_input_tensor = torch.permute(torch_input_tensor_nchw, (0, 2, 3, 1))
     torch_weight_tensor = torch.ones(conv_weight_shape, dtype=torch.bfloat16).float()
+    # for i in range(output_channels):
+    #     for j in range(input_channels // groups):
+    #         for k in range(filter_height):
+    #             for l in range(filter_width):
+    #                 torch_weight_tensor[i][j][k][l] = 1
+
     # torch_weight_tensor = torch.ones(conv_weight_shape, dtype=torch.bfloat16).float()
 
     torch_bias_tensor = torch.zeros(conv_bias_shape, dtype=torch.bfloat16).float() if has_bias else None
@@ -175,9 +199,11 @@ def run_conv(
     else:
         pcc = 0.997
 
-    # passing, pcc_msg = check_with_pcc_without_tensor_printout(torch_output_tensor, torch_out_golden_tensor, pcc=pcc)
-    # logger.info(f"PCC = {pcc_msg}. Threshold = {pcc}")
-    # assert passing
+    write_to_file("torch_output_tensor.txt", torch_output_tensor.float())
+    write_to_file("torch_out_golden_tensor.txt", torch_out_golden_tensor.float())
+    passing, pcc_msg = check_with_pcc_without_tensor_printout(torch_output_tensor, torch_out_golden_tensor, pcc=pcc)
+    logger.info(f"PCC = {pcc_msg}. Threshold = {pcc}")
+    assert passing
 
     print(ttnn.get_memory_config(tt_output_tensor_on_device))
     print(tt_output_tensor_on_device)
@@ -223,6 +249,108 @@ def run_conv(
 @pytest.mark.parametrize("packer_l1_acc", [True, False], ids=["pack_l1", "no_pack_l1"])
 @pytest.mark.parametrize("has_bias", [True], ids=["with_bias"])
 def test_non_tile_multiple_height_conv_wh(
+    device,
+    use_program_cache,
+    math_fidelity,
+    activations_dtype,
+    weights_dtype,
+    batch_size,
+    output_channels,
+    input_channels,
+    input_height,
+    input_width,
+    filter_height,
+    filter_width,
+    stride_h,
+    stride_w,
+    pad_h,
+    pad_w,
+    use_1d_systolic_array,
+    config_override,
+    fp32_accum,
+    packer_l1_acc,
+    has_bias,
+):
+    if device.core_grid.y == 7:
+        pytest.skip("Issue #6992: Statically allocated circular buffers in program clash with L1 buffers on core range")
+
+    if (
+        is_grayskull()
+        and activations_dtype == ttnn.bfloat16
+        and batch_size == 20
+        and (
+            output_channels == 64
+            or (
+                stride_h == 2
+                and (output_channels == 256 or (output_channels == 128 and weights_dtype == ttnn.bfloat16))
+            )
+        )
+    ):
+        pytest.skip("Skipping test because it won't fit in L1!")
+
+    if activations_dtype == ttnn.float32 and (batch_size >= 16 or (output_channels == 64 and input_height == 240)):
+        pytest.skip("Skipping test because it won't fit in L1!")
+
+    if (
+        (weights_dtype == ttnn.bfloat16 and batch_size == 20 and output_channels == 128 and input_height == 56)
+        or (weights_dtype == ttnn.bfloat16 and batch_size == 20 and output_channels == 64)
+        or (weights_dtype == ttnn.bfloat8_b and batch_size == 20 and output_channels == 128 and input_height == 56)
+    ):
+        pytest.skip("Skipping test because it won't fit in L1!")
+
+    # if has_bias and packer_l1_acc and (fp32_accum or activations_dtype is ttnn.float32):
+    #     pytest.skip("skipping due to pack_untilize_dst issue! --> #14236")
+
+    use_shallow_conv_variant = (input_channels == 16) and device.arch() != ttnn.device.Arch.WORMHOLE_B0
+    run_conv(
+        device,
+        math_fidelity,
+        activations_dtype,
+        weights_dtype,
+        batch_size,
+        output_channels,
+        input_channels,
+        input_height,
+        input_width,
+        filter_height,
+        filter_width,
+        stride_h,
+        stride_w,
+        pad_h,
+        pad_w,
+        use_1d_systolic_array,
+        config_override=config_override,
+        use_shallow_conv_variant=use_shallow_conv_variant,
+        transpose_mcast=use_1d_systolic_array,  ## use RM (transpose_mcast=False) with 2D on WH
+        packer_l1_acc=packer_l1_acc,
+        fp32_accum=fp32_accum,
+        has_bias=has_bias,
+        output_layout=ttnn.ROW_MAJOR_LAYOUT,
+    )
+
+
+@skip_for_blackhole()
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
+@pytest.mark.parametrize(
+    "batch_size, output_channels, input_channels, input_height, input_width, filter_height, filter_width, stride_h, stride_w, pad_h, pad_w, use_1d_systolic_array, config_override",
+    (
+        # unique convs in rn50 (complete list)
+        (8, 320, 320, 16, 16, 3, 3, 1, 1, 1, 1, True, None),
+    ),
+)
+@pytest.mark.parametrize(
+    "weights_dtype",
+    [ttnn.bfloat16],
+)
+@pytest.mark.parametrize(
+    "activations_dtype",
+    [ttnn.bfloat16],
+)
+@pytest.mark.parametrize("fp32_accum", [True], ids=["fp32_accum"])
+@pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
+@pytest.mark.parametrize("packer_l1_acc", [False], ids=["no_pack_l1"])
+@pytest.mark.parametrize("has_bias", [False], ids=["with_bias"])
+def test_non(
     device,
     use_program_cache,
     math_fidelity,

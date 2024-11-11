@@ -188,6 +188,11 @@ std::tuple<CBHandle, CBHandle> create_CBs_for_sharded_input_v2(
         auto shard_shape = output.shard_spec().value().shape;
         uint32_t aligned_output_stick_nbytes = use_non_tile_height ? shard_shape[1] * output.element_size() : out_tile_size;
         uint32_t aligned_output_num_pages = use_non_tile_height ? shard_shape[0] : num_writer_output_tiles;
+        if(use_non_tile_height && shard_shape[1] > 256){
+            aligned_output_stick_nbytes = 64;
+            aligned_output_num_pages = shard_shape[0] * (shard_shape[1] / aligned_output_stick_nbytes);
+        }
+        std::cout << aligned_output_stick_nbytes << "   " << aligned_output_num_pages << std::endl;
         CircularBufferConfig cb_output_config = CircularBufferConfig(aligned_output_num_pages * aligned_output_stick_nbytes, {{out0_cb, out_df}})
             .set_page_size(out0_cb, aligned_output_stick_nbytes);
 
@@ -1156,6 +1161,10 @@ operation::ProgramWithCallbacks multi_core_optimized_conv_sharded_v2_impl(
         TT_THROW("Sharded input not supported for this conv yet!");
     }
 
+    std::cout << "reader kernel -->" << reader_kernel << std::endl;
+    std::cout << "compute kernel -->" << compute_kernel << std::endl;
+    std::cout << "writer_mcast_sender_kernel kernel -->" << writer_mcast_sender_kernel << std::endl;
+    std::cout << "writer_mcast_receiver_kernel kernel -->" << writer_mcast_receiver_kernel << std::endl;
     if (read_window_in_inner_loop) {
         const uint32_t window_size = filter_h * filter_w;
         in0_block_w *= window_size;

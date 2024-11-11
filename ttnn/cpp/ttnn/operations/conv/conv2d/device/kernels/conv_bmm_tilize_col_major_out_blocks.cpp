@@ -9,7 +9,7 @@
 #include "compute_kernel_api/pack_untilize.h"
 #include "compute_kernel_api/tile_move_copy.h"
 #include "compute_kernel_api/matmul.h"
-// #include "debug/dprint.h"
+#include "debug/dprint.h"
 
 #ifdef FUSE_BIAS
 #include "compute_kernel_api/bcast.h"
@@ -92,11 +92,17 @@ inline void reblock_and_untilize(
     uint32_t TILE_SIZE = is_non_tile_height_ ? 32 : out_block_w;
     uint32_t num_tiles_in_row_of_subblocks = mulsi3(out_subblock_num_tiles, num_out_subblocks_in_col);
     cb_wait_front(interm_cb_id, num_tiles_in_row_of_subblocks);
-    print_tile_rows(interm_cb_id, 1);
+    // for (uint32_t i =0; i<num_tiles_in_row_of_subblocks; i++) {
+    //     print_full_tile(interm_cb_id, i);
+    // }
+    //print_full_tile(interm_cb_id);
+
+    UNPACK(DPRINT << num_out_subblocks_in_col << "  " << out_subblock_w << "    " << out_block_w << "   " <<out_subblock_h  << ENDL());
     uint32_t within_block_index = 0;
     for (uint32_t h = 0; h < out_subblock_h; h++) {
         uint32_t block_offset = 0;
         uint32_t out_sub_block_rows_h = output_rows_h <= TILE_SIZE ? output_rows_h : TILE_SIZE;
+        UNPACK(DPRINT << "output_rows_h: " << output_rows_h << " out_sub_block_rows_h: " << out_sub_block_rows_h << ENDL());
         uint32_t rows_to_copy = is_non_tile_height_ ? out_sub_block_rows_h : 16;
         cb_reserve_back(out_cb_id, out_sub_block_rows_h);
         for (uint32_t n = 0; n < num_out_subblocks_in_col; n++) {
@@ -107,17 +113,23 @@ inline void reblock_and_untilize(
             }
             tile_regs_commit();
             tile_regs_wait();
-            pack_untilize_dst<out_subblock_w, out_block_w>(out_cb_id, 1, n, rows_to_copy);
+            pack_untilize_dst<2, 2>(out_cb_id, 1, n, rows_to_copy);
             tile_regs_release();
+            cb_push_back(out_cb_id, 2);
             block_offset += out_subblock_num_tiles;
         }
-        cb_push_back(out_cb_id, out_sub_block_rows_h);
+        //cb_push_back(out_cb_id, out_sub_block_rows_h);
         //print_full_tile(out_cb_id);
         output_rows_h -= out_sub_block_rows_h;
         within_block_index += out_subblock_w;
     }
-    cb_pop_front(interm_cb_id, num_tiles_in_row_of_subblocks);
-    print_tile_rows(out_cb_id, 1);
+    for (uint32_t i = 0; i < num_out_subblocks_in_col; i++) {
+        print_full_tile(interm_cb_id);
+        cb_pop_front(interm_cb_id, 1);
+    }
+
+    //cb_pop_front(interm_cb_id, num_tiles_in_row_of_subblocks);
+    print_tile_rows(out_cb_id);
 }
 
 namespace NAMESPACE {
@@ -445,7 +457,7 @@ void MAIN {
                 #ifndef FUSE_BIAS
                 reconfig_data_format_srca(in1_cb_id, matmul_partials_cb);
                 #endif
-                pack_untilize_dst_init_short<out_subblock_w, out_block_w>(out_cb_id);
+                pack_untilize_dst_init_short<2, 2>(out_cb_id);
                 copy_tile_to_dst_init_short();
                 uint32_t curr_tile_output_rows_h = 0;
                 uint32_t TILE_SIZE = is_non_tile_height ? 32 : out_block_w;
