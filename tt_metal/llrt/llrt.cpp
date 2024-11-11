@@ -133,14 +133,13 @@ void write_launch_msg_to_core(chip_id_t chip, const CoreCoord core, launch_msg_t
     }
 }
 
-void launch_erisc_app_fw_on_core(chip_id_t chip, CoreCoord core, bool is_active_eth, bool is_idle_fw) {
+void launch_erisc_app_fw_on_core(chip_id_t chip, CoreCoord core, bool is_idle_eth, bool is_idle_fw) {
     if (is_idle_fw) {
         // pull out base FW address from HAL and the PC
-        uint32_t pc_addr = (is_active_eth) ? 0xFFB14000 : 0xFFB14008;
-        uint32_t fw_base = (is_active_eth) ? eth_l1_mem::address_map::FIRMWARE_BASE : MEM_IERISC_FIRMWARE_BASE;
+        uint32_t pc_addr = (is_idle_eth) ? 0xFFB14000 : 0xFFB14008;
+        uint32_t fw_base = (is_idle_eth) ? MEM_IERISC_FIRMWARE_BASE : eth_l1_mem::address_map::FIRMWARE_BASE;
         std::cout << "Eth core " << core.str() << " pc addr " << std::hex << pc_addr << " fw base " << fw_base << std::dec << std::endl;
         llrt::write_hex_vec_to_core(chip, core, {fw_base}, pc_addr);
-        llrt::write_hex_vec_to_core(chip, core, {fw_base + 0x72000}, pc_addr + 0x4);
     } else {
         llrt::write_hex_vec_to_core(chip, core, {0x1}, eth_l1_mem::address_map::LAUNCH_ERISC_APP_FLAG);
     }

@@ -115,11 +115,6 @@ int main() {
     mailboxes->slave_sync.all = RUN_SYNC_MSG_ALL_SLAVES_DONE;
     set_deassert_addresses();
     //device_setup();
-    // DPRINT << "In idle erisc FW" << ENDL();
-
-    uint32_t debug_addr = 0x7E000;
-    volatile tt_l1_ptr uint32_t* debug_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(debug_addr);
-    debug_ptr[0] = 0xDEADBEEF;
 
     noc_init(MEM_NOC_ATOMIC_RET_VAL_ADDR);
 
