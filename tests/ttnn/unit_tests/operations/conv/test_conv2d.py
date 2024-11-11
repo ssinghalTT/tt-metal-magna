@@ -2861,3 +2861,152 @@ def test_conv2d_model_fruit(
         output_mesh_composer=None,
         enable_split_reader=enable_split_reader,
     )
+# Tested for two input dimensions
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
+@pytest.mark.parametrize(
+    "batch_size, output_channels,input_channels, input_height, input_width, filter_height, filter_width, stride_h, stride_w, pad_h, pad_w, use_1d_systolic_array, config_override, use_shallow_conv_variant",
+    (
+        # Test cases for input dim 1
+        (1, 5, 32, 94, 94, 5, 5, 1, 1, 2, 2, True, None, False),
+        (1, 32, 64, 31, 31, 3, 3, 1, 1, 1, 1, True, None, False),
+        (1, 64, 64, 15, 15, 3, 3, 1, 1, 1, 1, True, None, False),
+        (1, 64, 64, 7, 7, 3, 3, 1, 1, 1, 1, True, None, False),
+        # Test cases for input dim 2
+        (2, 5, 32, 78, 78, 5, 5, 1, 1, 2, 2, True, None, False),
+        (2, 32, 64, 26, 26, 3, 3, 1, 1, 1, 1, True, None, False),
+        (2, 64, 64, 13, 13, 3, 3, 1, 1, 1, 1, True, None, False),
+        (2, 64, 64, 6, 6, 3, 3, 1, 1, 1, 1, True, None, False),
+    ),
+)
+@pytest.mark.parametrize(
+    "weights_dtype",
+    [ttnn.bfloat16, ttnn.bfloat8_b],
+)
+@pytest.mark.parametrize(
+    "activations_dtype",
+    [ttnn.bfloat16, ttnn.bfloat8_b],
+)
+@pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
+@pytest.mark.parametrize("output_layout", [ttnn.TILE_LAYOUT])
+def test_conv_mnist_like_model(
+    device,
+    use_program_cache,
+    math_fidelity,
+    activations_dtype,
+    weights_dtype,
+    batch_size,
+    output_channels,
+    input_channels,
+    input_height,
+    input_width,
+    filter_height,
+    filter_width,
+    stride_h,
+    stride_w,
+    pad_h,
+    pad_w,
+    use_1d_systolic_array,
+    config_override,
+    use_shallow_conv_variant,
+    output_layout,
+):
+    run_conv(
+        device,
+        math_fidelity,
+        activations_dtype,
+        weights_dtype,
+        batch_size,
+        output_channels,
+        input_channels,
+        input_height,
+        input_width,
+        filter_height,
+        filter_width,
+        stride_h,
+        stride_w,
+        pad_h,
+        pad_w,
+        use_1d_systolic_array,
+        config_override,
+        use_shallow_conv_variant=use_shallow_conv_variant,
+        groups=1,
+        output_layout=output_layout,
+        has_bias=True,
+    )
+
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
+@pytest.mark.parametrize(
+    "batch_size, input_channels, output_channels, input_height, input_width, filter_height, filter_width, stride_h, stride_w, pad_h, pad_w, shard_layout, config_override, use_shallow_conv_variant",
+    (
+        (1, 1, 32, 480, 640, 1, 1, 1, 1, 0, 0, HS, None, False),
+        # Test cases for input dim 1
+         (1, 5, 32, 94, 94, 5, 5, 1, 1, 2, 2, HS, None, False),
+         (1, 32, 64, 31, 31, 3, 3, 1, 1, 1, 1, HS, None, False),
+         (1, 64, 64, 15, 15, 3, 3, 1, 1, 1, 1, HS, None, False),
+         (1, 64, 64, 7, 7, 3, 3, 1, 1, 1, 1, HS, None, False),
+         # Test cases for input dim 2
+         (2, 5, 32, 78, 78, 5, 5, 1, 1, 2, 2, HS, None, False),
+         (2, 32, 64, 26, 26, 3, 3, 1, 1, 1, 1, HS, None, False),
+         (2, 64, 64, 13, 13, 3, 3, 1, 1, 1, 1, HS, None, False),
+         (2, 64, 64, 6, 6, 3, 3, 1, 1, 1, 1, HS, None, False),
+    ),
+)
+@pytest.mark.parametrize(
+    "weights_dtype",
+    [ttnn.bfloat16],
+)
+@pytest.mark.parametrize(
+    "activations_dtype",
+    [ttnn.bfloat16, ttnn.bfloat8_b],
+)
+@pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
+@pytest.mark.parametrize("output_layout", [ttnn.TILE_LAYOUT])
+def test_conv_for_mnist_like_model(
+    device,
+    torch_tensor_map,
+    use_program_cache,
+    math_fidelity,
+    activations_dtype,
+    weights_dtype,
+    batch_size,
+    output_channels,
+    input_channels,
+    input_height,
+    input_width,
+    filter_height,
+    filter_width,
+    stride_h,
+    stride_w,
+    pad_h,
+    pad_w,
+    shard_layout,
+    config_override,
+    use_shallow_conv_variant,
+    output_layout,
+):
+    if device.core_grid.y == 7:
+        pytest.skip("This test is not supported for N300")
+    run_conv(
+        device,
+        torch_tensor_map,
+        math_fidelity,
+        activations_dtype,
+        weights_dtype,
+        batch_size,
+        output_channels,
+        input_channels,
+        input_height,
+        input_width,
+        filter_height,
+        filter_width,
+        stride_h,
+        stride_w,
+        pad_h,
+        pad_w,
+        config_override,
+        shard_layout=shard_layout,
+        use_shallow_conv_variant=use_shallow_conv_variant,
+        groups=1,
+        output_layout=output_layout,
+        has_bias=False,
+    )

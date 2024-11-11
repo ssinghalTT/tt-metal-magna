@@ -435,3 +435,100 @@ def test_run_max_pool_mem_config(device, dtype, input_spec, memory_config):
         ceil_mode=ceil_mode,
         memory_config=memory_config,
     )
+
+
+# Tested for two input dimensions
+@pytest.mark.parametrize(
+    "act_shape, kernel_size, padding, stride",
+    [
+        # Test cases for input dim 1
+        # ((1, 32, 94, 94), (3, 3), (0, 0), (3, 3)), #kernel size and padding combination not supported
+        ((1, 64, 31, 31), (2, 2), (0, 0), (2, 2)),
+        ((1, 64, 15, 15), (2, 2), (0, 0), (2, 2)),
+        ((1, 64, 7, 7), (2, 2), (0, 0), (2, 2)),
+        # Test cases for input dim 2
+        # ((2, 32, 78, 78), (3, 3), (0, 0), (3, 3)), #kernel size and padding combination not supported
+        ((2, 64, 26, 26), (2, 2), (0, 0), (2, 2)),
+        ((2, 64, 13, 13), (2, 2), (0, 0), (2, 2)),
+        ((2, 64, 6, 6), (2, 2), (0, 0), (2, 2)),
+    ],
+)
+@pytest.mark.parametrize(
+    "nblocks",
+    (1,),
+)
+@pytest.mark.parametrize("dtype", [ttnn.bfloat16])
+@pytest.mark.parametrize("dilation", ((1, 1),))  ## default
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
+def test_mnist_like_model_maxpool(
+    act_shape,
+    kernel_size,
+    padding,
+    stride,
+    dilation,
+    nblocks,
+    device,
+    dtype,
+):
+    run_max_pool2d(
+        act_shape[0],
+        act_shape[1],
+        act_shape[2],
+        act_shape[3],
+        kernel_size[0],
+        kernel_size[1],
+        stride[0],
+        stride[1],
+        padding[0],
+        padding[1],
+        dilation[0],
+        dilation[1],
+        dtype,
+        device,
+        ceil_mode=False,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+    )
+
+
+@pytest.mark.parametrize(
+    "act_shape, kernel_size, padding, stride",
+    [
+        ((1, 32, 94, 94), (3, 3), (0, 0), (3, 3)),
+        ((2, 32, 78, 78), (3, 3), (0, 0), (3, 3)),
+    ],
+)
+@pytest.mark.parametrize(
+    "nblocks",
+    (1,),
+)
+@pytest.mark.parametrize("dtype", [ttnn.bfloat16])
+@pytest.mark.parametrize("dilation", ((1, 1),))  ## default
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
+def test_mnist_like_model_maxpool_unsupported_case(
+    act_shape,
+    kernel_size,
+    padding,
+    stride,
+    dilation,
+    nblocks,
+    device,
+    dtype,
+):
+    run_max_pool2d(
+        act_shape[0],
+        act_shape[1],
+        act_shape[2],
+        act_shape[3],
+        kernel_size[0],
+        kernel_size[1],
+        stride[0],
+        stride[1],
+        padding[0],
+        padding[1],
+        dilation[0],
+        dilation[1],
+        dtype,
+        device,
+        ceil_mode=False,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
+    )
