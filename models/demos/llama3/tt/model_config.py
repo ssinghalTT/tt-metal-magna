@@ -762,6 +762,7 @@ class TtModelArgs:
             self.num_all_gather_links = (
                 2 if self.is_galaxy else 1
             )  # TODO: try out 3 for short axis and 4 for long axis (TG only) <- should work but untested in model
+            self.ccl_dtype = ttnn.bfloat8_b
 
     def is_distributed_norm(self, mode):
         if not self.is_multichip:

@@ -5,20 +5,36 @@
 import ttnn
 
 
-def tt_all_reduce(input_tensor, mesh_device, cluster_axis=0, dim=0, num_links=2, memory_config=None, sharded=False):
+# def tt_all_reduce(input_tensor, mesh_device, cluster_axis=0, dim=0, num_links=2, memory_config=None, sharded=False):
+def tt_all_reduce(
+    input_tensor,
+    mesh_device,
+    cluster_axis=0,
+    dim=0,
+    num_links=2,
+    memory_config=None,
+    sharded=False,
+    dtype=ttnn.bfloat16,
+):
     # N150
     if mesh_device.shape == (1, 1) or (cluster_axis == 1 and 1 in mesh_device.shape):
         return input_tensor
 
+    if input_tensor.dtype != dtype:
+        input_tensor = ttnn.to_memory_config(input_tensor, ttnn.L1_MEMORY_CONFIG, dtype)  # typecast and to interleaved
+        if sharded and memory_config is not None:
+            input_tensor = ttnn.to_memory_config(input_tensor, memory_config, dtype)  # to sharded
+
     # Ensure dim 0 and 1 are 1
     original_shape = input_tensor.shape
     if original_shape[0] != 1 or original_shape[1] != 1:
+        print("Reshaping input tensor")
         input_tensor = ttnn.reshape(
             input_tensor, (1, 1, original_shape[-4] * original_shape[-3] * original_shape[-2], original_shape[-1])
         )
 
     # N300 and T3K
-    if 1 in mesh_device.shape:
+    if 1 in mesh_device.shape:  # TODO: use reducescatter and all gather for all models
         if input_tensor.is_sharded():
             input_tensor = ttnn.sharded_to_interleaved(input_tensor, ttnn.L1_MEMORY_CONFIG)
         return ttnn.reduce_scatter(
@@ -70,6 +86,7 @@ def tt_all_gather(
     memory_config=None,
     sharded=False,
     topology=ttnn.Topology.Linear,
+    dtype=ttnn.bfloat16,
 ):
     # N150
     if mesh_device.shape == (1, 1) or (cluster_axis == 1 and 1 in mesh_device.shape):
@@ -78,6 +95,11 @@ def tt_all_gather(
     # Ensure the input tensor is in the correct memory configuration
     if not sharded:
         input_tensor = ttnn.to_memory_config(input_tensor, ttnn.DRAM_MEMORY_CONFIG)
+
+    if input_tensor.dtype != dtype:
+        input_tensor = ttnn.to_memory_config(input_tensor, ttnn.L1_MEMORY_CONFIG, dtype)  # typecast and to interleaved
+        if sharded and memory_config is not None:
+            input_tensor = ttnn.to_memory_config(input_tensor, memory_config, dtype)  # to sharded
 
     if cluster_axis is None:
         return ttnn.all_gather(

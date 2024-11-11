@@ -34,7 +34,7 @@ from models.utility_functions import skip_for_grayskull
         ("random", 1),
         ("instruct", None),
     ],
-    ids=["quick"],
+    ids=["quick", "full"],
 )
 @pytest.mark.parametrize(
     "mesh_device",
