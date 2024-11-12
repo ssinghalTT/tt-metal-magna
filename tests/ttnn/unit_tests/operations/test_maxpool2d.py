@@ -122,7 +122,7 @@ def run_max_pool(
         for c in range(act_shape[1]):
             for h in range(act_shape[2]):
                 for w in range(act_shape[3]):
-                    act[n, c, h, w] = h * in_w + w
+                    act[n, c, h, w] = 4  # h * in_w + w
     # act = torch.zeros(act_shape, dtype=torch.bfloat16)
     # act = torch.ones(act_shape, dtype=torch.bfloat16)
     # act = torch.arange(0, volume(act_shape), dtype=torch.bfloat16).reshape(act_shape)
@@ -149,7 +149,7 @@ def run_max_pool(
     else:
         ttact = ttnn.from_torch(act_reshaped, dtype)
 
-    pre_shard = shard_scheme == None
+    pre_shard = True  # shard_scheme == None
 
     ttact_device = ttnn.to_device(ttact, device)
     if pre_shard:
@@ -160,7 +160,7 @@ def run_max_pool(
             output_height=out_h,
             output_width=out_w,
             output_channels=in_c,
-            compute_grid_size=device.compute_with_storage_grid_size(),
+            compute_grid_size=(1, 1),
             block_shard_orientation=ttnn.ShardOrientation.ROW_MAJOR,
             is_out_tiled=False,
         )
@@ -277,9 +277,9 @@ def run_max_pool(
             # wide non-8 multiple tests
             # [1, 384, 8, 8],  # passes
             # [1, 384, 16, 8],  # fails
-            [1, 128, 10, 10],  # passes
-            [1, 384, 10, 10],  # fails
-            [1, 512, 10, 10],  # passes
+            # [1, 128, 2, 2],  # passes
+            [1, 384, 2, 2],  # fails
+            # [1, 512, 2, 2],  # passes
         )
     ),
 )

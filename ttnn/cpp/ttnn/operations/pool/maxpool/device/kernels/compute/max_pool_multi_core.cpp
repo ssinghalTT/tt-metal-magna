@@ -76,17 +76,17 @@ inline void reduce_h_fused(
     for (uint32_t c_i = 0; c_i < num_output_tiles; ++c_i) {
         reduce_tile_math(c_i,  num_faces_in_tile /* reduce 1 or 2 faces */);
     }
-    /* if (curr_in_cb_id != in_cb_id) {
-        dprint_tensix_dest_reg(4);
-    } */
+    //if (curr_in_cb_id != in_cb_id) {
+        dprint_tensix_dest_reg(0);
+    //}
     cb_pop_front(curr_in_cb_id, 1);
     tile_regs_wait();
     tile_regs_commit();
     pack_untilize_dst<num_output_tiles>(out_cb_id, 1/*out_subblock_h*/, 0, num_out_rows, num_faces_in_tile);  /* pack 1 row (1x16 or 1x32) */
     tile_regs_release();
-    if (curr_in_cb_id != in_cb_id) {
-        print_tile_rows(out_cb_id, 32, 0, false);
-    }
+    //if (curr_in_cb_id != in_cb_id) {
+    //    print_tile_rows(out_cb_id, 32, 0, false);
+    //}
     cb_push_back(out_cb_id, 1);
 }
 
@@ -121,7 +121,7 @@ void MAIN {
 
     constexpr uint32_t max_tiles_per_iter = in_ntiles_c < MAX_TILES_PER_REDUCTION ? in_ntiles_c : MAX_TILES_PER_REDUCTION;
     constexpr uint32_t partial_iter_output_tiles = in_ntiles_c % MAX_TILES_PER_REDUCTION;
-    tilizeA_B_reduce_init_short(in_cb_id,
+    tilizeA_B_reduce_init(in_cb_id,
                                 in_scalar_cb_id,
                                 max_tiles_per_iter,
                                 out_cb_id,
