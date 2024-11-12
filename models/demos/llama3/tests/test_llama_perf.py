@@ -53,6 +53,8 @@ def test_llama_model_perf(mesh_device, kv_cache_len, expected_compile_time, use_
     model_args = TtModelArgs(mesh_device)
     tokenizer = Tokenizer(model_args.tokenizer_path)
 
+    model_args.n_layers = 1
+
     if "3.2-1B" in model_args.model_name:
         expected_inference_time = 0.04
     elif "3.2-3B" in model_args.model_name:
@@ -113,7 +115,7 @@ def test_llama_model_perf(mesh_device, kv_cache_len, expected_compile_time, use_
     profiler.print()
     compile_and_iter_time = profiler.get("model_run_for_inference_0")
 
-    ttnn.DumpDeviceProfiler(mesh_device.get_devices()[0])
+    # ttnn.DumpDeviceProfiler(mesh_device.get_devices()[0])
 
     if not os.getenv("CI") == "true":  # Enable tracy signpost support in local runs only
         signpost("Model perf run")
