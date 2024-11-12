@@ -1090,12 +1090,6 @@ const CircularBufferConfig &GetCircularBufferConfig(Program &program, CBHandle c
     return detail::GetCircularBuffer(program, cb_handle)->config();
 }
 
-const uint32_t GetNextAvailableCircularBufferIndex(Program &program) {
-    const auto next_value = program.num_circular_buffers();
-    TT_FATAL(next_value < NUM_CIRCULAR_BUFFERS, "No more indexes available to be used for referencing circular buffers");
-    return next_value;
-}
-
 void UpdateCircularBufferTotalSize(Program &program, CBHandle cb_handle, uint32_t total_size) {
     std::shared_ptr<CircularBuffer> circular_buffer = detail::GetCircularBuffer(program, cb_handle);
     if (not circular_buffer->globally_allocated()) {
