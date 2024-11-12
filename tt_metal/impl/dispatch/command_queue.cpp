@@ -1084,6 +1084,8 @@ void EnqueueProgramCommand::assemble_device_commands(
     // if not,  check if the program is active on workers. If active, have dispatch_d issue a write barrier
     cmd_sequence_sizeB += (this->device->dispatch_s_enabled() || program_transfer_info.num_active_cores > 0) * CQ_PREFETCH_CMD_BARE_MIN_SIZE;
 
+    // Wait for eveything to be written to before launch.
+    cmd_sequence_sizeB += CQ_PREFETCH_CMD_BARE_MIN_SIZE;
     // either dispatch_s or dispatch_d will send the go signal (go_signal_mcast command)
     cmd_sequence_sizeB += CQ_PREFETCH_CMD_BARE_MIN_SIZE;
 
@@ -1201,6 +1203,7 @@ void EnqueueProgramCommand::assemble_device_commands(
             kernel_bins_prefetch_subcmds[i].size());
     }
 
+    device_command_sequence.add_dispatch_wait(/*barrier*/ true, 0, 0, false, false, /*do_wait */ false);
     // Go Signals
     program_command_sequence.go_signals.reserve(
         multicast_go_signal_sub_cmds.size() + unicast_go_signal_sub_cmds.size());
