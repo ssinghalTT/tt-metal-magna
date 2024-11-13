@@ -35,14 +35,14 @@ def run_max_pool(
         if 2 * pad_h > kernel_h or 2 * pad_w > kernel_w:
             pytest.skip("Invalid case")
 
-    if (
-        (kernel_h == 13 and pad_h != 6)
-        or (kernel_h == 9 and pad_h != 4)
-        or (kernel_h == 5 and pad_h != 2)
-        or (kernel_h == 3 and pad_h != 1)
-        or (kernel_h == 2 and pad_h != 0)
-    ):
-        pytest.skip("kernel size and padding combination not supported")
+    # if (
+    #     (kernel_h == 13 and pad_h != 6)
+    #     or (kernel_h == 9 and pad_h != 4)
+    #     or (kernel_h == 5 and pad_h != 2)
+    #     or (kernel_h == 3 and pad_h != 1)
+    #     or (kernel_h == 2 and pad_h != 0)
+    # ):
+    #     pytest.skip("kernel size and padding combination not supported")
 
     out_h = math.floor((in_h + 2 * pad_h - (dilation_h * kernel_h - 1) - 1) / stride_h) + 1
     out_w = math.floor((in_w + 2 * pad_w - (dilation_w * kernel_w - 1) - 1) / stride_w) + 1
@@ -183,7 +183,6 @@ def run_max_pool(
     output_host = output.cpu()
     output_pytorch_padded = torch.Tensor(ttnn.to_torch(output_host))
     output_pytorch = output_pytorch_padded[:, :, :, :in_c]
-
     ## reference
     golden_pytorch = torch.nn.MaxPool2d(
         kernel_size,
@@ -191,7 +190,7 @@ def run_max_pool(
         padding=padding,
         dilation=dilation,
         return_indices=False,
-        ceil_mode=False,
+        ceil_mode=True,  # False used in the pipeline, #True used in the squeezenet model
     )(act)
 
     ## test for equivalance
@@ -199,7 +198,6 @@ def run_max_pool(
     output_pytorch = output_pytorch.reshape(golden_shape[0], golden_shape[2], golden_shape[3], golden_shape[1])
 
     output_pytorch = torch.permute(output_pytorch, (0, 3, 1, 2))  ## N, C, H, W
-
     pcc_thresh = 1.0
     if dtype == ttnn.bfloat8_b:
         pcc_thresh = 0.9997
@@ -225,6 +223,41 @@ def run_max_pool(
     if memory_config:
         logger.debug(f"Output memory config: {memory_config}")
         assert ttnn.get_memory_config(output) == memory_config
+
+
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
+@pytest.mark.parametrize(
+    "act_shape",  ## NCHW
+    (
+        (
+            [1, 96, 109, 109],  # SHAPE MISMATCH
+            [1, 256, 54, 54],  # SHAPE MISMATCH
+            [1, 512, 27, 27],  # PASSED
+        )
+    ),
+)
+@pytest.mark.parametrize(
+    "kernel_size",
+    ((3, 3),),
+)
+@pytest.mark.parametrize(
+    "padding",
+    ((0, 0),),
+)
+@pytest.mark.parametrize("stride", ((2, 2),))
+@pytest.mark.parametrize("dilation", ((1, 1),))  ## default
+@pytest.mark.parametrize("dtype", [ttnn.bfloat16])
+def test_run_max_pool_squeeze_net_model(
+    act_shape,
+    kernel_size,
+    padding,
+    stride,
+    dilation,
+    device,
+    dtype,
+    use_program_cache,
+):
+    run_max_pool(act_shape, kernel_size, padding, stride, dilation, device, dtype)
 
 
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
