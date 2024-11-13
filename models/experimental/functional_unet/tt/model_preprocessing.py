@@ -35,7 +35,9 @@ def create_unet_input_tensors(
     if fold:
         if channel_order == "first":
             raise RuntimeError("Cannot fold B x H x W when in channels first ordering")
-        ttnn_input_tensor = ttnn_input_tensor.reshape(1, 1, batch * input_height * input_width, -1)
+        ttnn_input_tensor = ttnn_input_tensor.reshape(batch, 1, input_height * input_width, -1)
+
+    print("SHAPE!", ttnn_input_tensor.shape)
 
     ttnn_input_tensor = ttnn.from_torch(ttnn_input_tensor, dtype=ttnn.bfloat16, mesh_mapper=mesh_mapper)
 
