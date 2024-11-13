@@ -148,7 +148,7 @@ def test_unet(device, reset_seeds, model_location_generator):
 
     ttnn_model = TtUnet(device=device, parameters=parameters, model=reference_model)
 
-    ttnn_input_tensor = ttnn.from_torch(torch_input_tensor.permute(0, 2, 3, 1), device=device)
+    ttnn_input_tensor = ttnn.from_torch(torch_input_tensor.permute(0, 2, 3, 1))
 
     ttnn_output = ttnn_model(device, ttnn_input_tensor)
 
