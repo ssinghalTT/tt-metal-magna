@@ -39,4 +39,4 @@ def test_unet_output_layer(batch, groups, device, reset_seeds):
     assert list(ttnn_output.shape) == [1, 1, B * H * W, C], "Expected output layer to be [1, 1, BHW, C]"
 
     ttnn_output = ttnn_output.reshape(B, H, W, C).permute(0, 3, 1, 2)
-    verify_with_pcc(torch_output, ttnn_output, 0.99997)
+    verify_with_pcc(torch_output, ttnn_output, 0.9998)

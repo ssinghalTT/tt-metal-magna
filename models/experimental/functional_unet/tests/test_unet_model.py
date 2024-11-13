@@ -28,5 +28,4 @@ def test_unet_model(batch, groups, device, use_program_cache, reset_seeds):
     torch_output_tensor = model(torch_input)
     output_tensor = ttnn_model(ttnn_input)
 
-    output_tensor = ttnn.to_torch(output_tensor).reshape(torch_output_tensor.shape)
-    verify_with_pcc(torch_output_tensor, output_tensor, UNET_FULL_MODEL_PCC)
+    check_pcc_conv(torch_output_tensor, output_tensor, pcc=UNET_FULL_MODEL_PCC)

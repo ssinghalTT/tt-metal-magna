@@ -482,7 +482,7 @@ class UNet:
                 self.downblock1.conv1.input_height,
                 self.downblock1.conv1.input_width,
             ],
-            ttnn.CoreGrid(x=8, y=8),
+            ttnn.CoreGrid(x=8, y=6),
             ttnn.ShardStrategy.HEIGHT,
         )
 
@@ -502,11 +502,11 @@ class UNet:
         return ttnn.reshape(x, [1, 1, x.shape[0] * x.shape[1] * x.shape[2], x.shape[-1]])
 
     def postprocess_output_tensor(self, x):
-        x = ttnn.reshape(x, [2, 1056, 160, 1])
-        x = ttnn.transpose(x, 2, 3)  # 2, 1056, 1, 160
+        return x
+        x = ttnn.reshape(x, ttnn.reshape[1, 1056, 160, 2])
+        x = ttnn.transpose(x, 2, 3)  # 2, 1056, 2, 160
         x = ttnn.untilize(x)
         x = ttnn.slice(x, [0, 0, 0, 0], [x.shape[0], x.shape[1], 1, x.shape[3]])
-        breakpoint()
         return ttnn.transpose(x, 1, 2)  # 2, 1, 1056, 160
 
     def __call__(self, x, move_input_tensor_to_device=True):
