@@ -82,7 +82,7 @@ template<uint32_t Wt, uint32_t Ht, uint32_t HtWt>
 ALWI void transpose_with_pack_untilize(uint32_t cb_tilize, uint32_t cb_out) {
     uint32_t tile_idx = 0;
 
-    transpose_wh_init(cb_tilize);
+    transpose_wh_init_short(cb_tilize);
     pack_untilize_dst_init_short<Ht>(cb_out);
     for (uint32_t w = 0; w < Wt; ++w) {
         tile_regs_acquire();
