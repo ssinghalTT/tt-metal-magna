@@ -87,7 +87,18 @@ class TtLlamaCrossAttentionTransformerText(LightweightModule):
         lm_head_torch = self.state_dict[f"{state_dict_prefix}output.weight"].transpose(-1, -2)
         total_splits = 8  # Arbitrary value which allows whole-tile splits in LM Head
         num_splits = total_splits // self.configuration.num_devices
-        lm_head_torch = torch.chunk(lm_head_torch, num_splits, dim=-1)
+        # Split into total_splits
+        lm_head_torch = torch.chunk(lm_head_torch, total_splits, dim=-1)
+        # Rearrange, striding by num_splits so that splits for a single device are contiguous
+        lm_head_torch = [lm_head_torch[i::num_splits] for i in range(num_splits)]
+        # Concat each split
+        lm_head_torch = [torch.cat(split, dim=-1) for split in lm_head_torch]
+        assert len(lm_head_torch) == num_splits
+        assert lm_head_torch[0].shape[-1] == configuration.vocab_size // num_splits
+
+        lm_head_mem_config = configuration.create_dram_sharded_mem_config(
+            configuration.dim, configuration.vocab_size // total_splits
+        )
 
         cache_name = lambda name, suffix, split: weight_cache_path / (state_dict_prefix + f"{name}{suffix}{split}")
         as_interleaved_tensor = lambda name, suffix, split, type, dim: ttnn.as_tensor(
@@ -96,8 +107,8 @@ class TtLlamaCrossAttentionTransformerText(LightweightModule):
             device=self.mesh_device,
             mesh_mapper=ttnn.ShardTensorToMesh(self.mesh_device, dim=dim),
             layout=ttnn.TILE_LAYOUT,
-            memory_config=ttnn.DRAM_MEMORY_CONFIG,
-            cache_file_name=cache_name(name, suffix, split),
+            memory_config=lm_head_mem_config,
+            cache_file_name=cache_name(name + "dram_sharded", suffix, split),
         )
 
         # Sharded weights
@@ -286,15 +297,17 @@ class TtLlamaCrossAttentionTransformerText(LightweightModule):
 
         h = self.norm(h, mode=mode)
 
-        if mode == "decode":  # h is expected to be interleaved for the lm head
-            h = ttnn.sharded_to_interleaved(h)
-
         seq_len = h.shape[2]
         MAX_MM_SEQ_LEN = 1024
         if seq_len >= MAX_MM_SEQ_LEN:  # Too big to compute. Set different program configs based on seqlen
             # Reshape input to to fit on device and parallelize computation
             h = ttnn.reshape(h, [1, seq_len // MAX_MM_SEQ_LEN, MAX_MM_SEQ_LEN, -1])
-        pc = self.model_config["CROSS_TRANSFORMER_TEXT_OUTPUT_PROGCFG"](seq_len, MAX_MM_SEQ_LEN)
+        if mode == "decode":
+            pc = self.model_config["DECODE_CROSS_TRANSFORMER_TEXT_OUTPUT_PROGCFG"]
+            lm_head_memcfg = ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG
+        else:
+            pc = self.model_config["CROSS_TRANSFORMER_TEXT_OUTPUT_PROGCFG"](seq_len, MAX_MM_SEQ_LEN)
+            lm_head_memcfg = ttnn.DRAM_MEMORY_CONFIG
 
         outputs = []
         for out_weight in self.outputs:
@@ -305,14 +318,15 @@ class TtLlamaCrossAttentionTransformerText(LightweightModule):
                 core_grid=None,
                 dtype=ttnn.bfloat16,
                 program_config=pc,
-                memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                memory_config=lm_head_memcfg,
             )
-
-            if self.configuration.num_devices > 1:
-                output = ttnn.all_gather(output, dim=3, num_links=1, topology=ttnn.Topology.Linear)
+            if mode == "decode":
+                output = ttnn.sharded_to_interleaved(output)
             outputs.append(output)
 
         output = ttnn.concat(outputs, dim=-1)
+        if self.configuration.num_devices > 1:
+            output = ttnn.all_gather(output, dim=3, num_links=1, topology=ttnn.Topology.Linear)
         output = ttnn.reshape(output, [1, 1, seq_len, -1])
 
         return output

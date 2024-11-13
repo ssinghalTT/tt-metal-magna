@@ -64,8 +64,8 @@ class TtLlamaCrossAttentionTransformerBlock(LightweightModule):
                 weight_cache_path=None if configuration.dummy_weights else weight_cache_path,
                 weight_key="attention_norm",
                 is_distributed=configuration.is_distributed_norm,
-                sharded_program_config=self.model_config["SHARDED_NORM_ATTN_PRGM_CFG"],
-                sharded_output_config=self.model_config["SHARDED_ATTN_INPUT_MEMCFG"],
+                sharded_program_config=self.model_config["XATTN_SHARDED_NORM_ATTN_PRGM_CFG"],
+                sharded_output_config=self.model_config["DECODE_VISION_INPUT_MEMCFG"],
             ),
             configuration,
         )

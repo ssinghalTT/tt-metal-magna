@@ -515,6 +515,36 @@ class TtModelArgs:
                 in0_block_w=1,
                 fuse_batch=seq_len <= 1024,
             )
+
+            xattn_output_grid = self.dram_shard_core_grid_for_k(self.dim // self.num_devices)
+            self.model_config["DECODE_VISION_XATTN_OUTPUT_MEMCFG"] = ttnn.create_sharded_memory_config(
+                (
+                    self.tile_padded_batch_rows,
+                    (self.dim // self.num_devices) // attn_input_grid.num_cores,
+                ),
+                xattn_output_grid,
+                ttnn.ShardStrategy.WIDTH,
+                ttnn.ShardOrientation.ROW_MAJOR,
+                use_height_and_width_as_shard_shape=True,
+            )
+            self.model_config["DECODE_VISION_INPUT_MEMCFG"] = ttnn.create_sharded_memory_config(
+                (
+                    self.tile_padded_batch_rows,
+                    (self.dim // xattn_output_grid.num_cores),
+                ),
+                xattn_output_grid,
+                ttnn.ShardStrategy.WIDTH,
+                ttnn.ShardOrientation.ROW_MAJOR,
+                use_height_and_width_as_shard_shape=True,
+            )
+            self.model_config["XATTN_SHARDED_NORM_ATTN_PRGM_CFG"] = self.create_sharded_norm_config(xattn_output_grid)
+            self.model_config["DECODE_VISION_XATTN_Q_PROGCFG"] = self.dram_matmul_config(
+                m=self.tile_padded_batch_rows,
+                k=self.dim,
+                n=(self.head_dim * self.n_heads) // self.num_devices,
+                num_cores=xattn_output_grid.num_cores,
+                check_n=True,
+            )
             self.model_config["VISION_XATTN_KV_PROGCFG"] = lambda seq_len, max_seq: self.matmul_config(
                 m=min(seq_len, max_seq),
                 k=self.dim,
@@ -539,6 +569,48 @@ class TtModelArgs:
                 # in0_block_w=1, # TODO: Remove this when we get non-causal FlashDecode
                 fuse_batch=False,
             )
+            self.model_config["VISION_XATTN_OUTPUT_PROGCFG"] = lambda seq_len, cache_seq_len: self.matmul_config(
+                m=seq_len,
+                k=cache_seq_len,
+                n=self.head_dim,
+                grid_size=(8, 8),
+                # in0_block_w=1, # TODO: Remove this when we get non-causal FlashDecode
+                fuse_batch=False,
+            )
+
+            xattn_output_grid = self.dram_shard_core_grid_for_k(self.dim // self.num_devices)
+            self.model_config["DECODE_VISION_XATTN_OUTPUT_MEMCFG"] = ttnn.create_sharded_memory_config(
+                (
+                    self.tile_padded_batch_rows,
+                    (self.dim // self.num_devices) // attn_input_grid.num_cores,
+                ),
+                xattn_output_grid,
+                ttnn.ShardStrategy.WIDTH,
+                ttnn.ShardOrientation.ROW_MAJOR,
+                use_height_and_width_as_shard_shape=True,
+            )
+            self.model_config["DECODE_VISION_XATTN_DENSE_PROGCFG"] = lambda seq_len: self.dram_matmul_config(
+                m=seq_len,
+                k=self.dim // self.num_devices,
+                n=self.dim,
+                num_cores=xattn_output_grid.num_cores,
+                check_n=True,
+            )
+
+            self.model_config["DECODE_VISION_SDPA_MEMCFG"] = ttnn.MemoryConfig(
+                ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+                ttnn.BufferType.L1,
+                ttnn.ShardSpec(
+                    core_range_set_by_batch,
+                    [
+                        nearest_32(self.n_local_heads),
+                        self.head_dim,
+                    ],
+                    ttnn.ShardOrientation.ROW_MAJOR,
+                    False,
+                ),
+            )
+
             self.model_config["VISION_XATTN_DENSE_PROGCFG"] = lambda seq_len: self.matmul_config(
                 m=seq_len,
                 k=self.dim // self.num_devices,
@@ -564,6 +636,13 @@ class TtModelArgs:
                 grid_size=(8, 8),
                 in0_block_w=1,
                 fuse_batch=seq_len <= max_seq,
+            )
+            self.model_config["DECODE_CROSS_TRANSFORMER_TEXT_OUTPUT_PROGCFG"] = self.dram_matmul_config(
+                m=self.tile_padded_batch_rows,
+                k=self.dim,
+                n=self.vocab_size // 8,  # Magic number. LM Head always contains 8 splits
+                num_cores=self.lm_head_core_grid.num_cores,
+                check_n=False,
             )
 
             xattn_cache_y_cores = (
@@ -902,7 +981,12 @@ class TtModelArgs:
         )
 
     def dram_matmul_config(
-        self, m: int, k: int, n: int, num_cores=None
+        self,
+        m: int,
+        k: int,
+        n: int,
+        num_cores=None,
+        check_n=False,
     ) -> ttnn.MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig:
         # in0_block_w must evenly divide k and be no larger than tile_size * num_cores
         if num_cores is None:
@@ -910,6 +994,10 @@ class TtModelArgs:
             # Warning: this does not handle the case in which K is too large for 2 rows of 8 cores
             # In that case override grid_size or update this logic to do so
             num_cores = self.dram_shard_core_grid_for_k(k).num_cores
+        if check_n:
+            assert (n // (self.tile_size * num_cores)) * (
+                self.tile_size * num_cores
+            ) == n, "N must be a multiple of tile_size * num_cores"
         return ttnn.MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig(
             in0_block_w=math.ceil(k / (self.tile_size * num_cores)),
             per_core_M=math.ceil(m / self.tile_size),

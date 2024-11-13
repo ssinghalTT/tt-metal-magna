@@ -69,14 +69,18 @@ class TtLlamaCrossAttention(LightweightModule):
         assert self.n_kv_heads % configuration.num_devices == 0
 
         # TODO DRAM Shard the weights (see llama3 text)
+        wq_mem_config = configuration.create_dram_sharded_mem_config(
+            configuration.dim, configuration.dim // configuration.num_devices
+        )
+
         self.wq = ttnn.as_tensor(
             self.state_dict[wq_str].transpose(-2, -1),
             device=self.mesh_device,
             mesh_mapper=ttnn.ShardTensorToMesh(self.mesh_device, dim=-1),
             dtype=self.dtype,
-            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            memory_config=wq_mem_config,
             layout=ttnn.TILE_LAYOUT,
-            cache_file_name=cache_name("wq_sharded"),
+            cache_file_name=cache_name("wq_dram_sharded"),
         )
 
         self.wk = ttnn.as_tensor(
@@ -99,14 +103,17 @@ class TtLlamaCrossAttention(LightweightModule):
             cache_file_name=cache_name("wv_sharded"),
         )
 
+        wo_mem_config = configuration.create_dram_sharded_mem_config(
+            configuration.dim // configuration.num_devices, configuration.dim
+        )
         self.wo = ttnn.as_tensor(
             self.state_dict[wo_str].transpose(-2, -1),
             device=self.mesh_device,
             mesh_mapper=ttnn.ShardTensorToMesh(self.mesh_device, dim=-2),
-            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            memory_config=wo_mem_config,
             dtype=self.dtype,
             layout=ttnn.TILE_LAYOUT,
-            cache_file_name=cache_name("wo_sharded"),
+            cache_file_name=cache_name("wo_dram_sharded"),
         )
 
         self.scale = self.head_dim**-0.5
@@ -227,17 +234,16 @@ class TtLlamaCrossAttention(LightweightModule):
 
     def forward_decode(self, x_11SH, xattn_mask, full_text_row_masked_out_mask_1NSH, xattn_cache):
         batch = xattn_cache[0].shape[0]
-
-        x_11SH = ttnn.sharded_to_interleaved(x_11SH, ttnn.L1_MEMORY_CONFIG)  # TODO support sharded input
-
         xq = ttnn.linear(
             x_11SH,
             self.wq,
             dtype=ttnn.bfloat16,
-            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
             compute_kernel_config=self.compute_kernel_config_hifi4,
-            program_config=self.model_config["VISION_XATTN_Q_PROGCFG"](batch),
+            program_config=self.model_config["DECODE_VISION_XATTN_Q_PROGCFG"],
         )
+
+        xq = ttnn.sharded_to_interleaved(xq, ttnn.DRAM_MEMORY_CONFIG)
 
         # # Below is how we want to reshape. It results in poor PCC
         # # 1, B, D -> B, 1, NH, DH -> B, NH, 1, DH
@@ -294,23 +300,30 @@ class TtLlamaCrossAttention(LightweightModule):
         # output = ttnn.reshape(output, (1, 1, batch, self.n_local_heads * self.head_dim))
         # output = ttnn.to_layout(output, layout=ttnn.TILE_LAYOUT)
 
-        output = ttnn.to_layout(output, layout=ttnn.ROW_MAJOR_LAYOUT)
-        output = ttnn.transpose(output, 1, 2)  # 1, B, NH, DH -> 1, NH, B, DH
-        output = ttnn.slice(output, (0, 0, 0, 0), (1, self.n_local_heads, batch, self.head_dim))
-        output = ttnn.to_layout(output, layout=ttnn.TILE_LAYOUT)
-        output = ttnn.experimental.nlp_concat_heads(output)
+        # output = ttnn.to_layout(output, layout=ttnn.ROW_MAJOR_LAYOUT)
+        # output = ttnn.transpose(output, 1, 2)  # 1, B, NH, DH -> 1, NH, B, DH
+        # output = ttnn.slice(output, (0, 0, 0, 0), (1, self.n_local_heads, batch, self.head_dim))
+        # output = ttnn.to_layout(output, layout=ttnn.TILE_LAYOUT)
+        # output = ttnn.experimental.nlp_concat_heads(output)
+        # output = ttnn.interleaved_to_sharded(output, self.model_config["DECODE_VISION_XATTN_OUTPUT_MEMCFG"])
+
+        output = ttnn.interleaved_to_sharded(output, self.model_config["DECODE_VISION_SDPA_MEMCFG"])
+        output = ttnn.experimental.nlp_concat_heads_decode(output, num_heads=self.n_local_heads)
+        output = ttnn.reshard(output, self.model_config["DECODE_VISION_XATTN_OUTPUT_MEMCFG"])
 
         output = ttnn.matmul(
             output,
             self.wo,
             compute_kernel_config=self.compute_kernel_config_hifi4,
             dtype=ttnn.bfloat16,
-            memory_config=ttnn.DRAM_MEMORY_CONFIG,
-            program_config=self.model_config["VISION_XATTN_DENSE_PROGCFG"](batch),
+            memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
+            program_config=self.model_config["DECODE_VISION_XATTN_DENSE_PROGCFG"](batch),
         )
 
+        output = ttnn.sharded_to_interleaved(output, ttnn.DRAM_MEMORY_CONFIG)
+
         # All reduce
-        if self.is_multichip:  # TODO use_fused_all_gather_matmul
+        if self.is_multichip:
             dense_out_reduced = ttnn.reduce_scatter(
                 output,
                 scatter_dim=3,

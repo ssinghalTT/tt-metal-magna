@@ -346,12 +346,12 @@ class TtLlamaAttention(LightweightModule):
                 compute_kernel_config=self.compute_kernel_config_hifi2,
             )  # seqlen, 1, batch, hidden_size
 
-        ttnn.deallocate(attn_output_cat)
+        # ttnn.deallocate(attn_output_cat)
         dense_out = ttnn.sharded_to_interleaved(
             dense_out_sharded, ttnn.L1_MEMORY_CONFIG
         )  # TODO: remove as soon as we have sharded support in for all CCL
 
-        ttnn.deallocate(attn_output_cat)
+        # ttnn.deallocate(attn_output_cat)
         ttnn.deallocate(dense_out_sharded)
 
         # All reduce
