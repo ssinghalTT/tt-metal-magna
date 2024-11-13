@@ -180,12 +180,15 @@ def run_max_pool(
         applied_shard_scheme=shard_scheme,
     )
 
-    output_host = output.cpu()
+    output_interleaved = ttnn.to_memory_config(output, ttnn.L1_MEMORY_CONFIG)
+    output_host = output_interleaved.cpu()
+
+    # output_host = output.cpu()
     output_pytorch_padded = torch.Tensor(ttnn.to_torch(output_host))
     output_pytorch = output_pytorch_padded[:, :, :, :in_c]
-    torch.set_printoptions(profile="full")
-    print("output_pytorch" + str(output_pytorch))
-    torch.set_printoptions(profile="default")  # reset
+    # torch.set_printoptions(profile="full")
+    # print("output_pytorch" + str(output_pytorch))
+    # torch.set_printoptions(profile="default")  # reset
 
     ## reference
     golden_pytorch = torch.nn.MaxPool2d(

@@ -51,6 +51,10 @@ hardcoded_matmul_config_linear = {
     ),
 }
 
+ops_parallel_config = {
+    "layer1_module1_input": None,
+}
+
 
 def ResnetLinear(
     in_features: int,
@@ -219,6 +223,8 @@ class resnet50Bottleneck:
         enable_act_double_buffer=False,
         enable_split_reader=False,
         enable_subblock_padding=False,
+        ops_parallel_config=None,
+        layer_module=None,
     ):
         logger.debug(
             f"==== Running {batch_size}, {input_height}, {input_width}, {self.conv1_input_channels}, {self.conv1_output_channels}"
@@ -282,6 +288,7 @@ class resnet50Bottleneck:
         ):
             run_downsample_before_conv2 = True
 
+        ds_out = None
         # ds_mem_config_grid = None
         if run_downsample_before_conv2:
             if input_height == 56 and self.conv1_input_channels == 256 and self.downsample:
@@ -305,6 +312,29 @@ class resnet50Bottleneck:
                 enable_split_reader=enable_split_reader,
                 enable_subblock_padding=enable_subblock_padding,
             )
+            if layer_module and layer_module == "layer4_module1":
+                if ops_parallel_config and "layer4_module1_input" not in ops_parallel_config:
+                    ds_memory_config = ttnn.get_memory_config(ds_out)
+                    sharded_config = ttnn.create_sharded_memory_config_(
+                        ttnn.Shape([batch_size, input_height, input_width, self.conv1_input_channels]),
+                        ds_memory_config.shard_spec.grid,
+                        ds_memory_config.memory_layout,
+                        ds_memory_config.shard_spec.orientation,
+                        tile_layout=True,
+                    )
+                    ops_parallel_config["layer4_module1_input"] = sharded_config
+
+        if layer_module and layer_module == "layer4_module1":
+            if ops_parallel_config and "layer4_module1_input" not in ops_parallel_config:
+                x_memory_config = ttnn.get_memory_config(out)
+                sharded_config = ttnn.create_sharded_memory_config_(
+                    ttnn.Shape([batch_size, input_height, input_width, self.conv1_input_channels]),
+                    x_memory_config.shard_spec.grid,
+                    x_memory_config.memory_layout,
+                    x_memory_config.shard_spec.orientation,
+                    tile_layout=True,
+                )
+                ops_parallel_config["layer4_module1_input"] = sharded_config
 
         reallocate_halo_output = batch_size == 20
         logger.debug(f"Running conv2")
@@ -1035,7 +1065,9 @@ class resnet50:
 
         layer4_module1_input_shape = ttnn.Shape(x.shape.with_tile_padding())
 
-        if is_wormhole_b0() or is_blackhole():
+        reshard = False
+        height_shard = False
+        if is_wormhole_b0():
             shard_config = ttnn.create_sharded_memory_config_(
                 layer4_module1_input_shape,
                 ttnn.CoreGrid(x=8, y=7),
@@ -1044,9 +1076,12 @@ class resnet50:
                 tile_layout=True,
             )
             x = ttnn.to_memory_config(x, shard_config)
+        elif is_blackhole():
+            if is_first_run:
+                reshard = True
+            else:
+                x = ttnn.to_memory_config(x, ops_parallel_config["layer4_module1_input"])
         else:
-            reshard = False
-            height_shard = False
             if is_first_run:
                 reshard = True
                 height_shard = False
@@ -1067,17 +1102,19 @@ class resnet50:
             enable_act_double_buffer=True if whb0_and_b16 or is_gs else False,
             enable_split_reader=False,
             enable_subblock_padding=False,
+            ops_parallel_config=ops_parallel_config,
+            layer_module="layer4_module1",
         )
 
-        if is_first_run:
-            x_memory_config = ttnn.get_memory_config(x)
-            ops_parallel_config["layer4_module1_input"] = ttnn.create_sharded_memory_config_(
-                layer4_module1_input_shape,
-                x_memory_config.shard_spec.grid,
-                x_memory_config.memory_layout,
-                x_memory_config.shard_spec.orientation,
-                tile_layout=True,
-            )
+        # if is_first_run:
+        #     x_memory_config = ttnn.get_memory_config(x)
+        #     ops_parallel_config["layer4_module1_input"] = ttnn.create_sharded_memory_config_(
+        #         layer4_module1_input_shape,
+        #         x_memory_config.shard_spec.grid,
+        #         x_memory_config.memory_layout,
+        #         x_memory_config.shard_spec.orientation,
+        #         tile_layout=True,
+        #     )
 
         logger.debug(f"==== Running layer 4 module 2")
         x, x_height, x_width = self.layer4_module2(
