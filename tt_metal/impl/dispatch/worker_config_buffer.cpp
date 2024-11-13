@@ -9,6 +9,19 @@ namespace tt {
 
 namespace tt_metal {
 
+namespace {
+namespace CMAKE_UNIQUE_NAMESPACE {
+uint32_t wrap_ge(uint32_t a, uint32_t b) {
+    // Careful below: have to take the signed diff for 2s complement to handle the wrap
+    // Below relies on taking the diff first then the compare to move the wrap
+    // to 2^31 away
+    int32_t diff = a - b;
+    return diff >= 0;
+}
+}  // namespace CMAKE_UNIQUE_NAMESPACE
+
+}  // namespace
+
 constexpr uint32_t kernel_config_entry_count = 8;
 
 WorkerConfigBufferMgr::WorkerConfigBufferMgr() {
@@ -38,6 +51,7 @@ void WorkerConfigBufferMgr::init_add_buffer(uint32_t base_addr, uint32_t size) {
 // To avoid allocs in a perf path, returns a reference to internal data
 const std::pair<ConfigBufferSync, std::vector<ConfigBufferEntry>&> WorkerConfigBufferMgr::reserve(
     const std::vector<uint32_t>& sizes) {
+    using namespace CMAKE_UNIQUE_NAMESPACE;
 
     ConfigBufferSync sync_info;
     sync_info.need_sync = false;
@@ -74,7 +88,6 @@ const std::pair<ConfigBufferSync, std::vector<ConfigBufferEntry>&> WorkerConfigB
                 addr = this->base_addrs_[idx];
                 end = this->entries_[free_index][idx].addr;
             }
-            bool had_sync = sync_info.need_sync;
 
             if (addr + size > end) {
                 // Need a sync...but will this entry free enough space?  Look at the next
@@ -99,21 +112,21 @@ const std::pair<ConfigBufferSync, std::vector<ConfigBufferEntry>&> WorkerConfigB
                     }
                 }
 
-                sync_info.need_sync = true;
-                if (had_sync) {
-                    sync_info.sync_count = std::max(sync_info.sync_count, this->entries_[free_index][idx].sync_count);
+                if (sync_info.need_sync && wrap_ge(this->entries_[free_index][idx].sync_count, sync_info.sync_count)) {
+                    sync_info.sync_count = this->entries_[free_index][idx].sync_count;
                 } else {
                     sync_info.sync_count = this->entries_[free_index][idx].sync_count;
                 }
+                sync_info.need_sync = true;
             } else if (alloc_index + 1 == free_index ||
                        (alloc_index + 1 == kernel_config_entry_count && free_index == 0)) {
-                // We need a sync because the table of entries is too small
-                sync_info.need_sync = true;
-                if (had_sync) {
-                    sync_info.sync_count = std::max(sync_info.sync_count, this->entries_[free_index][idx].sync_count);
+                if (sync_info.need_sync && wrap_ge(this->entries_[free_index][idx].sync_count, sync_info.sync_count)) {
+                    sync_info.sync_count = this->entries_[free_index][idx].sync_count;
                 } else {
                     sync_info.sync_count = this->entries_[free_index][idx].sync_count;
                 }
+                // We need a sync because the table of entries is too small
+                sync_info.need_sync = true;
             }
             this->reservation_[idx].addr = addr;
         }
@@ -124,10 +137,11 @@ const std::pair<ConfigBufferSync, std::vector<ConfigBufferEntry>&> WorkerConfigB
 
 // Repeatedly move free_index up until it catches up w/ the reserved sync_counts or alloc_index
 void WorkerConfigBufferMgr::free(uint32_t free_up_to_sync_count) {
+    using namespace CMAKE_UNIQUE_NAMESPACE;
     size_t num_buffer_types = this->reservation_.size();
     for (uint32_t idx = 0; idx < num_buffer_types; idx++) {
         uint32_t free_index = this->free_index_[idx];
-        while ((free_up_to_sync_count >= this->entries_[free_index][idx].sync_count) &&
+        while (wrap_ge(free_up_to_sync_count, this->entries_[free_index][idx].sync_count) &&
                (free_index != this->alloc_index_[idx])) {
             free_index++;
             if (free_index == kernel_config_entry_count) {
