@@ -39,7 +39,7 @@ def run_max_pool(
         (kernel_h == 13 and pad_h != 6)
         or (kernel_h == 9 and pad_h != 4)
         or (kernel_h == 5 and pad_h != 2)
-        or (kernel_h == 3 and pad_h != 1)
+        # or (kernel_h == 3 and pad_h != 1)
         or (kernel_h == 2 and pad_h != 0)
     ):
         pytest.skip("kernel size and padding combination not supported")
@@ -191,7 +191,7 @@ def run_max_pool(
         padding=padding,
         dilation=dilation,
         return_indices=False,
-        ceil_mode=False,
+        ceil_mode=True,  # True used in the squeezenet model pipeline
     )(act)
 
     ## test for equivalance
@@ -225,6 +225,35 @@ def run_max_pool(
     if memory_config:
         logger.debug(f"Output memory config: {memory_config}")
         assert ttnn.get_memory_config(output) == memory_config
+
+
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
+@pytest.mark.parametrize(
+    "act_shape",  ## NCHW
+    (([1, 96, 109, 109],)),  # failing
+)
+@pytest.mark.parametrize(
+    "kernel_size",
+    ((3, 3),),
+)
+@pytest.mark.parametrize(
+    "padding",
+    ((0, 0),),
+)
+@pytest.mark.parametrize("stride", ((2, 2),))
+@pytest.mark.parametrize("dilation", ((1, 1),))  ## default
+@pytest.mark.parametrize("dtype", [ttnn.bfloat16])
+def test_run_max_pool_squeeze_net_model(
+    act_shape,
+    kernel_size,
+    padding,
+    stride,
+    dilation,
+    device,
+    dtype,
+    use_program_cache,
+):
+    run_max_pool(act_shape, kernel_size, padding, stride, dilation, device, dtype)
 
 
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
