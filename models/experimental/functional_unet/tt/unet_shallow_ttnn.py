@@ -532,11 +532,11 @@ class UNet:
 
     def postprocess_output_tensor(self, x):
         return x
-        x = ttnn.reshape(x, ttnn.reshape[1, 1056, 160, 2])
-        x = ttnn.transpose(x, 2, 3)  # 2, 1056, 2, 160
-        x = ttnn.untilize(x)
-        x = ttnn.slice(x, [0, 0, 0, 0], [x.shape[0], x.shape[1], 1, x.shape[3]])
-        return ttnn.transpose(x, 1, 2)  # 2, 1, 1056, 160
+        x = ttnn.reshape(x, [1, 1056, 160, 2])
+        x = ttnn.to_memory_config(x, ttnn.L1_MEMORY_CONFIG)
+        x = ttnn.transpose(x, 2, 3)
+        x = ttnn.transpose(x, 1, 2)
+        return x
 
     def __call__(self, x, move_input_tensor_to_device=True):
         assert len(x.shape) == 4, f"Expected UNet input tensors to be rank 4 (was {len(x.shape)})"

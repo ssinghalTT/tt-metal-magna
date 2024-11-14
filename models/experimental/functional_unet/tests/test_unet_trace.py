@@ -41,12 +41,12 @@ def test_unet_trace(
     use_program_cache,
     reset_seeds,
 ):
-    torch_input, ttnn_input = create_unet_input_tensors(batch, groups, pad_input=True)
+    torch_input, ttnn_input = create_unet_input_tensors(batch, groups, channel_order="first", pad=True)
 
     model = unet_shallow_torch.UNet.from_random_weights(groups=groups)
     torch_output_tensor = model(torch_input)
 
-    parameters = create_unet_model_parameters(model, torch_input, groups=groups, device=device)
+    parameters = create_unet_model_parameters(model, torch_input, groups=groups)
     ttnn_model = unet_shallow_ttnn.UNet(parameters, device)
 
     dram_grid_size = device.dram_grid_size()
@@ -113,7 +113,7 @@ def test_unet_trace(
 @skip_for_grayskull("UNet not currently supported on GS")
 @pytest.mark.models_performance_bare_metal
 @pytest.mark.parametrize(
-    "device_params", [{"l1_small_size": 68864, "trace_region_size": 442368, "num_command_queues": 2}], indirect=True
+    "device_params", [{"l1_small_size": 79104, "trace_region_size": 442368, "num_command_queues": 2}], indirect=True
 )
 @pytest.mark.parametrize(
     "batch, groups, iterations",
@@ -127,12 +127,12 @@ def test_unet_trace_2cq(
     use_program_cache,
     reset_seeds,
 ):
-    torch_input, ttnn_input = create_unet_input_tensors(batch, groups, pad_input=True)
+    torch_input, ttnn_input = create_unet_input_tensors(batch, groups, pad=True)
 
     model = unet_shallow_torch.UNet.from_random_weights(groups=groups)
     torch_output_tensor = model(torch_input)
 
-    parameters = create_unet_model_parameters(model, torch_input, groups=groups, device=device)
+    parameters = create_unet_model_parameters(model, torch_input, groups=groups)
     ttnn_model = unet_shallow_ttnn.UNet(parameters, device)
 
     op_event = ttnn.create_event(device)
