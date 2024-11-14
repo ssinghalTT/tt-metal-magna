@@ -262,18 +262,6 @@ class resnet50Bottleneck:
             conv_op_cache=conv_op_cache,
         )
 
-        if layer_module and layer_module == "layer4_module1":
-            if ops_parallel_config and "layer4_module1_input" not in ops_parallel_config:
-                x_memory_config = ttnn.get_memory_config(out)
-                sharded_config = ttnn.create_sharded_memory_config_(
-                    ttnn.Shape([batch_size, module_input_height, module_input_width, self.conv1_input_channels]),
-                    x_memory_config.shard_spec.grid,
-                    x_memory_config.memory_layout,
-                    x_memory_config.shard_spec.orientation,
-                    tile_layout=True,
-                )
-                ops_parallel_config["layer4_module1_input"] = sharded_config
-
         act_block_h_override = 0
         # if is_grayskull():
         #     if self.conv2_output_channels == 64 and input_height == 56 and batch_size == 20:
@@ -312,6 +300,11 @@ class resnet50Bottleneck:
             #         if is_wormhole_b0() or is_blackhole():
             #             out = ttnn.reallocate(out)
             #         x = ttnn.reallocate(x_rm)
+            ds_input_height = input_height
+            ds_input_width = input_width
+            if layer_module and layer_module == "layer4_module1":
+                if ops_parallel_config and "layer4_module1_downsample" in ops_parallel_config:
+                    x = ttnn.to_memory_config(x, ops_parallel_config["layer4_module1_downsample"])
             ds_out = self.run_downsample_if_req(
                 x,
                 device,
@@ -327,19 +320,24 @@ class resnet50Bottleneck:
                 enable_split_reader=enable_split_reader,
                 enable_subblock_padding=enable_subblock_padding,
             )
-        #     if layer_module and layer_module == "layer4_module1":
-        #         if ops_parallel_config and "layer4_module1_input" not in ops_parallel_config:
-        #             ds_memory_config = ttnn.get_memory_config(ds_out)
-        #             sharded_config = ttnn.create_sharded_memory_config_(
-        #                 ttnn.Shape([batch_size, input_height, input_width, self.conv1_input_channels]),
-        #                 ds_memory_config.shard_spec.grid,
-        #                 ds_memory_config.memory_layout,
-        #                 ds_memory_config.shard_spec.orientation,
-        #                 tile_layout=True,
-        #             )
-        #             ops_parallel_config["layer4_module1_input"] = sharded_config
+            if layer_module and layer_module == "layer4_module1":
+                if ops_parallel_config and "layer4_module1_downsample" not in ops_parallel_config:
+                    x_memory_config = ttnn.get_memory_config(ds_out)
+                    sharded_config = ttnn.create_sharded_memory_config_(
+                        ttnn.Shape([batch_size, ds_input_height, ds_input_width, self.conv1_input_channels]),
+                        x_memory_config.shard_spec.grid,
+                        x_memory_config.memory_layout,
+                        x_memory_config.shard_spec.orientation,
+                        tile_layout=True,
+                    )
+                    ops_parallel_config["layer4_module1_downsample"] = sharded_config
 
         logger.debug(f"Running conv2")
+
+        if layer_module and layer_module == "layer4_module1":
+            if ops_parallel_config and "layer4_module1_input" in ops_parallel_config:
+                out = ttnn.to_memory_config(out, ops_parallel_config["layer4_module1_input"])
+
         out, input_height, input_width, self.conv2_weight_tensor, self.conv2_bias_tensor = ttnn.conv2d(
             input_tensor=out,
             weight_tensor=self.conv2_weight_tensor,
@@ -374,6 +372,18 @@ class resnet50Bottleneck:
             ),
             conv_op_cache=conv_op_cache,
         )
+
+        if layer_module and layer_module == "layer4_module1":
+            if ops_parallel_config and "layer4_module1_input" not in ops_parallel_config:
+                x_memory_config = ttnn.get_memory_config(out)
+                sharded_config = ttnn.create_sharded_memory_config_(
+                    ttnn.Shape([batch_size, module_input_height, module_input_width, self.conv2_input_channels]),
+                    x_memory_config.shard_spec.grid,
+                    x_memory_config.memory_layout,
+                    x_memory_config.shard_spec.orientation,
+                    tile_layout=True,
+                )
+                ops_parallel_config["layer4_module1_input"] = sharded_config
 
         logger.debug(
             f"{batch_size} and {input_height} and {self.conv1_input_channels} and {self.conv1_output_channels}"
@@ -1083,7 +1093,7 @@ class resnet50:
             enable_subblock_padding=False,
         )
 
-        # breakpoint()
+        breakpoint()
 
         logger.debug(f"==== Running layer 3 module 6")
         x, x_height, x_width = self.layer3_module6(
@@ -1120,8 +1130,8 @@ class resnet50:
         # elif is_blackhole():
         if is_first_run:
             reshard = True
-        else:
-            x = ttnn.to_memory_config(x, ops_parallel_config["layer4_module1_input"])
+        # else:
+        #     x = ttnn.to_memory_config(x, ops_parallel_config["layer4_module1_input"])
         # else:
         #     if is_first_run:
         #         reshard = True
