@@ -41,7 +41,7 @@ def test_unet_trace(
     use_program_cache,
     reset_seeds,
 ):
-    torch_input, ttnn_input = create_unet_input_tensors(batch, groups, channel_order="first", pad=True)
+    torch_input, ttnn_input = create_unet_input_tensors(batch, groups, channel_order="first", pad=False)
 
     model = unet_shallow_torch.UNet.from_random_weights(groups=groups)
     torch_output_tensor = model(torch_input)
@@ -100,8 +100,8 @@ def test_unet_trace(
     for _ in range(iterations):
         ttnn.copy_host_to_device_tensor(ttnn_input, input_tensor, cq_id=0)
         l1_input_tensor = ttnn.reshard(input_tensor, ttnn_model.input_sharded_memory_config, l1_input_tensor)
-        ttnn.execute_trace(device, tid, cq_id=0, blocking=False)
-        outputs.append(output_tensor.cpu(blocking=False))
+        ttnn.execute_trace(device, tid, cq_id=0, blocking=True)
+        outputs.append(output_tensor.cpu(blocking=True))
     ttnn.synchronize_device(device)
     end = time.time()
     logger.info(f"Average model performance={iterations * batch / (end-start) : .2f} fps")
@@ -113,11 +113,11 @@ def test_unet_trace(
 @skip_for_grayskull("UNet not currently supported on GS")
 @pytest.mark.models_performance_bare_metal
 @pytest.mark.parametrize(
-    "device_params", [{"l1_small_size": 79104, "trace_region_size": 442368, "num_command_queues": 2}], indirect=True
+    "device_params", [{"l1_small_size": 79104, "trace_region_size": 444416, "num_command_queues": 2}], indirect=True
 )
 @pytest.mark.parametrize(
     "batch, groups, iterations",
-    ((1, 2, 32),),
+    ((1, 2, 128),),
 )
 def test_unet_trace_2cq(
     batch: int,
@@ -127,7 +127,7 @@ def test_unet_trace_2cq(
     use_program_cache,
     reset_seeds,
 ):
-    torch_input, ttnn_input = create_unet_input_tensors(batch, groups, pad=True)
+    torch_input, ttnn_input = create_unet_input_tensors(batch, groups, pad=False)
 
     model = unet_shallow_torch.UNet.from_random_weights(groups=groups)
     torch_output_tensor = model(torch_input)
@@ -210,7 +210,7 @@ def test_unet_trace_2cq(
     ttnn.synchronize_device(device)
     end = time.time()
     logger.info(f"Average model time={1000.0 * (end-start) / iterations : .2f} ms")
-    logger.info(f"Average model performance={iterations * batch / (end-start) : .2f} fps")
+    logger.info(f"Average model performance={iterations * groups * batch / (end-start) : .2f} fps")
 
     ttnn.DumpDeviceProfiler(device)
 
@@ -231,11 +231,11 @@ def buffer_address(tensor):
 @pytest.mark.models_performance_bare_metal
 @pytest.mark.parametrize("enable_async_mode", (True,), indirect=True)
 @pytest.mark.parametrize(
-    "device_params", [{"l1_small_size": 68864, "trace_region_size": 442368, "num_command_queues": 2}], indirect=True
+    "device_params", [{"l1_small_size": 68864, "trace_region_size": 444416, "num_command_queues": 2}], indirect=True
 )
 @pytest.mark.parametrize(
     "batch, groups, iterations",
-    ((1, 2, 32),),
+    ((1, 2, 128),),
 )
 def test_unet_trace_2cq_multi_device(
     batch: int, groups: int, iterations: int, mesh_device, use_program_cache, reset_seeds, enable_async_mode
@@ -247,19 +247,17 @@ def test_unet_trace_2cq_multi_device(
     weights_mesh_mapper = ttnn.ReplicateTensorToMesh(mesh_device)
     output_mesh_composer = ttnn.ConcatMeshToTensor(mesh_device, dim=0)
 
-    torch_input, ttnn_input = create_unet_input_tensors(batch, groups, pad_input=True)
+    torch_input, ttnn_input = create_unet_input_tensors(batch, groups)
     model = unet_shallow_torch.UNet.from_random_weights(groups=groups)
 
-    parameters = create_unet_model_parameters(model, torch_input, groups=groups, device=mesh_device)
+    parameters = create_unet_model_parameters(model, torch_input, groups=groups)
     ttnn_model = unet_shallow_ttnn.UNet(parameters, device=mesh_device, mesh_mapper=weights_mesh_mapper)
 
     num_devices = len(mesh_device.get_device_ids())
     logger.info(f"Using {num_devices} devices for this test")
 
     total_batch = num_devices * batch
-    torch_input, ttnn_input = create_unet_input_tensors(
-        total_batch, groups, pad_input=True, mesh_mapper=inputs_mesh_mapper
-    )
+    torch_input, ttnn_input = create_unet_input_tensors(total_batch, groups, mesh_mapper=inputs_mesh_mapper)
     logger.info(f"Created reference input tensors: {list(torch_input.shape)}")
     logger.info(
         f"Created multi-device input tensors: shape={list(ttnn_input.shape)} on devices={mesh_device.get_device_ids()}"
@@ -343,7 +341,7 @@ def test_unet_trace_2cq_multi_device(
     ttnn.synchronize_devices(mesh_device)
 
     end = time.time()
-    logger.info(f"Average model performance={iterations * total_batch / (end-start) : .2f} fps")
+    logger.info(f"Average model performance={iterations * groups * total_batch / (end-start) : .2f} fps")
 
     logger.info(f"Running sanity check against reference model output")
     check_pcc_conv(torch_output_tensor, outputs[-1], UNET_FULL_MODEL_PCC, mesh_composer=output_mesh_composer)
@@ -354,7 +352,7 @@ def test_unet_trace_2cq_multi_device(
 @skip_for_grayskull("UNet not currently supported on GS")
 @pytest.mark.models_performance_bare_metal
 @pytest.mark.parametrize(
-    "device_params", [{"l1_small_size": 68864, "trace_region_size": 423936, "num_command_queues": 2}], indirect=True
+    "device_params", [{"l1_small_size": 68864, "trace_region_size": 444416, "num_command_queues": 2}], indirect=True
 )
 @pytest.mark.parametrize(
     "batch, groups, iterations",
@@ -368,12 +366,12 @@ def test_unet_trace_2cq_same_io(
     use_program_cache,
     reset_seeds,
 ):
-    torch_input, ttnn_input = create_unet_input_tensors(batch, groups, pad_input=True)
+    torch_input, ttnn_input = create_unet_input_tensors(batch, groups)
 
     model = unet_shallow_torch.UNet.from_random_weights(groups=groups)
     torch_output_tensor = model(torch_input)
 
-    parameters = create_unet_model_parameters(model, torch_input, groups=groups, device=device)
+    parameters = create_unet_model_parameters(model, torch_input, groups=groups)
     ttnn_model = unet_shallow_ttnn.UNet(parameters, device)
 
     op_event = ttnn.create_event(device)
@@ -393,12 +391,12 @@ def test_unet_trace_2cq_same_io(
         ttnn.ShardOrientation.ROW_MAJOR,
         False,
     )
-    dram_memory_config = ttnn.MemoryConfig(
+    input_dram_memory_config = ttnn.MemoryConfig(
         ttnn.TensorMemoryLayout.HEIGHT_SHARDED, ttnn.BufferType.DRAM, dram_shard_spec
     )
 
     input_tensor = ttnn.allocate_tensor_on_device(
-        ttnn_input.shape, ttnn.bfloat16, ttnn.ROW_MAJOR_LAYOUT, device, dram_memory_config
+        ttnn_input.shape, ttnn.bfloat16, ttnn.ROW_MAJOR_LAYOUT, device, input_dram_memory_config
     )
     ttnn.record_event(0, op_event)
     ttnn.record_event(1, read_event)
@@ -486,7 +484,7 @@ def test_unet_trace_2cq_same_io(
     ttnn.synchronize_device(device)
     end = time.time()
     logger.info(f"Average model time={1000.0 * (end-start) / iterations : .2f} ms")
-    logger.info(f"Average model performance={iterations * batch / (end-start) : .2f} fps")
+    logger.info(f"Average model performance={iterations * groups * batch / (end-start) : .2f} fps")
 
     logger.info(f"Running sanity check against reference model output")
     check_pcc_conv(torch_output_tensor, outputs[-1], UNET_FULL_MODEL_PCC)

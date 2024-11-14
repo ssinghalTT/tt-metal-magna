@@ -96,7 +96,7 @@ ParallelConfig determine_parallel_config(
     CoreRangeSet grid;
     if (shard_layout == TensorMemoryLayout::HEIGHT_SHARDED) {
         num_cores_nhw = find_closest_largest_divisor(out_nhw_ntiles, max_num_cores);
-        const int divisor = 48;
+        const int divisor = 60;
         if (num_cores_nhw < divisor && out_nhw_ntiles > divisor) {
             num_cores_nhw = find_closest_largest_divisor_with_num_padding(out_nhw_ntiles, divisor);
         }

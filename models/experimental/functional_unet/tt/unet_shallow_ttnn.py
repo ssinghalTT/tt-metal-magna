@@ -321,6 +321,7 @@ class UNetUpblock:
         x = ttnn.to_layout(x, layout=ttnn.ROW_MAJOR_LAYOUT)
 
         x = self.upsample(x)
+        ttnn.reallocate(residual)
 
         if not residual.is_sharded():
             core_grid = get_core_grid_from_num_cores(x.memory_config().shard_spec.num_cores())
@@ -498,7 +499,7 @@ class UNet:
             block_shard_orientation=ttnn.ShardOrientation.ROW_MAJOR,
             is_out_tiled=True,
         )
-        self.input_sharded_memory_config2 = (
+        self.preprocessed_input_sharded_memory_config = (
             ttnn._ttnn.operations.conv.create_sharded_memory_config_from_parallel_config(
                 tensor_shape=ttnn.Shape(
                     [
@@ -527,15 +528,22 @@ class UNet:
         return self.bnc2(x)
 
     def preprocess_input_tensor(self, x):
+        assert x.shape[1] == 8, "Expected 8 input channels"
+        x = ttnn.pad(x, ((0, 0), (0, 8), (0, 0), (0, 0)), value=0.0)
         x = ttnn.permute(x, (0, 2, 3, 1))
-        return ttnn.reshape(x, [1, 1, x.shape[0] * x.shape[1] * x.shape[2], x.shape[-1]])
+        x = ttnn.reshape(x, [1, 1, x.shape[0] * x.shape[1] * x.shape[2], x.shape[-1]])
+        return x
 
     def postprocess_output_tensor(self, x):
-        return x
-        x = ttnn.reshape(x, [1, 1056, 160, 2])
-        x = ttnn.to_memory_config(x, ttnn.L1_MEMORY_CONFIG)
-        x = ttnn.transpose(x, 2, 3)
-        x = ttnn.transpose(x, 1, 2)
+        x = ttnn.reshape(x, ttnn.Shape([1, 1056, 160, 16], [1, 1056, 160, 32]))
+        x = ttnn.to_layout(x, ttnn.ROW_MAJOR_LAYOUT)
+
+        # Manually specify output shard width to avoid sending W=16
+        memory_config = x.memory_config()
+        output_shard_shape = memory_config.shard_spec.shape
+        output_shard_shape[1] = 2
+        memory_config.shard_spec.shape = output_shard_shape
+        x = ttnn.slice(x, (0, 0, 0, 0), (1, 1056, 160, 2), memory_config=memory_config)
         return x
 
     def __call__(self, x, move_input_tensor_to_device=True):
@@ -545,7 +553,7 @@ class UNet:
             x = ttnn.to_device(x, device=self.device, memory_config=self.input_sharded_memory_config)
 
         x = self.preprocess_input_tensor(x)
-        x = ttnn.reshard(x, self.input_sharded_memory_config2)
+        x = ttnn.reshard(x, self.preprocessed_input_sharded_memory_config)
 
         x, c1_residual = self.downblock1(x)
         x, c2_residual = self.downblock2(x)
