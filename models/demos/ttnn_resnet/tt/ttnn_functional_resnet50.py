@@ -1093,8 +1093,6 @@ class resnet50:
             enable_subblock_padding=False,
         )
 
-        breakpoint()
-
         logger.debug(f"==== Running layer 3 module 6")
         x, x_height, x_width = self.layer3_module6(
             x,
