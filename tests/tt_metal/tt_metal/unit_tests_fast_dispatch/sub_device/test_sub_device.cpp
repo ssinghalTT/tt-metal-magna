@@ -199,10 +199,10 @@ TEST_F(CommandQueueSingleCardFixture, TestSubDeviceAllocations) {
 
         auto buffer_2 = CreateBuffer(interleaved_config);
         EXPECT_THROW(CreateBuffer(shard_config_1, SubDeviceId{1}), std::exception);
-        EXPECT_THROW(device->clear_loaded_sub_device_manager(), std::exception);
+        EXPECT_THROW(device->reset_active_sub_device_manager(), std::exception);
         EXPECT_THROW(device->load_sub_device_manager(sub_device_manager_2), std::exception);
         DeallocateBuffer(*buffer_1);
-        device->clear_loaded_sub_device_manager();
+        device->reset_active_sub_device_manager();
         device->load_sub_device_manager(sub_device_manager_2);
 
         auto buffer_3 = CreateBuffer(shard_config_2, SubDeviceId{1});

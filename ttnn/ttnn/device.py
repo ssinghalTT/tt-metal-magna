@@ -138,11 +138,15 @@ def is_grayskull(device):
     return device.arch() == ttnn._ttnn.device.Arch.GRAYSKULL
 
 
-SetDefaultDevice = ttnn._ttnn.device.SetDefaultDevice
-GetDefaultDevice = ttnn._ttnn.device.GetDefaultDevice
 format_input_tensor = ttnn._ttnn.device.format_input_tensor
 format_output_tensor = ttnn._ttnn.device.format_output_tensor
 pad_to_tile_shape = ttnn._ttnn.device.pad_to_tile_shape
 
+SubDevice = ttnn._ttnn.device.SubDevice
+SubDeviceManagerId = ttnn._ttnn.device.SubDeviceManagerId
+create_sub_device_manager = ttnn._ttnn.device.create_sub_device_manager
+load_sub_device_manager = ttnn._ttnn.device.load_sub_device_manager
+reset_active_sub_device_manager = ttnn._ttnn.device.reset_active_sub_device_manager
+remove_sub_device_manager = ttnn._ttnn.device.remove_sub_device_manager
 
 __all__ = []

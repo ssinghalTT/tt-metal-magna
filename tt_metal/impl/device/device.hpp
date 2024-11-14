@@ -299,9 +299,6 @@ class Device {
     static constexpr MemoryAllocator allocator_scheme_ = MemoryAllocator::L1_BANKING;
     chip_id_t id_;
     uint32_t build_key_;
-    // Leaving here for compatibility with current reacharounds
-    // TODO: Replace with get_initialized_allocator()
-    Allocator * allocator_ = nullptr;
     bool initialized_ = false;
     std::map<uint32_t, std::map<chip_id_t, std::vector<std::vector<std::tuple<tt_cxy_pair, dispatch_worker_build_settings_t>>>>> tunnel_device_dispatch_workers_;
     std::vector<std::vector<chip_id_t>> tunnels_from_mmio_;
@@ -377,9 +374,9 @@ class Device {
 
     SubDeviceManagerId get_active_sub_device_manager_id() const;
     SubDeviceManagerId get_default_sub_device_manager_id() const;
-    SubDeviceManagerId create_sub_device_manager(tt::stl::Span<const SubDevice> sub_devices, DeviceAddr mesh_l1_size);
+    SubDeviceManagerId create_sub_device_manager(tt::stl::Span<const SubDevice> sub_devices, DeviceAddr local_l1_size);
     void load_sub_device_manager(SubDeviceManagerId sub_device_manager_id);
-    void clear_loaded_sub_device_manager();
+    void reset_active_sub_device_manager();
     void remove_sub_device_manager(SubDeviceManagerId sub_device_manager_id);
     const std::vector<SubDeviceId> &get_sub_device_ids() const;
    private:

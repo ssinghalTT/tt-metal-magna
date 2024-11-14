@@ -36,9 +36,23 @@ bool is_wormhole_or_blackhole(tt::ARCH arch) {
 }
 
 void deallocate_buffers(Device* device) {
-        device->push_work([device] () mutable {
-            device->deallocate_buffers();
-        });
+    device->push_work([device] () mutable {
+        device->deallocate_buffers();
+    });
+}
+
+SubDeviceManagerId create_sub_device_manager(Device *device, const std::vector<SubDevice> &sub_devices, DeviceAddr local_l1_size) {
+    return device->create_sub_device_manager(sub_devices, local_l1_size);
+}
+
+void load_sub_device_manager(Device *device, SubDeviceManagerId sub_device_manager_id) {
+    device->load_sub_device_manager(sub_device_manager_id);
+}
+void reset_active_sub_device_manager(Device *device) {
+    device->reset_active_sub_device_manager();
+}
+void remove_sub_device_manager(Device *device, SubDeviceManagerId sub_device_manager_id) {
+    device->remove_sub_device_manager(sub_device_manager_id);
 }
 
 }  // namespace device

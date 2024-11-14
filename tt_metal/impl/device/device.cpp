@@ -216,8 +216,6 @@ void Device::initialize_default_sub_device_state(size_t l1_small_size, size_t tr
     this->default_sub_device_manager_ = sub_device_manager->second.get();
     this->active_sub_device_manager_id_ = this->default_sub_device_manager_id_;
     this->active_sub_device_manager_ = this->default_sub_device_manager_;
-    this->allocator_ = this->get_initialized_allocator().get();
-
 }
 
 std::unique_ptr<Allocator> Device::initialize_allocator(size_t l1_small_size, size_t trace_region_size, const std::vector<uint32_t> &l1_bank_remap) {
@@ -3644,7 +3642,7 @@ void Device::load_sub_device_manager(SubDeviceManagerId sub_device_manager_id) {
     this->active_sub_device_manager_ = sub_device_manager->second.get();
 }
 
-void Device::clear_loaded_sub_device_manager() {
+void Device::reset_active_sub_device_manager() {
     this->load_sub_device_manager(this->default_sub_device_manager_id_);
 }
 

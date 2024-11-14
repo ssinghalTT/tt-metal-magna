@@ -65,6 +65,42 @@ void ttnn_device(py::module& module) {
     module.def("deallocate_buffers", &ttnn::deallocate_buffers, py::arg("device"), R"doc(
         Deallocate all buffers associated with Device handle
     )doc");
+
+    module.def("create_sub_device_manager", &ttnn::create_sub_device_manager, py::arg("device"), py::arg("sub_devices"), py::arg("local_l1_size"), R"doc(
+        Create a sub-device manager with the given sub_devices and local_l1_size.
+
+        Args:
+            device (ttnn.Device): The device to create the sub-device manager on.
+            sub_devices (List[ttnn.SubDevice]): The sub-devices to create the sub-device manager with.
+            local_l1_size (int): The size of the local L1 allocator for the sub-devices. The global L1 allocator will be reduced by this amount.
+
+        Returns:
+            SubDeviceManagerId: The ID of the created sub-device manager.
+    )doc");
+
+    module.def("load_sub_device_manager", &ttnn::load_sub_device_manager, py::arg("device"), py::arg("sub_device_manager_id"), R"doc(
+        Load a sub-device manager with the given sub_device_manager_id.
+
+        Args:
+            device (ttnn.Device): The device to load the sub-device manager on.
+            sub_device_manager_id (int): The ID of the sub-device manager to load.
+    )doc");
+
+    module.def("reset_active_sub_device_manager", &ttnn::reset_active_sub_device_manager, py::arg("device"), R"doc(
+        Clear the loaded sub-device manager on the given device. This reverts back to the default sub-device manager.
+
+        Args:
+            device (ttnn.Device): The device to clear the loaded sub-device manager on.
+    )doc");
+
+    module.def("remove_sub_device_manager", &ttnn::remove_sub_device_manager, py::arg("device"), py::arg("sub_device_manager_id"), R"doc(
+        Remove the sub-device manager with the given sub_device_manager_id.
+        The currently active sub-device manager cannot be removed.
+
+        Args:
+            device (ttnn.Device): The device to remove the sub-device manager from.
+            sub_device_manager_id (SubDeviceManagerId): The ID of the sub-device manager to remove.
+    )doc");
 }
 
 }  // namespace detail
@@ -79,6 +115,11 @@ void py_device_module_types(py::module& m_device) {
         .value("WORKER", tt::tt_metal::DispatchCoreType::WORKER)
         .value("ETH", tt::tt_metal::DispatchCoreType::ETH);
 
+    py::class_<SubDevice>(m_device, "SubDevice", "Class describing a group of cores that the device can be split into.")
+        .def(py::init<>([](std::vector<CoreRangeSet> cores) {
+            return SubDevice(cores);
+        }));
+    py::class_<SubDeviceManagerId>(m_device, "SubDeviceManagerId", "ID corresponding to a sub-device manager.");
     py::class_<Device, std::unique_ptr<Device, py::nodelete>>(
         m_device, "Device", "Class describing a Tenstorrent accelerator device.");
 }

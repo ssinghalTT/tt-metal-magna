@@ -17,6 +17,11 @@ void enable_program_cache(Device &device);
 void disable_and_clear_program_cache(Device &device);
 bool is_wormhole_or_blackhole(tt::ARCH arch);
 void deallocate_buffers(Device *device);
+// TODO: Change to taking in tt::stl::Span once there is a pybind for it
+SubDeviceManagerId create_sub_device_manager(Device *device, const std::vector<SubDevice> &sub_devices, DeviceAddr local_l1_size);
+void load_sub_device_manager(Device *device, SubDeviceManagerId sub_device_manager_id);
+void reset_active_sub_device_manager(Device *device);
+void remove_sub_device_manager(Device *device, SubDeviceManagerId sub_device_manager_id);
 
 }  // namespace device
 
