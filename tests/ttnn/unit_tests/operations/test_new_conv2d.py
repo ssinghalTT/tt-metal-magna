@@ -198,6 +198,132 @@ def run_conv(
         assert output_memory_config == memory_config
 
 
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
+@pytest.mark.parametrize(
+    "batch_size, input_channels, output_channels, input_height, input_width, filter_height, filter_width, stride_h, stride_w, pad_h, pad_w, groups, use_1d_systolic_array, config_override, use_shallow_conv_variant",
+    (
+        # 1st conv
+        (2, 3, 96, 224, 224, 7, 7, 2, 2, 0, 0, 1, True, {"act_block_h": 64}, True),  # failing with oom
+        # # 3
+        # (2, 96, 16, 54, 54, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        # (2, 16, 64, 54, 54, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        # (2, 16, 64, 54, 54, 3, 3, 1, 1, 1, 1, 1, True, None, False),
+        # #  #4
+        # (2, 128, 16, 54, 54, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        # (2, 16, 64, 54, 54, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        # (2, 16, 64, 54, 54, 3, 3, 1, 1, 1, 1, 1, True, None, False),
+        # # #5
+        # (2, 128, 32, 54, 54, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        # (2, 32, 128, 54, 54, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        # (2, 32, 128, 54, 54, 3, 3, 1, 1, 1, 1, 1, True, None, False),
+        # # #7
+        # (2, 256, 32, 27, 27, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        # (2, 32, 128, 27, 27, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        # (2, 32, 128, 27, 27, 3, 3, 1, 1, 1, 1, 1, True, None, False),
+        # # #8
+        # (2, 256, 48, 27, 27, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        # (2, 48, 192, 27, 27, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        # (2, 48, 192, 27, 27, 3, 3, 1, 1, 1, 1, 1, True, None, False),
+        # # #9
+        # (2, 384, 48, 27, 27, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        # (2, 48, 192, 27, 27, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        # (2, 48, 192, 27, 27, 3, 3, 1, 1, 1, 1, 1, True, None, False),
+        # # #10
+        # (2, 384, 64, 27, 27, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        # (2, 64, 256, 27, 27, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        # (2, 64, 256, 27, 27, 3, 3, 1, 1, 1, 1, 1, True, None, False),
+        # # #12
+        # (2, 512, 64, 13, 13, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        # (2, 64, 256, 13, 13, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+        # (2, 64, 256, 13, 13, 3, 3, 1, 1, 1, 1, 1, True, None, False),
+        # # #final
+        # (2, 512, 1000, 13, 13, 1, 1, 1, 1, 0, 0, 1, True, None, False),
+    ),
+)
+@pytest.mark.parametrize(
+    "weights_dtype",
+    [ttnn.bfloat16],
+)
+@pytest.mark.parametrize(
+    "activations_dtype",
+    [ttnn.bfloat16],
+)
+@pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
+@pytest.mark.parametrize("output_layout", [ttnn.TILE_LAYOUT])
+@pytest.mark.parametrize("auto_shard", [True], ids=["auto_shard"])
+@skip_for_grayskull()
+def test_conv_for_squeezenet(
+    device,
+    use_program_cache,
+    math_fidelity,
+    activations_dtype,
+    weights_dtype,
+    batch_size,
+    output_channels,
+    input_channels,
+    input_height,
+    input_width,
+    filter_height,
+    filter_width,
+    stride_h,
+    stride_w,
+    pad_h,
+    pad_w,
+    use_1d_systolic_array,
+    config_override,
+    use_shallow_conv_variant,
+    groups,
+    output_layout,
+    auto_shard,
+):
+    run_conv(
+        device,
+        math_fidelity,
+        activations_dtype,
+        weights_dtype,
+        batch_size,
+        output_channels,
+        input_channels,
+        input_height,
+        input_width,
+        filter_height,
+        filter_width,
+        stride_h,
+        stride_w,
+        pad_h,
+        pad_w,
+        use_1d_systolic_array,
+        config_override,
+        use_shallow_conv_variant=use_shallow_conv_variant,
+        groups=groups,
+        output_layout=output_layout,
+        has_bias=False,
+        auto_shard=auto_shard,
+    )
+    # run_conv_with_split(
+    #     device,
+    #     math_fidelity,
+    #     activations_dtype,
+    #     weights_dtype,
+    #     batch_size,
+    #     output_channels,
+    #     input_channels,
+    #     input_height,
+    #     input_width,
+    #     filter_height,
+    #     filter_width,
+    #     stride_h,
+    #     stride_w,
+    #     pad_h,
+    #     pad_w,
+    #     use_1d_systolic_array,
+    #     config_override,
+    #     split_factor=2,
+    #     fp32_accum=False,
+    #     packer_l1_acc=False,
+    # )
+
+
 def run_conv_with_split(
     device,
     math_fidelity,
