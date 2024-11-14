@@ -26,15 +26,13 @@ ttnn::Tensor host_reshape(const ttnn::Tensor& tensor, const ttnn::Shape& shape) 
         return tensor.reshape(shape);
     }
     auto tensor_shape = tensor.shape();
-    auto layout = tensor.layout();
     auto device = tensor.device();
     auto memory_config = tensor.memory_config();
     auto host_tensor = tensor.cpu();
-    auto rm_tensor = ttnn::to_layout(host_tensor, ttnn::ROW_MAJOR_LAYOUT, std::nullopt, std::nullopt, (Device *)nullptr);
     if(tensor_shape.has_tile_padding()) {
         ttnn::Tensor slice_input;
         TT_FATAL(tensor_shape.rank() <= 4, "Only up to 4D tensors");
-        auto host_tensor_4d = unsqueeze_to_4D(rm_tensor);
+        auto host_tensor_4d = unsqueeze_to_4D(host_tensor);
         auto tensor_shape_4d = host_tensor_4d.shape();
         ttnn::SmallVector<uint32_t> begins({0, 0, 0, 0});
         ttnn::SmallVector<uint32_t> ends({tensor_shape_4d[0], tensor_shape_4d[1], tensor_shape_4d[2], tensor_shape_4d[3]});
@@ -42,23 +40,21 @@ ttnn::Tensor host_reshape(const ttnn::Tensor& tensor, const ttnn::Shape& shape) 
         host_tensor_4d = ttnn::slice(host_tensor_4d, begins, ends, step, std::nullopt);
         host_tensor = squeeze_from_4D(host_tensor_4d, tensor_shape.rank());
     }
-    auto host_reshape_tensor = rm_tensor.reshape(shape);
-    auto final_layout_tensor = ttnn::to_layout(host_reshape_tensor, layout, std::nullopt, std::nullopt, (Device *)nullptr);
+    auto final_layout_tensor = host_tensor.reshape(shape);
     auto device_tensor = ttnn::data_transfer_to_device(final_layout_tensor, device, memory_config);
     return device_tensor;
 }
 
-ttnn::Tensor convert_tensor_to_rm_reshape_convert_back_to_orig_layout(const ttnn::Tensor& tensor, const ttnn::Shape& shape) {
-    const auto layout = tensor.get_layout();
+ttnn::Tensor convert_tensor_to_rm_reshape_RM(const ttnn::Tensor& rm_tensor, const ttnn::Shape& shape) {
     auto shape_with_padding = shape.padded_shape();
-    auto tensor_shape = tensor.get_shape();
+    auto tensor_shape = rm_tensor.get_shape();
     auto tensor_shape_with_padding = tensor_shape.padded_shape();
 
     //Constraint in device kernel
     uint32_t ROW_MAJOR_WIDTH = 8;
     ttnn::Tensor reshaped_rm_tensor;
+    //Moved the to_layout out so that we are guaranteed ROW_MAJOR_LAYOUT in host_reshape
     if((tensor_shape[-1] % ROW_MAJOR_WIDTH == 0 && shape[-1] % ROW_MAJOR_WIDTH == 0)) {
-        auto rm_tensor = ttnn::to_layout(tensor, ttnn::ROW_MAJOR_LAYOUT, std::nullopt, std::nullopt, (Device *)nullptr);
         if (rm_tensor.is_contiguous()) {
             // Page size depends on the width, so only modify the shape if the width is the same
             if (tensor_shape_with_padding[-1] == shape_with_padding[-1]) {
@@ -69,7 +65,7 @@ ttnn::Tensor convert_tensor_to_rm_reshape_convert_back_to_orig_layout(const ttnn
                 auto original_rank = shape.rank();
                 auto tensor_4d = unsqueeze_to_4D(rm_tensor);
                 const auto shape_4d = shape.to_rank(4);
-                auto reshaped_tensor = ttnn::reshape_on_device(tensor_4d, ttnn::SimpleShape{shape_4d[0], shape_4d[1], shape_4d[2], shape_4d[3]}, tensor.memory_config());
+                auto reshaped_tensor = ttnn::reshape_on_device(tensor_4d, ttnn::SimpleShape{shape_4d[0], shape_4d[1], shape_4d[2], shape_4d[3]}, rm_tensor.memory_config());
                 reshaped_rm_tensor = squeeze_from_4D(reshaped_tensor, original_rank);
             }
         } else if (tensor_shape.rank() >= 2 and shape.rank() >= 2) {
@@ -81,16 +77,27 @@ ttnn::Tensor convert_tensor_to_rm_reshape_convert_back_to_orig_layout(const ttnn
                 reshaped_rm_tensor = rm_tensor.reshape(shape);
             }
         } else {
-            reshaped_rm_tensor = host_reshape(tensor, shape);
+            reshaped_rm_tensor = host_reshape(rm_tensor, shape);
         }
 
     }
     // Can'd do untilize on device due to inner dim size
     else {
-        reshaped_rm_tensor = host_reshape(tensor, shape);
-    }
 
-    if (((shape[-1] * tensor.element_size()) % sizeof(uint32_t) == 0) and reshaped_rm_tensor.layout() != layout) {
+        reshaped_rm_tensor = host_reshape(rm_tensor, shape);
+    }
+    return reshaped_rm_tensor;
+}
+
+ttnn::Tensor convert_tensor_to_rm_reshape_OTHER(const ttnn::Tensor& tensor, const ttnn::Shape& shape, const Layout layout) {
+
+    //Constraint in device kernel
+    uint32_t ROW_MAJOR_WIDTH = 8;
+
+    //Moved the to_layout out so that we are guaranteed ROW_MAJOR_LAYOUT in host_reshape
+    auto rm_tensor = ttnn::to_layout(tensor, ttnn::ROW_MAJOR_LAYOUT, std::nullopt, std::nullopt, (Device *)nullptr);
+    ttnn::Tensor reshaped_rm_tensor = convert_tensor_to_rm_reshape_RM(rm_tensor, shape);
+    if (((shape[-1] * tensor.element_size()) % sizeof(uint32_t) == 0)) {
         return ttnn::to_layout(reshaped_rm_tensor, layout, std::nullopt, std::nullopt, (Device *)nullptr);
     }
     else {
@@ -98,6 +105,10 @@ ttnn::Tensor convert_tensor_to_rm_reshape_convert_back_to_orig_layout(const ttnn
     }
 }
 
+ttnn::Tensor convert_tensor_to_rm_reshape_convert_back_to_orig_layout(const ttnn::Tensor& tensor, const ttnn::Shape& shape) {
+    const auto layout = tensor.get_layout();
+    return (layout == ttnn::ROW_MAJOR_LAYOUT) ? convert_tensor_to_rm_reshape_RM(tensor, shape) : convert_tensor_to_rm_reshape_OTHER(tensor, shape, layout);
+}
 }
 
 
