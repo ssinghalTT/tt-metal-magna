@@ -24,6 +24,7 @@
 
 #include "watcher_common.h"
 
+#include "debug/waypoint.h"
 
 #include "dev_msgs.h"
 #include "noc_overlay_parameters.h"
@@ -159,6 +160,7 @@ inline void debug_sanitize_post_noc_addr_and_hang(
         v[noc_id].is_target = (which_core == DEBUG_SANITIZE_NOC_TARGET);
         v[noc_id].return_code = return_code;
     }
+    WAYPOINT("XXXX");
 
 #if defined(COMPILE_FOR_ERISC)
     // Update launch msg to show that we've exited. This is required so that the next run doesn't think there's a kernel
@@ -168,9 +170,10 @@ inline void debug_sanitize_post_noc_addr_and_hang(
 
     // For erisc, we can't hang the kernel/fw, because the core doesn't get restarted when a new
     // kernel is written. In this case we'll do an early exit back to base FW.
-    internal_::disable_erisc_app();
-    erisc_exit();
+   // internal_::disable_erisc_app();
+   // erisc_exit();
 #endif
+
 
     while (1) { ; }
 }

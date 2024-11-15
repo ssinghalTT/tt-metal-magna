@@ -9,7 +9,7 @@
 //  - page size must be a power of 2
 //  - # blocks must evenly divide the dispatch buffer size
 //  - dispatch buffer base must be page size aligned
-
+#undef WATCHER_DISABLE_NOC_SANITIZE
 #include "debug/assert.h"
 #include "debug/dprint.h"
 #include "tt_metal/impl/dispatch/cq_commands.hpp"
