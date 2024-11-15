@@ -151,10 +151,10 @@ private:
     std::ostream* stream_ = nullptr; // either == outfile_ or is &cout
 
     // For printing each riscs dprint to a separate file, a map from {device id, core coord x, y, hard index} to files.
-    std::map<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t>, std::ofstream *> risc_to_stream_;
+    std::map<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t, uint32_t>, std::ofstream *> risc_to_stream_;
 
     // A map to from {device id, core coord x, y, hart index} to the signal code it's waiting for.
-    std::map<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t>, uint32_t> hart_waiting_on_signal_;
+    std::map<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t, uint32_t>, uint32_t> hart_waiting_on_signal_;
     // Keep a separate set of raised signal codes so that multiple harts can wait for the same
     // signal.
     std::set<uint32_t> raised_signals_;
@@ -705,13 +705,13 @@ bool DebugPrintServerContext::PeekOneHartNonBlocking(
     // Choose which stream to output the dprint data to. Can be auto-generated files, the user-selected file, stdout, or
     // nothing.
     ostream *stream_ptr = stream_;
-    std::tuple<uint32_t, uint32_t, uint32_t, uint32_t> hart_key {chip_id, phys_core.x, phys_core.y, hart_id};
+    std::tuple<uint32_t, uint32_t, uint32_t, uint32_t, uint32_t> hart_key {device->id(), chip_id, phys_core.x, phys_core.y, hart_id};
     if (tt::llrt::OptionsG.get_feature_one_file_per_risc(tt::llrt::RunTimeDebugFeatureDprint)) {
         if (!risc_to_stream_[hart_key]) {
             std::string filename = tt::llrt::OptionsG.get_root_dir() + logfile_path;
             filename += fmt::format(
                 "device-{}_{}-core-{}-{}_{}.txt",
-                chip_id,
+                device->id(),
                 tt::llrt::get_core_type_name(logical_core.type),
                 logical_core.coord.x,
                 logical_core.coord.y,
@@ -941,7 +941,7 @@ bool DebugPrintServerContext::PeekOneHartNonBlocking(
                     memcpy (&sigval, ptr, sizeof(uint32_t));
                     // Given that we break immediately on a wait, this core should never be waiting
                     // on multiple signals at the same time.
-                    std::tuple<uint32_t, uint32_t, uint32_t, uint32_t> hart_key {chip_id, phys_core.x, phys_core.y, hart_id};
+                    std::tuple<uint32_t, uint32_t, uint32_t, uint32_t, uint32_t> hart_key {device->id(), chip_id, phys_core.x, phys_core.y, hart_id};
                     raise_wait_lock_.lock();
                     TT_ASSERT(hart_waiting_on_signal_.count(hart_key) == 0);
                     // Set that this hart is waiting on this signal, and then stop reading for now.

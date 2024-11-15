@@ -396,6 +396,10 @@ void watcher_attach(Device *device) {
         fprintf(watcher::logfile, "At %.3lfs attach device %d\n", watcher::get_elapsed_secs(), device->id());
     }
 
+    if ( device->id() == 4 || device->id() == 5 || device->id() == 6 || device->id() == 7) {
+        return;
+    }
+
     if (watcher::enabled) {
         log_info(LogLLRuntime, "Watcher attached device {}", device->id());
     }

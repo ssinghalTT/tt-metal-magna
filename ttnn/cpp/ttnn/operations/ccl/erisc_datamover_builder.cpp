@@ -126,7 +126,8 @@ FabricEriscDatamoverBuilder::FabricEriscDatamoverBuilder(
 
     termination_signal_ptr(FabricEriscDatamoverConfig::termination_signal_address) {}
 
-std::vector<uint32_t> FabricEriscDatamoverBuilder::get_compile_time_args() const {
+std::vector<uint32_t> FabricEriscDatamoverBuilder::get_compile_time_args(const Device& device, CoreCoord coord) const {
+   // fprintf(stderr, "Using fabrisc datamover builder\n");
     const bool is_handshake_master = this->my_chip_id < this->peer_chip_id;
     TT_ASSERT(this->my_chip_id != this->peer_chip_id);
     TT_ASSERT(

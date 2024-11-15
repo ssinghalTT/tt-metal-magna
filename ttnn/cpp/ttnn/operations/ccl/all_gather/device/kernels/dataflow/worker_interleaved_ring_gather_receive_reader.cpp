@@ -6,6 +6,7 @@
 #include "dataflow_api.h"
 #include "ttnn/cpp/ttnn/operations/ccl/all_gather/device/kernels/dataflow/worker_ring_gather_utils.hpp"
 #include "ttnn/cpp/ttnn/operations/ccl/kernel_common/worker_edm_adapters.hpp"
+#include "debug/ring_buffer.h"
 
 
 void kernel_main() {
@@ -37,6 +38,8 @@ void kernel_main() {
         receiver_read_sem_addr);
 
     for (uint32_t i = 0; i < num_transfers; ++i) {
+        WATCHER_RING_BUFFER_PUSH(i);
+        WATCHER_RING_BUFFER_PUSH(num_transfers);
         if (num_full_chunks > 0) {
             for (uint32_t c = 0; c < num_full_chunks; ++c) {
                 reader.wait_for_payload_available();
@@ -51,6 +54,7 @@ void kernel_main() {
             push_filler_pages_to_cb(cb_id_in0, half_cb_n_pages - rem_num_pages);
         }
     }
+    WATCHER_RING_BUFFER_PUSH(0xffffffff);
 
     reader.close();
 }

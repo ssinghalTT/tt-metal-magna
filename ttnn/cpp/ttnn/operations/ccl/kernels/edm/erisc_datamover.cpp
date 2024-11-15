@@ -11,6 +11,7 @@
 
 #include "ttnn/cpp/ttnn/operations/ccl/shared_with_host/hetergeneous_data_structs.hpp"
 #include "ttnn/cpp/ttnn/operations/ccl/kernels/edm/erisc_async_datamover.hpp"
+#include "debug/dprint.h"
 
 // Args Schema:
 // 1) handshake addr
@@ -128,8 +129,11 @@ void kernel_main() {
 
     static constexpr uint32_t num_buffers_per_channel = get_compile_time_arg_val(8);
     static constexpr uint32_t chip_id = get_compile_time_arg_val(9);
+    static constexpr uint32_t device_id = get_compile_time_arg_val(10);
+    static constexpr uint32_t core_id = get_compile_time_arg_val(11);
 
     static_assert(num_buffers_per_channel > 0, "compile time argument [9]: num_buffers_per_channel must be > 0");
+    DPRINT << "SEDS " << /*(uint32_t)enable_sender_side << " receiver " << (uint32_t)enable_receiver_side << " " << chip_id <<*/ " SD " << device_id << " SC " << core_id << ENDL();
 
     using EDM_CONFIG_T = erisc::datamover::
         EriscDatamoverConfig<edm_buffer_sharing_mode, terminate_on_worker_signal, num_buffers_per_channel>;
@@ -233,6 +237,7 @@ void kernel_main() {
             is_done_as_rx_handshaker = true;
         }
     }
+    DPRINT << "FEDS " << /*(uint32_t)enable_sender_side << " receiver " << (uint32_t)enable_receiver_side << " " << chip_id << */ " FD " << device_id << " FC " << core_id << ENDL();
     uint32_t eth_transaction_ack_word_addr = handshake_addr + 16;
     uint32_t eth_transaction_complete_addr = handshake_addr + 32;
 
@@ -360,6 +365,8 @@ void kernel_main() {
             }
         }
     }
+
+    DPRINT << "DEDS " << /* (uint32_t)enable_sender_side << " receiver " << (uint32_t)enable_receiver_side << " " << chip_id <<*/ " DD " << device_id << " DC " <<  core_id << ENDL();
 
     WAYPOINT("DONE");
 }

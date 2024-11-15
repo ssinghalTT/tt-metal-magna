@@ -117,7 +117,7 @@ class FabricEriscDatamoverBuilder {
     [[nodiscard]] SenderWorkerAdapterSpec build_connection_to_worker_channel() const;
     [[nodiscard]] SenderWorkerAdapterSpec build_connection_to_fabric_channel() const;
 
-    [[nodiscard]] std::vector<uint32_t> get_compile_time_args() const;
+    [[nodiscard]] std::vector<uint32_t> get_compile_time_args(const Device& device, CoreCoord coord) const;
 
     [[nodiscard]] std::vector<uint32_t> get_runtime_args() const;
 

@@ -236,7 +236,8 @@ class EriscDatamoverBuilder {
     }
 
     [[nodiscard]]
-    std::vector<uint32_t> get_compile_time_args() const {
+    std::vector<uint32_t> get_compile_time_args(const Device& device, CoreCoord coord) const {
+       // fprintf(stderr, "Using regular datamover builder for device %d\n", device.id());
         return std::vector<uint32_t>{
             static_cast<uint32_t>(this->enable_sender ? 1 : 0),
             static_cast<uint32_t>(this->enable_receiver ? 1 : 0),
@@ -247,7 +248,9 @@ class EriscDatamoverBuilder {
             1,
             static_cast<uint32_t>(this->num_senders > 0 && active_channels.at(0).is_sender),
             this->num_buffers_per_channel,
-            chip_id
+            chip_id,
+            device.id(),
+            (coord.x << 16) | coord.y
             };
     }
 

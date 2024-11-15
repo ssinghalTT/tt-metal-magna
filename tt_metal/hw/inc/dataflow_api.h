@@ -26,6 +26,7 @@
 #include "third_party/umd/device/tt_silicon_driver_common.hpp"
 #include "debug/assert.h"
 #include "dev_msgs.h"
+#include "debug/ring_buffer.h"
 
 #if defined(KERNEL_BUILD)
 constexpr uint8_t noc_index = NOC_INDEX;
@@ -1425,8 +1426,13 @@ void noc_async_write_multicast(
 inline
 void noc_semaphore_set_multicast(
     std::uint32_t src_local_l1_addr, std::uint64_t dst_noc_addr_multicast, std::uint32_t num_dests, bool linked = false, bool multicast_path_reserve = true, uint8_t noc = noc_index) {
-    WAYPOINT("NSMW");
+    WAYPOINT("NTMW");
     DEBUG_SANITIZE_NOC_MULTI_WRITE_TRANSACTION(noc, dst_noc_addr_multicast, src_local_l1_addr, 4);
+    WATCHER_RING_BUFFER_PUSH(src_local_l1_addr);
+    WATCHER_RING_BUFFER_PUSH(dst_noc_addr_multicast);
+    WATCHER_RING_BUFFER_PUSH(linked);
+    WATCHER_RING_BUFFER_PUSH(multicast_path_reserve);
+    WATCHER_RING_BUFFER_PUSH(num_dests);
     ncrisc_noc_fast_write_any_len(
         noc,
         write_reg_cmd_buf,
@@ -1438,7 +1444,7 @@ void noc_semaphore_set_multicast(
         linked,
         num_dests,
         multicast_path_reserve);
-    WAYPOINT("NSMD");
+    WAYPOINT("NTMD");
 }
 /**
  * Initiates an asynchronous write from a source address in L1 memory on the
@@ -1467,7 +1473,7 @@ void noc_semaphore_set_multicast(
 inline
 void noc_semaphore_set_multicast_loopback_src(
     std::uint32_t src_local_l1_addr, std::uint64_t dst_noc_addr_multicast, std::uint32_t num_dests, bool linked = false, bool multicast_path_reserve = true, uint8_t noc = noc_index) {
-    WAYPOINT("NSMW");
+    WAYPOINT("NSLW");
     DEBUG_SANITIZE_NOC_MULTI_WRITE_TRANSACTION(noc, dst_noc_addr_multicast, src_local_l1_addr, 4);
     ncrisc_noc_fast_write_any_len_loopback_src(
         noc,
@@ -1480,7 +1486,7 @@ void noc_semaphore_set_multicast_loopback_src(
         linked,
         num_dests,
         multicast_path_reserve);
-    WAYPOINT("NSMD");
+    WAYPOINT("NSLD");
 }
 
 inline

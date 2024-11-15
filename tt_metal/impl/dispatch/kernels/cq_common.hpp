@@ -114,7 +114,7 @@ FORCE_INLINE
 void cq_noc_async_write_with_state(uint32_t src_addr, uint64_t dst_addr, uint32_t size = 0, uint32_t ndests = 1) {
 
     if constexpr (wait) {
-        WAYPOINT("NSSW");
+        WAYPOINT("NSSQ");
         while (!noc_cmd_buf_ready(noc_index, NCRISC_WR_CMD_BUF));
         WAYPOINT("NSSD");
     }
