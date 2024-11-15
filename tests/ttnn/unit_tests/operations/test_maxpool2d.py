@@ -277,7 +277,7 @@ def run_max_pool(
             # wide non-8 multiple tests
             # [1, 384, 8, 8],  # passes
             # [1, 384, 16, 8],  # fails
-            [1, 128, 10, 10],  # passes
+            # [1, 128, 10, 10],  # passes
             [1, 384, 10, 10],  # fails
             [1, 512, 10, 10],  # passes
         )

@@ -66,10 +66,13 @@ void kernel_main() {
 
     constexpr uint32_t in_cb_sz = get_compile_time_arg_val(14);
 
+    constexpr uint32_t in_ntiles_c = get_compile_time_arg_val(16);
+
     // static_assert(0 == reader_nindices%2, "reader_nindices must be multiple of 2");
 
     constexpr uint32_t TILE_WIDTH = 32;
     constexpr uint32_t MAX_ELE_PER_REDUCTION = 512;
+    constexpr uint32_t ELE_PER_TILE = 64;
 
     constexpr uint32_t in_cb_id = (reader_id == 1) ? tt::CB::c_in1 : tt::CB::c_in0;
     constexpr uint32_t in_shard_cb_id = tt::CB::c_in2;    // local input shard
@@ -104,11 +107,35 @@ void kernel_main() {
     while (counter < reader_nindices) {
         uint16_t top_left_local_index = reader_indices_ptr[counter ++];
         //DPRINT << "top_left_local_index: " << top_left_local_index << ENDL();
-        for (uint32_t c_i = 0; c_i < in_nblocks_c; ++ c_i) {
-            uint32_t read_bytes = MAX_ELE_PER_REDUCTION;
-            if (c_i == in_nblocks_c - 1) {
-                read_bytes = in_nbytes_c - c_i * MAX_ELE_PER_REDUCTION; // do we need this?  still seems to work without it
-            }
+        // for (uint32_t c_i = 0; c_i < in_nblocks_c; ++ c_i) {
+        //     uint32_t read_bytes = MAX_ELE_PER_REDUCTION;
+        //     if (c_i == in_nblocks_c - 1) {
+        //         read_bytes = in_nbytes_c - c_i * MAX_ELE_PER_REDUCTION; // do we need this?  still seems to work without it
+        //     }
+        //     cb_reserve_back(in_cb_id, npages_to_reserve);
+        //     uint32_t out_l1_write_addr_base = get_write_ptr(in_cb_id);
+        //     uint32_t out_l1_write_addr = out_l1_write_addr_base;
+        //     fill_with_val(out_l1_write_addr_base, in_cb_sz, minus_inf);
+        //     for (uint32_t h = 0; h < window_h; ++ h) {
+        //         for (uint32_t w = 0; w < window_w; ++ w) {
+        //             uint32_t stick_offset = top_left_local_index + w + h * in_w_padded;
+        //             uint32_t read_offset = in_l1_read_base_addr + (stick_offset * in_nbytes_c + c_i * MAX_ELE_PER_REDUCTION);      // 2 bytes, max 8 tiles
+        //             noc_async_read_one_packet(get_noc_addr(read_offset), out_l1_write_addr, read_bytes);
+        //             /* if (reader_id == 0) {
+        //                 DPRINT << "read_offset: " << read_offset - in_l1_read_base_addr << ENDL();
+        //                 print_pages(read_offset, read_bytes / 2, 1);
+        //             } */
+        //             out_l1_write_addr += MAX_ELE_PER_REDUCTION;
+        //         }
+        //     }
+        //     noc_async_read_barrier();
+        //     /* if (reader_id == 0) {
+        //         print_pages(out_l1_write_addr_base, MAX_ELE_PER_REDUCTION / 2, 9);
+        //     } */
+        //     cb_push_back(in_cb_id, npages_to_reserve);
+        // }
+        for (uint32_t c_i = 0; c_i < in_ntiles_c; ++ c_i) {
+            uint32_t read_bytes = ELE_PER_TILE;
             cb_reserve_back(in_cb_id, npages_to_reserve);
             uint32_t out_l1_write_addr_base = get_write_ptr(in_cb_id);
             uint32_t out_l1_write_addr = out_l1_write_addr_base;
@@ -116,19 +143,16 @@ void kernel_main() {
             for (uint32_t h = 0; h < window_h; ++ h) {
                 for (uint32_t w = 0; w < window_w; ++ w) {
                     uint32_t stick_offset = top_left_local_index + w + h * in_w_padded;
-                    uint32_t read_offset = in_l1_read_base_addr + (stick_offset * in_nbytes_c + c_i * MAX_ELE_PER_REDUCTION);      // 2 bytes, max 8 tiles
+                    uint32_t read_offset = in_l1_read_base_addr + (stick_offset * in_nbytes_c + c_i * ELE_PER_TILE);      // 2 bytes, max 8 tiles
                     noc_async_read_one_packet(get_noc_addr(read_offset), out_l1_write_addr, read_bytes);
                     /* if (reader_id == 0) {
                         DPRINT << "read_offset: " << read_offset - in_l1_read_base_addr << ENDL();
                         print_pages(read_offset, read_bytes / 2, 1);
                     } */
-                    out_l1_write_addr += MAX_ELE_PER_REDUCTION;
+                    out_l1_write_addr += ELE_PER_TILE;
                 }
             }
             noc_async_read_barrier();
-            /* if (reader_id == 0) {
-                print_pages(out_l1_write_addr_base, MAX_ELE_PER_REDUCTION / 2, 9);
-            } */
             cb_push_back(in_cb_id, npages_to_reserve);
         }
         if (split_reader) counter++; // interleave the indices

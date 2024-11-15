@@ -311,7 +311,8 @@ MaxPool2D::MultiCore::cached_program_t max_pool_2d_multi_core_sharded_with_halo_
         bf16_one_u32,
         in_nblocks_c,
         in_cb_sz,
-        max_rows_for_reduction};
+        max_rows_for_reduction,
+        in_ntiles_c};
 
     std::vector<uint32_t> reader1_ct_args = {
         out_nhw_per_core,
@@ -329,7 +330,8 @@ MaxPool2D::MultiCore::cached_program_t max_pool_2d_multi_core_sharded_with_halo_
         bf16_one_u32,
         in_nblocks_c,
         in_cb_sz,
-        max_rows_for_reduction};
+        max_rows_for_reduction,
+        in_ntiles_c};
 
     std::string reader_kernel_fname;
     if (is_large_kernel) {
