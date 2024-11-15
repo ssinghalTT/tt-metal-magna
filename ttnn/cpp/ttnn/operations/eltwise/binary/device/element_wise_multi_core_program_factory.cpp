@@ -434,11 +434,15 @@ BinaryDeviceOperation::ElementWiseMultiCore::cached_program_t BinaryDeviceOperat
     bool fp32_dest_acc_en = dst_cb_data_format == tt::DataFormat::UInt32 ||
                             dst_cb_data_format == tt::DataFormat::Int32 ||
                             dst_cb_data_format == tt::DataFormat::Float32;
+
+    bool bfp8_pack_precise = dst_cb_data_format == tt::DataFormat::Bfp8_b;
+    tt::log_debug(tt::LogOp, "*******  binary bf8b {} ", bfp8_pack_precise);
+
     auto eltwise_binary_kernel_id = tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/eltwise/binary/device/kernels/compute/eltwise_binary_kernel.cpp",
         all_device_cores,
-        tt_metal::ComputeConfig{.fp32_dest_acc_en = fp32_dest_acc_en, .defines = eltwise_defines});
+        tt_metal::ComputeConfig{.fp32_dest_acc_en = fp32_dest_acc_en, .bfp8_pack_precise = bfp8_pack_precise, .defines = eltwise_defines});
 
     set_eltwise_binary_runtime_args<true>(
         program,
