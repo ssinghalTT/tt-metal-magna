@@ -1295,6 +1295,7 @@ void override_runtime_args_wh_rm(
         }
 
         if constexpr (IS_CREATING) {
+            std::cout << "x: " << core.x << " y: " << core.y << " num_hw_blocks_per_core " << num_hw_blocks_per_core << std::endl;
             tt::tt_metal::SetRuntimeArgs(
                 program,
                 reader_kernel_id,

@@ -332,8 +332,8 @@ def test_tranpose_hw_rm_with_padding(device, n, c, h, w):
 
 
 @skip_for_grayskull("Grayskull has pcc issue when transpose used untilize")
-@pytest.mark.parametrize("n", [16])
-@pytest.mark.parametrize("c", [128])
+@pytest.mark.parametrize("n", [8])
+@pytest.mark.parametrize("c", [64])
 @pytest.mark.parametrize("h", [8])
 @pytest.mark.parametrize("w", [256])
 def test_tranpose_hw_rm_no_padding(device, n, c, h, w):
@@ -352,11 +352,11 @@ def test_tranpose_hw_rm_no_padding(device, n, c, h, w):
     activation_pyt_padded_out = ttnn.to_torch(activation_pyt_padded_out)
     torch.set_printoptions(threshold=10_000)
     print("Torch input tensor")
-    print(torch_input_tensor)
+    print(torch_input_tensor[0, 1, :, :32])
     print("Torch golden")
-    print(torch_output_tensor)
+    print(torch_output_tensor[0, 1, :32, :])
     print("TT output")
-    print(activation_pyt_padded_out)
+    print(activation_pyt_padded_out[0, 1, :32, :])
 
     assert_with_pcc(torch_output_tensor, activation_pyt_padded_out, 0.9999)
 

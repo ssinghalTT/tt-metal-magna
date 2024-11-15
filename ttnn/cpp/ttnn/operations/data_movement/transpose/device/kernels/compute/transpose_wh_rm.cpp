@@ -108,6 +108,7 @@ ALWI void transpose_with_pack_untilize(uint32_t cb_tilize, uint32_t cb_out) {
 
 namespace NAMESPACE {
 void MAIN {
+    // DPRINT << "this is the transpose kernel" << ENDL();
     constexpr uint32_t Ht = get_compile_time_arg_val(0);
     constexpr uint32_t Wt = get_compile_time_arg_val(1);
     constexpr uint32_t HtWt = get_compile_time_arg_val(2);
@@ -140,23 +141,28 @@ void MAIN {
 
     unary_op_init_common(cb_in, cb_out);
     // DPRINT_UNPACK(DPRINT << "this is the unpack kernel" << ENDL());
+    DPRINT_UNPACK(DPRINT << "Ht=" << Ht << " Wt=" << Wt << " HtWt=" << HtWt << " num_hw_blocks_per_core=" << num_hw_blocks_per_core << ENDL());
     for (uint32_t n = 0; n < num_hw_blocks_per_core; n++) {
         // tilize input
         tilize_init_short(cb_in, Wt);
         for (uint32_t h = 0; h < Ht; ++h) {
             cb_wait_front(cb_in, Wt);
             auto ptr = (volatile tt_l1_ptr uint16_t *) (cb_interface[cb_in].fifo_rd_ptr << 4);
-            for (uint8_t i = 0; i < 8; ++i) {
-                for (uint8_t j = 0; j < 32; ++j) {
-                    DPRINT_UNPACK({ DPRINT << BF16(ptr[i * 32 + j]) << " "; });
+            if (n == 1) {
+                for (uint8_t i = 0; i < 8; ++i) {
+                    for (uint8_t j = 0; j < 32; ++j) {
+                        DPRINT_UNPACK({ DPRINT << BF16(ptr[i * Wt*32 + j]) << " "; });
+                    }
+                    DPRINT_UNPACK(DPRINT << ENDL() << ENDL());
                 }
-                DPRINT_UNPACK(DPRINT << ENDL() << ENDL());
             }
             cb_reserve_back(cb_tilize, Wt);
             tilize_block(cb_in, Wt, cb_tilize);
-            for (uint8_t i = 0; i < 8; ++i) {
-                uint8_t j = i + 1u;
-                DPRINT_PACK({ DPRINT  << TSLICE(cb_tilize, 0, SliceRange{ .h0 = i, .h1 = j, .hs = 1, .w0 = 0, .w1 = 32, .ws = 1 }) << ENDL(); });
+            if (n == 1) {
+                for (uint8_t i = 0; i < 8; ++i) {
+                    uint8_t j = i + 1u;
+                    DPRINT_PACK({ DPRINT  << TSLICE(cb_tilize, 0, SliceRange{ .h0 = i, .h1 = j, .hs = 1, .w0 = 0, .w1 = 32, .ws = 1 }) << ENDL(); });
+                }
             }
             cb_push_back(cb_tilize, Wt);
             cb_pop_front(cb_in, Wt);
