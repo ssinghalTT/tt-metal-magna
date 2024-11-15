@@ -5,6 +5,13 @@
 #include <stdint.h>
 #include "dataflow_api.h"
 
+//#define DEBUG
+
+#ifdef DEBUG
+#include "ttnn/cpp/ttnn/operations/data_movement/common/kernels/debug.hpp"
+#endif
+
+
 void kernel_main() {
 
     const uint32_t src_addr                 = get_arg_val<uint32_t>(0);
@@ -43,6 +50,10 @@ void kernel_main() {
             uint64_t src_noc_addr = get_noc_addr(stick_id, s0);
             noc_async_read(src_noc_addr, l1_write_addr, block_width_bytes);
             stick_id++;
+#ifdef DEBUG
+            noc_async_read_barrier();
+            tt::data_movement::common::print_pages(l1_write_addr, block_width_bytes >> 1, 1);
+#endif
             l1_write_addr += padded_block_width_bytes;
         }
     } else {
@@ -55,6 +66,10 @@ void kernel_main() {
             noc_async_read_barrier();
             noc_async_read(scratch_l1_noc_read_addr, l1_write_addr, block_width_bytes);
             stick_id++;
+#ifdef DEBUG
+            noc_async_read_barrier();
+            tt::data_movement::common::print_pages(l1_write_addr, block_width_bytes >> 1, 1);
+#endif
             l1_write_addr += padded_block_width_bytes;
         }
     }
