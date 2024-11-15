@@ -299,7 +299,6 @@ def test_transpose_wh_sharded_program_cache(dtype, device, use_program_cache):
         )
 
 
-@skip_for_blackhole("Mismatching on BH, see #12349")
 @skip_for_grayskull("Grayskull has pcc issue when transpose used untilize")
 @pytest.mark.parametrize("n", [1])
 @pytest.mark.parametrize("c", [1])
@@ -333,10 +332,10 @@ def test_tranpose_hw_rm_with_padding(device, n, c, h, w):
 
 
 @skip_for_grayskull("Grayskull has pcc issue when transpose used untilize")
-@pytest.mark.parametrize("n", [1])
-@pytest.mark.parametrize("c", [1])
+@pytest.mark.parametrize("n", [16])
+@pytest.mark.parametrize("c", [128])
 @pytest.mark.parametrize("h", [8])
-@pytest.mark.parametrize("w", [32])
+@pytest.mark.parametrize("w", [256])
 def test_tranpose_hw_rm_no_padding(device, n, c, h, w):
     torch.manual_seed(2005)
     torch_input_tensor = torch.rand((n, c, h, w), dtype=torch.bfloat16)
@@ -379,7 +378,6 @@ def run_tranpose_hw_rm_program_cache(device, n, c, h, w, use_program_cache):
     assert_with_pcc(torch_output_tensor, activation_pyt_padded_out, 0.9999)
 
 
-@skip_for_blackhole("Mismatching on BH, see #12349")
 @skip_for_grayskull("Grayskull has pcc issue when transpose used untilize")
 @pytest.mark.parametrize("n", [16])
 @pytest.mark.parametrize("c", [128])
@@ -401,7 +399,6 @@ def test_tranpose_hw_rm_with_program_cache(device, n, c, h, w, use_program_cache
     assert device.num_program_cache_entries() == 1
 
 
-@skip_for_blackhole("Mismatching on BH, see #12349")
 @pytest.mark.parametrize("n", [16])
 @pytest.mark.parametrize("c", [224])
 @pytest.mark.parametrize("h", [16])
@@ -471,7 +468,6 @@ def run_tranpose_hw_sharded_rm_with_program_cache(device, n, c, h, w):
     assert_with_pcc(torch_output_tensor, tt_output_tensor, 0.9999)
 
 
-@skip_for_blackhole("Mismatching on BH, see #12349")
 @pytest.mark.parametrize("n", [16])
 @pytest.mark.parametrize("c", [128])
 @pytest.mark.parametrize("h", [128])
@@ -580,7 +576,6 @@ def run_tranpose_hc_sharded(device, n, c, h, w, grid_size):
     assert_with_pcc(torch_output_tensor, tt_output_tensor, 0.9999)
 
 
-@skip_for_blackhole("Mismatching on BH, see #12349")
 @pytest.mark.parametrize(
     "n, c, h, w, grid_size",
     [
