@@ -1,6 +1,6 @@
-# Yolov4 Web Demo
+# Yolov4 Demo
 
-## How to run the web demo
+## How to run web demo demo
 
 - ssh into the server specifying the port:
   ```
