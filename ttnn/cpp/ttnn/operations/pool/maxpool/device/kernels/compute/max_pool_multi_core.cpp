@@ -158,7 +158,8 @@ void MAIN {
         //     }
         // }
 
-        for (uint32_t i = 0; i < in_ntiles_c; ++i) {
+        for (uint32_t c_i = 0; c_i < in_ntiles_c; ++c_i) {
+            DPRINT << "COMPUTE c_i: " << c_i << ENDL();
             reduce_h_fused<max_tiles_per_iter, is_partial_tile, split_reader, window_size_hw>(in_cb_id, in_scalar_cb_id, i, out_cb_id);
         }
 

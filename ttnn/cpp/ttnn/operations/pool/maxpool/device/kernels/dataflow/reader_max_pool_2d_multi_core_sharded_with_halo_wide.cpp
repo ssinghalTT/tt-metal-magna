@@ -135,6 +135,7 @@ void kernel_main() {
         //     cb_push_back(in_cb_id, npages_to_reserve);
         // }
         for (uint32_t c_i = 0; c_i < in_ntiles_c; ++ c_i) {
+            DPRINT << "READER c_i: " << c_i << ENDL();
             uint32_t read_bytes = ELE_PER_TILE;
             cb_reserve_back(in_cb_id, npages_to_reserve);
             uint32_t out_l1_write_addr_base = get_write_ptr(in_cb_id);
