@@ -1,6 +1,8 @@
 set(PERF_MICROBENCH_TESTS_SRCS
     dispatch/test_pgm_dispatch.cpp
     dispatch/test_bw_and_latency.cpp
+    dispatch/test_posted_write_latency.cpp
+    dispatch/test_congestion.cpp
     dispatch/test_dispatcher.cpp
     dispatch/test_prefetcher.cpp
     ethernet/test_ethernet_read_and_send_data.cpp
