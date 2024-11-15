@@ -106,6 +106,8 @@ MaxPool2D::MultiCore::cached_program_t max_pool_2d_multi_core_sharded_with_halo_
 
     uint32_t split_reader = 1;
 
+    printf("STARTING CB CREATION\n");
+
     // scalar CB as coefficient of reduce
     uint32_t in_scalar_cb_id = tt::CB::c_in4;
     uint32_t in_scalar_cb_pagesize = tile_size(in_df);
@@ -385,6 +387,9 @@ MaxPool2D::MultiCore::cached_program_t max_pool_2d_multi_core_sharded_with_halo_
 }
 
 MaxPool2D::MultiCore::cached_program_t MaxPool2D::MultiCore::create(const operation_attributes_t& op_attr, const tensor_args_t& tensor_args, tensor_return_value_t& output_tensor) {
+
+    printf("MaxPool2D::MultiCore::create\n");
+
     const auto& input = tensor_args.input_tensor_;
     auto& sliding_window_config = op_attr.sliding_window_config_;
     auto& out_mem_config = op_attr.memory_config_;

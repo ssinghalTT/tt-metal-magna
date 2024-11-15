@@ -105,6 +105,12 @@ Tensor MaxPool2DOp::invoke(uint8_t queue_id,
             .snap_to_tile = false
     };
 
+    printf("STARTING HALO\n");
+
+    printf("pre - halo shape: %d, %d, %d, %d\n", input_tensor_sharded.shape()[0], input_tensor_sharded.shape()[1], input_tensor_sharded.shape()[2], input_tensor_sharded.shape()[3]);
+    printf("pre - halo logical shape: %d, %d, %d, %d\n", input_tensor_sharded.shape().logical_shape()[0], input_tensor_sharded.shape().logical_shape()[1], input_tensor_sharded.shape().logical_shape()[2], input_tensor_sharded.shape().logical_shape()[3]);
+    printf("pre - halo legacy logical shape: %d, %d, %d, %d\n", input_tensor_sharded.legacy_shape().logical_shape()[0], input_tensor_sharded.legacy_shape().logical_shape()[1], input_tensor_sharded.legacy_shape().logical_shape()[2], input_tensor_sharded.legacy_shape().logical_shape()[3]);
+
     // call the halo uop
     uint32_t neg_inf_pad_val = 0xf7ff;
     auto haloed_tensor = ttnn::halo(
@@ -118,12 +124,19 @@ Tensor MaxPool2DOp::invoke(uint8_t queue_id,
         input_tensor_sharded.memory_config(),
         is_out_tiled);
 
+    printf("haloed shape: %d, %d, %d, %d\n", haloed_tensor.shape()[0], haloed_tensor.shape()[1], haloed_tensor.shape()[2], haloed_tensor.shape()[3]);
+
+    printf("DONE HALO\n");
+    printf("STARTING MAXPOOL\n");
+
     auto output_tensor = ttnn::prim::max_pool2d(
         queue_id,
         haloed_tensor,
         sliding_window_config,
         DataType::BFLOAT16,      // input_tensor.dtype(), // currently only bfp16 output is supported
         out_memory_config);
+
+    printf("DONE MAXPOOL\n");
 
     if (memory_config.has_value() && memory_config.value() != out_memory_config) {
         output_tensor = ttnn::to_memory_config(output_tensor, memory_config.value(), std::nullopt);

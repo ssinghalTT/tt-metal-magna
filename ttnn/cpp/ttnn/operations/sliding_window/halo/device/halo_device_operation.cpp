@@ -30,18 +30,18 @@ std::vector<tt::tt_metal::LegacyShape> HaloDeviceOperation::compute_output_shape
     const auto& input_shape = input.get_legacy_shape();
     tt::tt_metal::LegacyShape output_shape = input_shape;
 
+    printf("HDO log INPUT SHAPE: %d, %d, %d, %d\n", input_shape.logical_shape()[0], input_shape.logical_shape()[1], input_shape.logical_shape()[2], input_shape.logical_shape()[3]);
+    printf("HDO log OUTPUT SHAPE 1: %d, %d, %d, %d\n", output_shape.logical_shape()[0], output_shape.logical_shape()[1], output_shape.logical_shape()[2], output_shape.logical_shape()[3]);
+    printf("INPUT back PADDING: %ld, %ld, %ld, %ld\n", input_shape.padding().pad_dimensions_[0].back, input_shape.padding().pad_dimensions_[1].back, input_shape.padding().pad_dimensions_[2].back, input_shape.padding().pad_dimensions_[3].back);
+    printf("OUTPUT back PADDING: %ld, %ld, %ld, %ld\n", output_shape.padding().pad_dimensions_[0].back, output_shape.padding().pad_dimensions_[1].back, output_shape.padding().pad_dimensions_[2].back, output_shape.padding().pad_dimensions_[3].back);
+
     uint32_t nbatch = input_shape[0];
     uint32_t total_nsticks = config_.num_cores_nhw * max_out_nsticks_per_core_;
 
-    // output_shape[0] remains same
-    // output_shape[1] remains same
-    // output_shape[2] changes
-    // output_shape[3] remains same
+    printf("HDO log OUTPUT SHAPE 2: %d, %d, %d, %d\n", output_shape.logical_shape()[0], output_shape.logical_shape()[1], output_shape.logical_shape()[2], output_shape.logical_shape()[3]);
     output_shape[2] = (uint32_t) std::ceil((float) total_nsticks / nbatch);
-
-    log_debug(tt::LogOp, "output_shape: [{} {} {} {}]", output_shape[0], output_shape[1], output_shape[2], output_shape[3]);
-    log_debug(tt::LogOp, "max_out_nsticks_per_core: {}", max_out_nsticks_per_core_);
-    log_debug(tt::LogOp, "num_cores_nhw: {}", config_.num_cores_nhw);
+    printf("total_nsticks: %d, nbatch: %d, result: %d\n", total_nsticks, nbatch, output_shape[2]);
+    printf("HDO log OUTPUT SHAPE 3: %d, %d, %d, %d\n", output_shape.logical_shape()[0], output_shape.logical_shape()[1], output_shape.logical_shape()[2], output_shape.logical_shape()[3]);
 
     return {output_shape};
 }
@@ -65,13 +65,18 @@ std::vector<Tensor> HaloDeviceOperation::create_output_tensors(const std::vector
     out_mem_config.shard_spec->shape[0] = tt::div_up(output_shape[0] * output_shape[2], config_.num_cores_nhw);
     out_mem_config.shard_spec->shape[1] = input_tensor.memory_config().shard_spec->shape[1];
     out_mem_config.shard_spec->halo = true;
-    return {create_device_tensor(output_shape, output_dtype, Layout::ROW_MAJOR, input_tensor.device(), out_mem_config)};
+
+    Tensor out_tens = create_device_tensor(output_shape, output_dtype, Layout::ROW_MAJOR, input_tensor.device(), out_mem_config);
+
+    return {out_tens};
 }
 
 
 operation::ProgramWithCallbacks HaloDeviceOperation::create_program(const std::vector<Tensor>& inputs, std::vector<Tensor> &outputs) const {
     const auto& input_tensor = inputs.at(0);
     auto& output_tensor = outputs.at(0);
+    printf("HDO CREATE OUTPUTN SHAPE: %d, %d, %d, %d\n", output_tensor.shape()[0], output_tensor.shape()[1], output_tensor.shape()[2], output_tensor.shape()[3]);
+    printf("HDO CREATE LEG OUTPUTN SHAPE: %d, %d, %d, %d\n", output_tensor.get_legacy_shape()[0], output_tensor.get_legacy_shape()[1], output_tensor.get_legacy_shape()[2], output_tensor.get_legacy_shape()[3]);
     auto device = input_tensor.device();
 
     bool is_in_tiled = input_tensor.get_layout() == Layout::TILE;
@@ -164,7 +169,13 @@ Tensor halo_op(const Tensor& input_tensor,
     };
 
     std::vector<Tensor> output_tensors = { Tensor(tt::tt_metal::operation::get_workers_for_op_output({input_tensor}, {})) };
+
+    printf("OUTPUT SHAPE WITHIN HALO OP BEFORE: %d, %d, %d, %d\n", output_tensors[0].shape()[0], output_tensors[0].shape()[1], output_tensors[0].shape()[2], output_tensors[0].shape()[3]);
+
     operation::launch_op(halo_func, {input_tensor}, output_tensors);
+
+    printf("INPUT SHAPE WITHIN HALO OP: %d, %d, %d, %d\n", input_tensor.shape()[0], input_tensor.shape()[1], input_tensor.shape()[2], input_tensor.shape()[3]);
+    printf("OUTPUT SHAPE WITHIN HALO OP: %d, %d, %d, %d\n", output_tensors[0].shape()[0], output_tensors[0].shape()[1], output_tensors[0].shape()[2], output_tensors[0].shape()[3]);
 
     return output_tensors.at(0);
 }

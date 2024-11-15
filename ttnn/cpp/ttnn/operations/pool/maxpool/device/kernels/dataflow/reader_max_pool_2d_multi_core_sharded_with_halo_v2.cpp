@@ -6,7 +6,7 @@
 #include <cstring>
 #include "dataflow_api.h"
 
-#define ENABLE_DEBUG_PRINT 0
+#define ENABLE_DEBUG_PRINT 1
 
 #if ENABLE_DEBUG_PRINT == 1
     #include "debug/dprint.h"
@@ -85,6 +85,10 @@ void kernel_main() {
     uint32_t in_l1_read_base_addr = get_read_ptr(in_shard_cb_id);
     uint32_t reader_indices_l1_addr = get_read_ptr(in_reader_indices_cb_id);
     volatile tt_l1_ptr uint16_t* reader_indices_ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(reader_indices_l1_addr);
+
+    if (reader_id == 0) {
+        print_pages(in_l1_read_base_addr, 1024, 2, 0);
+    }
 
     uint32_t in_w_padded = in_w + 2 * pad_w;
 

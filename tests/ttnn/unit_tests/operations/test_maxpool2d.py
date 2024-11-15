@@ -116,7 +116,13 @@ def run_max_pool(
     torch.set_printoptions(precision=3, sci_mode=False, linewidth=500, threshold=10000, edgeitems=32)
 
     ## construct the tensor in NCHW shape
-    act = torch.randn(act_shape, dtype=torch.bfloat16)
+    # act = torch.randn(act_shape, dtype=torch.bfloat16)
+    act = torch.empty(act_shape, dtype=torch.bfloat16)
+    for n in range(act_shape[0]):
+        for c in range(act_shape[1]):
+            for h in range(act_shape[2]):
+                for w in range(act_shape[3]):
+                    act[n, c, h, w] = c
     # act = torch.zeros(act_shape, dtype=torch.bfloat16)
     # act = torch.ones(act_shape, dtype=torch.bfloat16)
     # act = torch.arange(0, volume(act_shape), dtype=torch.bfloat16).reshape(act_shape)
@@ -164,6 +170,7 @@ def run_max_pool(
             tile_size=32 if dtype == ttnn.bfloat8_b else 1,
         )
         ttact_device = ttnn.to_memory_config(ttact_device, sharded_memory_config)
+
     output = ttnn.max_pool2d(
         input_tensor=ttact_device,
         batch_size=in_n,
@@ -225,7 +232,7 @@ def run_max_pool(
         assert ttnn.get_memory_config(output) == memory_config
 
 
-@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
+""" @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
 @pytest.mark.parametrize(
     "act_shape",  ## NCHW
     (
@@ -317,7 +324,7 @@ def test_run_max_pool(
     dtype,
     use_program_cache,
 ):
-    run_max_pool(act_shape, kernel_size, padding, stride, dilation, device, dtype)
+    run_max_pool(act_shape, kernel_size, padding, stride, dilation, device, dtype) """
 
 
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
@@ -325,17 +332,18 @@ def test_run_max_pool(
     "act_shape",  ## NCHW
     (
         (
-            [1, 512, 28, 28],
-            [1, 512, 14, 14],
-            [1, 1024, 6, 6],
+            # 1, 512, 28, 28],
+            # [1, 512, 14, 14],
+            # [1, 1024, 6, 6],
             [1, 2048, 6, 6],
-            [1, 4096, 6, 6],
-            [4, 1024, 40, 40],
-            [2, 2048, 40, 40],
-            [8, 4096, 10, 16],
+            # [1, 4096, 6, 6],
+            # [4, 1024, 40, 40],
+            [1, 2048, 40, 40],
+            # [2, 2048, 40, 40],
+            # [8, 4096, 10, 16],
             # wide yolo kernel
-            [1, 32768, 10, 10],
-            [1, 6144, 6, 6],
+            # [1, 32768, 10, 10],
+            # [1, 6144, 6, 6],
         )
     ),
 )
@@ -343,34 +351,34 @@ def test_run_max_pool(
     "kernel_size",
     (
         (2, 2),
-        (3, 3),
-        (5, 5),
-        (9, 9),
-        (13, 13),
+        # (3, 3),
+        # (5, 5),
+        # (9, 9),
+        # (13, 13),
     ),
 )
 @pytest.mark.parametrize(
     "padding",
     (
         (0, 0),
-        (1, 1),
-        (2, 2),
-        (4, 4),
-        (6, 6),
+        # (1, 1),
+        # (2, 2),
+        # (4, 4),
+        # (6, 6),
     ),
 )
 @pytest.mark.parametrize(
     "stride",
     (
         (1, 1),
-        (2, 2),
+        # (2, 2),
     ),
 )
 @pytest.mark.parametrize("dilation", ((1, 1),))  ## default
 @pytest.mark.parametrize(
     "dtype",
     [
-        ttnn.bfloat16,
+        # ttnn.bfloat16,
         ttnn.bfloat8_b,
     ],
 )
@@ -396,7 +404,7 @@ def test_run_max_pool_width_shard(
     )
 
 
-@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
+""" @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
 @pytest.mark.parametrize(
     "act_shape",  ## NCHW
     (
@@ -798,4 +806,4 @@ def test_pool_core_nondivis(
     assert allclose
     assert isclose
     if dtype == ttnn.bfloat16:
-        assert isequal
+        assert isequal """

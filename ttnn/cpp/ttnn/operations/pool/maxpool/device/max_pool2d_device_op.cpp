@@ -71,6 +71,9 @@ MaxPool2D::shape_return_value_t MaxPool2D::compute_output_shapes(const operation
         {{0, 0}, {0, 0}, {0, out_nhw_padded - out_nhw}, {0, out_c_padded - out_c}},
         Padding::PadValue::NegativeInfinity);
     auto out_shape = Shape(tt::tt_metal::LegacyShape(out_dims, padding));
+
+    printf("out shape: %d, %d, %d, %d\n", out_shape[0], out_shape[1], out_shape[2], out_shape[3]);
+
     return out_shape;
 }
 
@@ -146,6 +149,7 @@ std::tuple<MaxPool2D::operation_attributes_t, MaxPool2D::tensor_args_t> MaxPool2
     const sliding_window::SlidingWindowConfig& sliding_window_config,
     DataType output_dtype,
     MemoryConfig memory_config) {
+    printf("DEVICE OP MAX POOL CALLED\n");
     return {
         operation_attributes_t{sliding_window_config, output_dtype, memory_config},
         tensor_args_t{input_tensor}

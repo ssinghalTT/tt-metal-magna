@@ -660,6 +660,7 @@ tt::tt_metal::Padding Tensor::get_padding() const {
 
 Tensor create_device_tensor(
     const ttnn::SimpleShape& shape, const TensorLayout& tensor_layout, Device* device) {
+    printf("hit 3\n");
     ZoneScoped;
     GraphTracker::instance().track_function_start("tt::tt_metal::create_device_tensor", shape, tensor_layout.get_data_type(), tensor_layout.get_layout(), device, tensor_layout.get_memory_config());
 
@@ -673,11 +674,12 @@ Tensor create_device_tensor(
 }
 
 Tensor create_device_tensor(const ttnn::SimpleShape& shape, DataType data_type, Layout layout, Device* device, const MemoryConfig& memory_config, const std::optional<Tile>& tile) {
+    printf("hit 1\n");
     return create_device_tensor(shape, TensorLayout(data_type, PageConfig(layout, tile), memory_config), device);
 }
 
-Tensor create_device_tensor(
-    const ttnn::Shape& shape, DataType data_type, Layout layout, Device* device, const MemoryConfig& memory_config, const std::optional<Tile>& tile) {
+Tensor create_device_tensor(const ttnn::Shape& shape, DataType data_type, Layout layout, Device* device, const MemoryConfig& memory_config, const std::optional<Tile>& tile) {
+    printf("hit 2\n");
     return create_device_tensor(shape.logical_shape(), TensorLayout::fromLegacyPaddedShape(data_type, PageConfig(layout, tile), memory_config, shape), device);
 }
 

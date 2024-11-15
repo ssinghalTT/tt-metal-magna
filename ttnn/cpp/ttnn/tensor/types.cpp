@@ -183,6 +183,7 @@ const LegacyShape LegacyShape::without_padding() const {
         const auto dimension = this->operator[](index);
         auto&& [front_pad, back_pad] = padding.pad_dimensions_[index];
         const auto new_dimension = dimension - (front_pad + back_pad);
+        printf("front_pad: %ld, back_pad: %ld, dimension: %d, new_dimension: %ld\n", front_pad, back_pad, dimension, new_dimension);
         shape_without_padding.push_back(new_dimension);
     }
     return LegacyShape(shape_without_padding);
