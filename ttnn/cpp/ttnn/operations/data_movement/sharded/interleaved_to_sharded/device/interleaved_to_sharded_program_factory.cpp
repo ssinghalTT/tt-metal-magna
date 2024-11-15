@@ -63,7 +63,7 @@ operation::ProgramWithCallbacks interleaved_to_sharded_multi_core(
         // TODO: Use a different variable name. Units refers to pages, but this is being used as size
         num_units_per_shard_width_last =
             input_unit_size - (tt::round_up(num_units_per_row, input_unit_size) - num_units_per_row);
-        padded_offset_bytes = align(input_unit_size, input.buffer()->alignment());
+        padded_offset_bytes = align(input_unit_size, hal.get_alignment(HalMemType::L1));
     }
 
     bool convert_df = input_cb_data_format != output_cb_data_format;
