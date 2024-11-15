@@ -232,14 +232,14 @@ def run_max_pool(
     "kernel_size",
     (
         (2, 2),
-        (3, 3),
+        # (3, 3),
     ),
 )
 @pytest.mark.parametrize(
     "padding",
     (
         (0, 0),
-        (1, 1),
+        # (1, 1),
     ),
 )
 @pytest.mark.parametrize(

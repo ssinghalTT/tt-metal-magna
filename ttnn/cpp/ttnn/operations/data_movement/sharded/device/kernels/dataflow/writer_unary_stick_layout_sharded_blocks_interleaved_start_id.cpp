@@ -44,6 +44,7 @@ void kernel_main() {
     for (uint32_t h = 0; h < block_height; ++h) {
         uint64_t dst_noc_addr = get_noc_addr(stick_id, s0);
 #ifdef DEBUG
+        DPRINT << "HIT 0" << ENDL();
         noc_async_read_barrier();
         tt::data_movement::common::print_pages(l1_read_addr, block_width_bytes >> 1, 1);
 #endif

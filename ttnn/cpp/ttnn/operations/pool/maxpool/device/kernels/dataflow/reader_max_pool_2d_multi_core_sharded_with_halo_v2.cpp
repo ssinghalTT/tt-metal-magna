@@ -102,9 +102,9 @@ void kernel_main() {
         uint32_t out_l1_write_addr_base = get_write_ptr(in_cb_id);
         uint32_t out_l1_write_addr = out_l1_write_addr_base;
         uint16_t top_left_local_index = reader_indices_ptr[counter ++];
-        if (reader_id == 0) {
+        /* if (reader_id == 0) {
             DPRINT << "top_left_local_index: " << top_left_local_index << ENDL();
-        }
+        } */
         uint32_t h_multiples = 0;
         for (uint32_t h = 0; h < window_h; ++ h, h_multiples += in_w_padded) {
             uint32_t stick_offset = top_left_local_index + h_multiples;

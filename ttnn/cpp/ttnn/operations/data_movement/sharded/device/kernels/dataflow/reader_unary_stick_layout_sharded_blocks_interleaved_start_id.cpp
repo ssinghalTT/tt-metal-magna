@@ -9,7 +9,7 @@
 
 #if ENABLE_DEBUG
 #include "debug/dprint.h"
-
+#include "ttnn/cpp/ttnn/operations/data_movement/common/kernels/debug.hpp"
 inline void print_pages(uint32_t l1_addr, uint32_t pagelen, uint32_t npages, uint32_t start = 0) {
     volatile tt_l1_ptr uint16_t* ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(l1_addr) + start * pagelen;
     for (uint32_t page = 0; page < npages; ++ page) {
@@ -60,7 +60,7 @@ void kernel_main() {
             uint64_t src_noc_addr = get_noc_addr(stick_id, s0);
             noc_async_read(src_noc_addr, l1_write_addr, block_width_bytes);
             stick_id++;
-#ifdef DEBUG
+#ifdef ENABLE_DEBUG
             noc_async_read_barrier();
             tt::data_movement::common::print_pages(l1_write_addr, block_width_bytes >> 1, 1);
 #endif
@@ -76,7 +76,7 @@ void kernel_main() {
             noc_async_read_barrier();
             noc_async_read(scratch_l1_noc_read_addr, l1_write_addr, block_width_bytes);
             stick_id++;
-#ifdef DEBUG
+#ifdef ENABLE_DEBUG
             noc_async_read_barrier();
             tt::data_movement::common::print_pages(l1_write_addr, block_width_bytes >> 1, 1);
 #endif
@@ -91,6 +91,7 @@ void kernel_main() {
     DPRINT << "block_height: " << block_height << ENDL();
     DPRINT << "stick_size: " << stick_size << ENDL();
     print_pages(get_read_ptr(cb_id_in0), block_width_bytes / sizeof(uint16_t), block_height);
+    DPRINT << "END I2S READER OUTPUT" << ENDL();
 
     cb_push_back(cb_id_in0, block_height);
 }
