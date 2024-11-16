@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+#undef WATCHER_DISABLE_NOC_SANITIZE
 // clang-format off
 #include "dataflow_api.h"
 #include "tt_metal/impl/dispatch/kernels/packet_queue.hpp"

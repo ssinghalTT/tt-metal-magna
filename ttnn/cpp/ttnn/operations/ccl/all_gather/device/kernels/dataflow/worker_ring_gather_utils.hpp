@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#undef WATCHER_DISABLE_NOC_SANITIZE
 #include "dataflow_api.h"
 #include "debug/assert.h"
 #include "ttnn/cpp/ttnn/operations/ccl/kernel_common/worker_edm_utils.hpp"

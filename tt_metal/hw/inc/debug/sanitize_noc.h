@@ -271,6 +271,7 @@ void debug_sanitize_noc_and_worker_addr(
                 noc_id, noc_addr, worker_addr, len, multicast, dir, DEBUG_SANITIZE_NOC_TARGET, DebugSanitizeNocAlignment);
         }
     }
+    #error
 }
 
 // TODO: Clean these up with #7453

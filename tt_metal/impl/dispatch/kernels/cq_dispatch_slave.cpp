@@ -11,6 +11,7 @@
 //  - CQ_DISPATCH_CMD_WAIT: Wait for workers to complete and reset wait count
 //    and instead need a unicast for the go signal
 
+#undef WATCHER_DISABLE_NOC_SANITIZE
 #include "debug/assert.h"
 #include "debug/dprint.h"
 #include "tt_metal/impl/dispatch/cq_commands.hpp"
