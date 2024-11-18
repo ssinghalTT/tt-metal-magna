@@ -6,7 +6,7 @@
 
 #include <string>
 
-#include "hostdevcommon/common_runtime_address_map.h"
+#include "tt_metal/hw/inc/circular_buffer.h"
 #include "hostdevcommon/kernel_structs.h"
 #include "tt_metal/common/assert.hpp"
 #include "tt_metal/common/base_types.hpp"

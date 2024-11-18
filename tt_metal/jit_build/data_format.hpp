@@ -7,7 +7,7 @@
 #include <vector>
 #include "common/tt_backend_api_types.hpp"  // for DataFormat
 #include "device/tt_arch_types.h"           // for ARCH
-#include "hostdevcommon/common_runtime_address_map.h" // for NUM_CIRCULAR_BUFFERS
+#include "tt_metal/hw/inc/circular_buffer.h"
 enum class UnpackToDestMode : std::uint8_t;
 
 namespace tt {
@@ -49,7 +49,7 @@ const DataFormat get_single_pack_src_format(DataFormat input_format, DataFormat 
 
 std::vector<DataFormat> get_unpack_src_formats(DataFormat buf_formats[NUM_CIRCULAR_BUFFERS]);
 std::vector<DataFormat> get_unpack_dst_formats(DataFormat buf_formats[NUM_CIRCULAR_BUFFERS], DataFormat unpack_conditional_dst_format, bool fp32_dest_acc_en, std::vector<UnpackToDestMode> unpack_to_dest_mode, bool int_fpu_en = false);
-std::vector<DataFormat> get_pack_src_formats(DataFormat buf_formats[NUM_CIRCULAR_BUFFERS], DataFormat unpack_conditional_dst_format, bool fp32_dest_acc_en, bool int_fpu_en = false, tt::ARCH arch = tt::ARCH::GRAYSKULL);
+std::vector<DataFormat> get_pack_src_formats(DataFormat buf_formats[NUM_CIRCULAR_BUFFERS], DataFormat unpack_conditional_dst_format, bool fp32_dest_acc_en, bool bfp8_pack_precise, bool int_fpu_en = false, tt::ARCH arch = tt::ARCH::GRAYSKULL);
 std::vector<DataFormat> get_pack_dst_formats(DataFormat buf_formats[NUM_CIRCULAR_BUFFERS]);
 
 }
