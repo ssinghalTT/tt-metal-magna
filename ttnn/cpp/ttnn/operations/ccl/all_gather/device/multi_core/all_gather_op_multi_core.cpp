@@ -300,6 +300,7 @@ operation::ProgramWithCallbacks all_gather_multi_core_with_workers_helper(
     } else {
         worker_defines["INTERLEAVED_MEM_LAYOUT"] = "1";
     }
+    worker_defines["WATCHER_FORCE_NOC_SANITIZE"] = "1";
 
     bool full_send_both_directions =
         (topology == ccl::Topology::Linear ||

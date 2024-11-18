@@ -16,11 +16,12 @@
 
 // NOC logging enabled independently of watcher, need to include it here because it hooks into DEBUG_SANITIZE_NOC_*
 #include "noc_logging.h"
+#include "debug/waypoint.h"
 
 #if (                                                                                          \
     defined(COMPILE_FOR_BRISC) || defined(COMPILE_FOR_NCRISC) || defined(COMPILE_FOR_ERISC) || \
     defined(COMPILE_FOR_IDLE_ERISC)) &&                                                        \
-    defined(WATCHER_ENABLED) && !defined(WATCHER_DISABLE_NOC_SANITIZE) && !defined(FORCE_WATCHER_OFF)
+    defined(WATCHER_ENABLED) && (defined(WATCHER_FORCE_NOC_SANITIZE) || (!defined(WATCHER_DISABLE_NOC_SANITIZE) && !defined(FORCE_WATCHER_OFF)))
 
 #include "watcher_common.h"
 
@@ -160,6 +161,8 @@ inline void debug_sanitize_post_noc_addr_and_hang(
         v[noc_id].return_code = return_code;
     }
 
+    WAYPOINT("XXXX");
+
 #if defined(COMPILE_FOR_ERISC)
     // Update launch msg to show that we've exited. This is required so that the next run doesn't think there's a kernel
     // still running and try to make it exit.
@@ -171,6 +174,7 @@ inline void debug_sanitize_post_noc_addr_and_hang(
     internal_::disable_erisc_app();
     erisc_exit();
 #endif
+
 
     while (1) { ; }
 }

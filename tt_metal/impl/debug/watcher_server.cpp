@@ -392,6 +392,9 @@ void watcher_attach(Device *device) {
         watcher_thread.detach();
     }
 
+    if (device->id() >= 4)
+        return;
+
     if (watcher::logfile != nullptr) {
         fprintf(watcher::logfile, "At %.3lfs attach device %d\n", watcher::get_elapsed_secs(), device->id());
     }
