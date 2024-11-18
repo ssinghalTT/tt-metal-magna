@@ -474,7 +474,12 @@ class UNet:
         )
 
         self.output_layer = UNetConv2D(
-            parameters.output_layer, device=device, cache=self.conv_cache, activation="", mesh_mapper=mesh_mapper
+            parameters.output_layer,
+            device=device,
+            cache=self.conv_cache,
+            activation="",
+            mesh_mapper=mesh_mapper,
+            activation_dtype=ttnn.bfloat16,
         )
 
         self.input_sharded_memory_config = ttnn.create_sharded_memory_config(
@@ -535,15 +540,13 @@ class UNet:
         return x
 
     def postprocess_output_tensor(self, x):
-        x = ttnn.reshape(x, ttnn.Shape([1, 1056, 160, 16], [1, 1056, 160, 32]))
-        x = ttnn.to_layout(x, ttnn.ROW_MAJOR_LAYOUT)
-
-        # Manually specify output shard width to avoid sending W=16
-        memory_config = x.memory_config()
-        output_shard_shape = memory_config.shard_spec.shape
-        output_shard_shape[1] = 2
-        memory_config.shard_spec.shape = output_shard_shape
-        x = ttnn.slice(x, (0, 0, 0, 0), (1, 1056, 160, 2), memory_config=memory_config)
+        output_memory_config = ttnn.create_sharded_memory_config_(
+            [1, 1, 32, x.shape[-2]],
+            get_core_grid_from_num_cores(x.memory_config().shard_spec.num_cores()),
+            ttnn.ShardStrategy.WIDTH,
+            ttnn.ShardOrientation.ROW_MAJOR,
+        )
+        x = ttnn.experimental.convert_to_chw(x, memory_config=output_memory_config)
         return x
 
     def __call__(self, x, move_input_tensor_to_device=True):
