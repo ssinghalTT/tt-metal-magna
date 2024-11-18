@@ -77,7 +77,6 @@ void kernel_main() {
                 uint16_t offset = config_data[idx++];
                 uint64_t src_remote_addr = get_noc_addr(corex, corey, l1_read_addr + offset*stick_nbytes);;
                 noc_async_read(src_remote_addr, l1_write_addr, stick_nbytes);
-                noc_async_read_barrier();
                 idx++;
                 if(!is_reader) {
                     /*print_pages(l1_write_addr, stick_nbytes/2, 1);*/
