@@ -35,14 +35,14 @@ def run_max_pool(
         if 2 * pad_h > kernel_h or 2 * pad_w > kernel_w:
             pytest.skip("Invalid case")
 
-    if (
-        (kernel_h == 13 and pad_h != 6)
-        or (kernel_h == 9 and pad_h != 4)
-        or (kernel_h == 5 and pad_h != 2)
-        or (kernel_h == 3 and pad_h != 1)
-        or (kernel_h == 2 and pad_h != 0)
-    ):
-        pytest.skip("kernel size and padding combination not supported")
+    # if (
+    #     (kernel_h == 13 and pad_h != 6)
+    #     or (kernel_h == 9 and pad_h != 4)
+    #     or (kernel_h == 5 and pad_h != 2)
+    #     or (kernel_h == 3 and pad_h != 1)
+    #     or (kernel_h == 2 and pad_h != 0)
+    # ):
+    #     pytest.skip("kernel size and padding combination not supported")
 
     out_h = math.floor((in_h + 2 * pad_h - (dilation_h * kernel_h - 1) - 1) / stride_h) + 1
     out_w = math.floor((in_w + 2 * pad_w - (dilation_w * kernel_w - 1) - 1) / stride_w) + 1
@@ -51,8 +51,8 @@ def run_max_pool(
     max_cores = cores_x * cores_y
 
     if shard_scheme == ttnn.TensorMemoryLayout.HEIGHT_SHARDED or shard_scheme is None:
-        if in_c % 16 != 0:
-            pytest.skip("Current maxpool writer needs nchannels to be multiple of 16!")
+        # if in_c % 16 != 0:
+        #     pytest.skip("Current maxpool writer needs nchannels to be multiple of 16!")
         if in_c == 16 and dtype == ttnn.bfloat8_b and in_n * in_h * in_w > 600000:
             pytest.skip("This case runs out of memory")
         if in_n > 16 and in_c > 64 and dtype == ttnn.bfloat8_b and is_wormhole_b0():
@@ -135,8 +135,8 @@ def run_max_pool(
     act_reshaped = act_permuted.reshape(act_shape)
 
     if dtype == ttnn.bfloat8_b:
-        if (in_h * in_w) % 32 != 0:
-            pytest.skip("For BFP8_B datatype, input height * width should be multiple of 32")
+        # if (in_h * in_w) % 32 != 0:
+        #     pytest.skip("For BFP8_B datatype, input height * width should be multiple of 32")
         if shard_scheme == ttnn.TensorMemoryLayout.WIDTH_SHARDED and (in_c / max_cores) % 32 != 0:
             pytest.skip("For BFP8_B datatype, input channels / max_cores should be multiple of 32")
         if shard_scheme == ttnn.TensorMemoryLayout.BLOCK_SHARDED and (in_c / cores_x) % 32 != 0:
@@ -553,6 +553,77 @@ def test_run_max_pool_yolov4(
     use_program_cache,
 ):
     run_max_pool(act_shape, kernel_size, padding, stride, dilation, device, dtype)
+
+
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
+@pytest.mark.parametrize(
+    "batch_size, input_channels, input_height, input_width, kernel_height, kernel_width, stride_h, strid_w, pad_h, pad_w, dilation_h, dilation_w, ceil_mode",
+    (
+        [1, 128, 112, 112, 2, 2, 2, 2, 0, 0, 1, 1, False],
+        [1, 128, 150, 150, 2, 2, 2, 2, 0, 0, 1, 1, False],
+        [1, 128, 56, 56, 2, 2, 2, 2, 0, 0, 1, 1, False],
+        [1, 128, 64, 64, 2, 2, 2, 2, 0, 0, 1, 1, False],
+        [1, 16, 28, 28, 2, 2, 2, 2, 0, 0, 1, 1, False],
+        [1, 192, 28, 28, 3, 3, 1, 1, 1, 1, 1, 1, True],
+        [1, 192, 56, 56, 3, 3, 2, 2, 0, 0, 1, 1, True],
+        [1, 256, 28, 28, 3, 3, 1, 1, 1, 1, 1, 1, True],
+        [1, 256, 32, 32, 2, 2, 2, 2, 0, 0, 1, 1, False],
+        [1, 256, 56, 56, 2, 2, 2, 2, 0, 0, 1, 1, False],
+        [1, 256, 75, 75, 2, 2, 2, 2, 0, 0, 1, 1, True],
+        [1, 32, 256, 256, 2, 2, 2, 2, 0, 0, 1, 1, False],
+        [1, 320, 28, 28, 2, 2, 2, 2, 0, 0, 1, 1, False],
+        [1, 4, 14, 14, 2, 2, 2, 2, 0, 0, 1, 1, False],
+        [1, 480, 14, 14, 3, 3, 1, 1, 1, 1, 1, 1, True],
+        [1, 480, 28, 28, 3, 3, 2, 2, 0, 0, 1, 1, True],
+        [1, 512, 14, 14, 2, 2, 2, 2, 0, 0, 1, 1, False],
+        [1, 512, 14, 14, 3, 3, 1, 1, 1, 1, 1, 1, True],
+        [1, 512, 19, 19, 3, 3, 1, 1, 1, 1, 1, 1, False],
+        [1, 512, 28, 28, 2, 2, 2, 2, 0, 0, 1, 1, False],
+        [1, 512, 38, 38, 2, 2, 2, 2, 0, 0, 1, 1, False],
+        [1, 528, 14, 14, 3, 3, 1, 1, 1, 1, 1, 1, True],
+        [1, 64, 112, 112, 3, 3, 2, 2, 0, 0, 1, 1, True],
+        [1, 64, 112, 112, 3, 3, 2, 2, 1, 1, 1, 1, False],
+        [1, 64, 128, 128, 2, 2, 2, 2, 0, 0, 1, 1, False],
+        [1, 64, 224, 224, 2, 2, 2, 2, 0, 0, 1, 1, False],
+        [1, 64, 24, 24, 2, 2, 1, 1, 0, 0, 1, 1, False],
+        [1, 64, 300, 300, 2, 2, 2, 2, 0, 0, 1, 1, False],
+        [1, 64, 360, 640, 3, 3, 2, 2, 1, 1, 1, 1, False],
+        [1, 64, 400, 544, 3, 3, 2, 2, 1, 1, 1, 1, False],
+        [1, 640, 14, 14, 2, 2, 2, 2, 0, 0, 1, 1, False],
+        [1, 832, 14, 14, 2, 2, 2, 2, 0, 0, 1, 1, True],
+        [1, 832, 7, 7, 3, 3, 1, 1, 1, 1, 1, 1, True],
+        [1, 96, 112, 112, 3, 3, 2, 2, 1, 1, 1, 1, False],
+    ),
+)
+@pytest.mark.parametrize("dtype", [ttnn.bfloat16, ttnn.bfloat8_b])
+def test_run_max_pool_sweep(
+    batch_size,
+    input_channels,
+    input_height,
+    input_width,
+    kernel_height,
+    kernel_width,
+    stride_h,
+    strid_w,
+    pad_h,
+    pad_w,
+    dilation_h,
+    dilation_w,
+    ceil_mode,
+    device,
+    dtype,
+    use_program_cache,
+):
+    act_shape = [batch_size, input_channels, input_height, input_width]
+    run_max_pool(
+        act_shape,
+        (kernel_height, kernel_width),
+        (pad_h, pad_w),
+        (stride_h, strid_w),
+        (dilation_h, dilation_w),
+        device,
+        dtype,
+    )
 
 
 @pytest.mark.skip("See GH issue #12285")
