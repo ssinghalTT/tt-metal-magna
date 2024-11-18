@@ -1517,6 +1517,12 @@ operation::ProgramWithCallbacks Matmul::create_program(
     const std::vector<Tensor>& input_tensors,
     const std::vector<std::optional<const Tensor>>& optional_input_tensors,
     std::vector<Tensor>& output_tensors) const {
+
+    if (input_tensors.at(0).device()->get_speculation_state()) {
+        tt_metal::Program program{};
+        return {std::move(program), {}};
+    }
+
     const auto& input_tensor_a = input_tensors.at(0);
     const auto& input_tensor_b = input_tensors.at(1);
     const auto& bias = optional_input_tensors.at(0);

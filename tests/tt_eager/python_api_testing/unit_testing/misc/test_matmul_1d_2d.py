@@ -35,7 +35,7 @@ def find_max_subblock(out_block_h, out_block_w):
 from models.utility_functions import is_wormhole_b0, is_grayskull, is_wormhole_b0, is_blackhole
 
 
-@pytest.mark.skipif(is_wormhole_b0() or is_blackhole(), reason="Unsupported on WH and BH")
+# @pytest.mark.skipif(is_wormhole_b0() or is_blackhole(), reason="Unsupported on WH and BH")
 @pytest.mark.skipif(is_grayskull(), reason="no llama2 test on GS")
 @pytest.mark.parametrize(
     "packer_l1_acc",

@@ -148,6 +148,7 @@ class MeshDevice : public std::enable_shared_from_this<MeshDevice> {
     MeshShape shape() const;
 
     CoreCoord compute_with_storage_grid_size() const;
+    void set_speculation_states(std::vector<bool> states);
 
     CoreCoord dram_grid_size() const;
 

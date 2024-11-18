@@ -107,6 +107,9 @@ class Device {
 
     CoreCoord compute_with_storage_grid_size() const;
 
+    bool get_speculation_state() const;
+    void set_speculation_state(bool state);
+
     CoreCoord dram_grid_size() const;
 
     CoreCoord physical_core_from_logical_core(const CoreCoord &logical_core, const CoreType &core_type) const;
@@ -382,7 +385,9 @@ class Device {
     void clear_loaded_sub_device_manager();
     void remove_sub_device_manager(SubDeviceManagerId sub_device_manager_id);
     const std::vector<SubDeviceId> &get_sub_device_ids() const;
+
    private:
+    bool waiting_for_speculation_ = false;
     void initialize_default_sub_device_state(size_t l1_small_size, size_t trace_region_size, const std::vector<uint32_t> &l1_bank_remap);
     SubDeviceManagerId get_next_sub_device_manager_id();
     void reset_sub_devices_state(const std::unique_ptr<detail::SubDeviceManager>& sub_device_manager);

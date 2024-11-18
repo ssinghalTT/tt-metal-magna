@@ -454,6 +454,11 @@ struct DeviceOperation final {
         const Tensors& input_tensors,
         const OptionalConstTensors& optional_input_tensors,
         OutputTensors& output_tensors) const {
+        if (input_tensors.at(0).device()->get_speculation_state()) {
+            std::cout << "Speculation state detected, returning empty program" << std::endl;
+            return CacheableProgram<OutputTensors>{};
+        }
+
         return this->create_program_impl_(
             this->type_erased_storage, input_tensors, optional_input_tensors, output_tensors);
     }
@@ -626,6 +631,10 @@ struct DeviceOperation final {
                const Tensors& input_tensors,
                const OptionalConstTensors& optional_input_tensors,
                OutputTensors& output_tensors) -> CacheableProgram<OutputTensors> {
+                if (input_tensors.at(0).device()->get_speculation_state()) {
+                    std::cout << "Speculation state detected, returning empty program" << std::endl;
+                    return CacheableProgram<OutputTensors>{};
+                }
                 const auto& operation = *reinterpret_cast<const std::decay_t<T>*>(&storage);
                 if constexpr (detail::implements_create_program<T>()) {
                     TT_ASSERT(optional_input_tensors.empty());

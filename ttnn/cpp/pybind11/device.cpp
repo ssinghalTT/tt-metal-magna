@@ -100,6 +100,8 @@ void device_module(py::module& m_device) {
             "compute_with_storage_grid_size",
             &Device::compute_with_storage_grid_size,
             "Grid size (x, y) denoting region that can be targeted by ops")
+        .def("set_speculation_state", &Device::set_speculation_state, py::arg("state"), "Set speculation state for the device")
+        .def("get_speculation_state", &Device::get_speculation_state, "Get speculation state for the device")
         .def("dram_grid_size", &Device::dram_grid_size, "Grid size (x, y) denoting dram cores that can be targeted")
         .def(
             "worker_core_from_logical_core",

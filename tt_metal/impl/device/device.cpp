@@ -3065,6 +3065,14 @@ CoreCoord Device::compute_with_storage_grid_size() const {
     return tt::get_compute_grid_size(id_, num_hw_cqs_, dispatch_core_type);
 }
 
+bool Device::get_speculation_state() const{
+    return this->waiting_for_speculation_;
+}
+
+void Device::set_speculation_state(bool state) {
+    this->waiting_for_speculation_ = state;
+}
+
 CoreCoord Device::dram_grid_size() const {
     return tt::Cluster::instance().get_soc_desc(id_).get_dram_grid_size();
 }

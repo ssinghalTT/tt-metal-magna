@@ -85,6 +85,16 @@ void py_module(py::module& module) {
                 CoreCoord: The compute grid size of the first device in the device mesh.
         )doc")
         .def(
+            "set_speculation_state",
+            &MeshDevice::set_speculation_states,
+            py::arg("states"),
+            R"doc(
+            Set the speculation state for the mesh device.
+
+            Args:
+                states (List[bool]): A list of boolean values representing the speculation state for each device.
+        )doc")
+        .def(
             "dram_grid_size",
             &MeshDevice::dram_grid_size,
             R"doc(

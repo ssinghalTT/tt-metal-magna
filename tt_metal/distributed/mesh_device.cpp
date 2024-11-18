@@ -330,6 +330,12 @@ size_t MeshDevice::num_devices() const { return this->devices.size(); }
 
 CoreCoord MeshDevice::compute_with_storage_grid_size() const { return get_device_index(0)->compute_with_storage_grid_size(); }
 
+void MeshDevice::set_speculation_states(std::vector<bool> states) {
+    for (size_t i = 0; i < this->num_devices(); i++) {
+        this->devices[i]->set_speculation_state(states[i]);
+    }
+}
+
 CoreCoord MeshDevice::dram_grid_size() const { return get_device_index(0)->dram_grid_size(); }
 
 tt::ARCH MeshDevice::arch() const { return get_device_index(0)->arch(); }
