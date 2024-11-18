@@ -72,36 +72,14 @@ def attention(
     score_list = []
 
     if batch_size <= 2:
-        negative_val_tensor = ttnn.to_device(negative_val_tensor, device=device)
         inter_scores = attention_scores * negative_val_tensor
         inter_scores = inter_scores + attention_scores
-        min_val_tensor = ttnn.to_device(min_val_tensor, device=device)
         scores = inter_scores + min_val_tensor
     else:
-        attention_scores = ttnn.from_device(attention_scores)
         for i in range(2, batch_size + 1, 2):
-            negative_val_tensor_part = ttnn.to_device(negative_val_tensor[i - 2 : i, :, :, :], device=device)
-            attention_scores_part = ttnn.to_device(attention_scores[i - 2 : i, :, :, :], device=device)
-            inter_scores = attention_scores_part * negative_val_tensor_part
-
-            negative_val_tensor_part = ttnn.from_device(negative_val_tensor_part)
-            ttnn.deallocate(negative_val_tensor_part)
-
-            inter_scores = inter_scores + attention_scores_part
-            attention_scores_part = ttnn.from_device(attention_scores_part)
-            ttnn.deallocate(attention_scores_part)
-
-            min_val_tensor_part = ttnn.to_device(min_val_tensor[i - 2 : i, :, :, :], device=device)
-            if i == batch_size:
-                inter_scores = ttnn.to_layout(inter_scores, layout=ttnn.ROW_MAJOR_LAYOUT)
-                inter_scores = ttnn.to_layout(inter_scores, layout=ttnn.TILE_LAYOUT)
-
-                min_val_tensor_part = ttnn.to_layout(min_val_tensor_part, layout=ttnn.ROW_MAJOR_LAYOUT)
-                min_val_tensor_part = ttnn.to_layout(min_val_tensor_part, layout=ttnn.TILE_LAYOUT)
-
-            score = inter_scores + min_val_tensor_part
-            min_val_tensor_part = ttnn.from_device(min_val_tensor_part)
-            ttnn.deallocate(min_val_tensor_part)
+            inter_scores = attention_scores[i - 2 : i, :, :, :] * negative_val_tensor[i - 2 : i, :, :, :]
+            inter_scores = inter_scores + attention_scores[i - 2 : i, :, :, :]
+            score = inter_scores + min_val_tensor[i - 2 : i, :, :, :]
             score = ttnn.permute(score, (1, 0, 2, 3))
 
             score_list.append(score)
@@ -110,7 +88,7 @@ def attention(
         scores = ttnn.permute(scores, (1, 0, 2, 3))
 
     weights = ttnn.transformer.attention_softmax(scores, head_size=1)
-
+    ttnn.deallocate(scores)
     context_layer = ttnn.matmul(
         weights,
         value,
@@ -120,15 +98,10 @@ def attention(
     )
 
     ttnn.deallocate(weights)
-    ttnn.deallocate(value)
+    context_layer = ttnn.permute(context_layer, [0, 1, 3, 2])
+    context_layer = ttnn.reshape(context_layer, (batch_size, config.n_heads * dim_per_head, -1))
 
-    context_layer = ttnn.permute(context_layer, [0, 2, 1, 3])
-    # Reshape fails when tensor is on device
-    context_layer = ttnn.from_device(ttnn.to_layout(context_layer, layout=ttnn.ROW_MAJOR_LAYOUT))
-    context_layer = ttnn.to_device(
-        ttnn.reshape(context_layer, (batch_size, -1, config.n_heads * dim_per_head)), device=device
-    )
-    context_layer = ttnn.to_layout(context_layer, layout=ttnn.TILE_LAYOUT)
+    context_layer = ttnn.permute(context_layer, (0, 2, 1))
     self_output = ttnn.linear(
         context_layer,
         parameters.out_lin.weight,
@@ -302,8 +275,6 @@ def distilbert(
         memory_config=ttnn.DRAM_MEMORY_CONFIG,
     )
 
-    ttnn.deallocate(input_ids)
-    ttnn.deallocate(position_ids)
     transpose = False
     if word_embeddings.shape[0] > 1:
         word_embeddings = ttnn.permute(word_embeddings, (1, 2, 0))
@@ -311,7 +282,6 @@ def distilbert(
         transpose = True
     embeddings = word_embeddings + position_embeddings
     ttnn.deallocate(word_embeddings)
-    ttnn.deallocate(position_embeddings)
 
     if transpose:
         embeddings = ttnn.permute(embeddings, (2, 0, 1))

@@ -68,8 +68,10 @@ def test_distilbert_for_question_answering(device, model_name, batch_size, seque
         device=device,
     )
 
-    min_val_tensor = ttnn.from_torch(min_val_tensor, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT)
-    negative_val_tensor = ttnn.from_torch(negative_val_tensor, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT)
+    min_val_tensor = ttnn.from_torch(min_val_tensor, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
+    negative_val_tensor = ttnn.from_torch(
+        negative_val_tensor, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device
+    )
     tt_output = ttnn_optimized_distilbert.distilbert_for_question_answering(
         config,
         input_ids=input_ids,
