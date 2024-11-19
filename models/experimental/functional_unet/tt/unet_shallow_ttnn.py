@@ -541,13 +541,14 @@ class UNet:
 
     def postprocess_output_tensor(self, x):
         output_memory_config = ttnn.create_sharded_memory_config_(
-            [1, 1, 32, x.shape[-2]],
+            [1, 1, 2, x.shape[-2]],
             get_core_grid_from_num_cores(x.memory_config().shard_spec.num_cores()),
             ttnn.ShardStrategy.WIDTH,
             ttnn.ShardOrientation.ROW_MAJOR,
         )
         x = ttnn.experimental.convert_to_chw(x, memory_config=output_memory_config)
         return x
+        # return ttnn.sharded_to_interleaved(x)
 
     def __call__(self, x, move_input_tensor_to_device=True):
         assert len(x.shape) == 4, f"Expected UNet input tensors to be rank 4 (was {len(x.shape)})"

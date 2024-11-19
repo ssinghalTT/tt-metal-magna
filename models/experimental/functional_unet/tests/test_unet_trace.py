@@ -352,7 +352,11 @@ def test_unet_trace_2cq_multi_device(
 
     logger.info(f"Running sanity check against reference model output")
     B, C, H, W = torch_output_tensor.shape
-    verify_with_pcc(torch_output_tensor, ttnn.to_torch(outputs[-1]).reshape(B, C, H, W), pcc=UNET_FULL_MODEL_PCC)
+    verify_with_pcc(
+        torch_output_tensor,
+        ttnn.to_torch(outputs[-1], mesh_composer=output_mesh_composer).reshape(B, C, H, W),
+        pcc=UNET_FULL_MODEL_PCC,
+    )
 
     ttnn.release_trace(mesh_device, tid)
 
@@ -423,15 +427,13 @@ def test_unet_trace_2cq_same_io(
             {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(dram_grid_size.x - 1, dram_grid_size.y - 1))}
         ),
         [
-            divup(output_tensor.volume() // output_tensor.shape[-1], dram_grid_size.x),
-            output_tensor.shape[-1],
+            output_tensor.volume() // output_tensor.shape[-1],
+            divup(output_tensor.shape[-1], dram_grid_size.x),
         ],
         ttnn.ShardOrientation.ROW_MAJOR,
         False,
     )
-    dram_memory_config = ttnn.MemoryConfig(
-        ttnn.TensorMemoryLayout.HEIGHT_SHARDED, ttnn.BufferType.DRAM, dram_shard_spec
-    )
+    dram_memory_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.WIDTH_SHARDED, ttnn.BufferType.DRAM, dram_shard_spec)
     dram_output_tensor = ttnn.reshard(output_tensor, dram_memory_config)
     logger.info(f"Done compile run")
 
@@ -495,5 +497,6 @@ def test_unet_trace_2cq_same_io(
     logger.info(f"Average model performance={iterations * groups * batch / (end-start) : .2f} fps")
 
     logger.info(f"Running sanity check against reference model output")
-    check_pcc_conv(torch_output_tensor, outputs[-1], UNET_FULL_MODEL_PCC)
+    B, C, H, W = torch_output_tensor.shape
+    verify_with_pcc(torch_output_tensor, ttnn.to_torch(outputs[-1]).reshape(B, C, H, W), pcc=UNET_FULL_MODEL_PCC)
     ttnn.release_trace(device, tid)
