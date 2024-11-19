@@ -118,28 +118,32 @@ def write_to_file(file_name, tensor):
     "input_shape",
     [
         [1, 32, 5, 4],  # 256x256
-        # [2, 1280, 4, 4],  # 256x256
-        # [2, 640, 16, 16],
-        # [2, 1280, 8, 8],  # 512x512
-        # [2, 1280, 16, 16],
-        # [1, 64, 132, 10],
-        # [1, 32, 8, 8],
-        # [2, 640, 32, 32],
+        [3, 32, 4, 4],  # 256x256
+        [5, 64, 5, 5],  # 256x256
+        [1, 128, 5, 8],  # 256x256
+        [1, 32, 5, 4],  # 256x256
+        [2, 1280, 4, 4],  # 256x256
+        [2, 640, 16, 16],
+        [2, 1280, 8, 8],  # 512x512
+        [2, 1280, 16, 16],
+        [1, 64, 132, 10],
+        [1, 32, 8, 8],
+        [2, 640, 32, 32],
     ],
 )
 @pytest.mark.parametrize("scale_h", [2])
-@pytest.mark.parametrize("scale_w", [1])
+@pytest.mark.parametrize("scale_w", [2])
 @pytest.mark.parametrize("shard_strategy", [ttnn.ShardStrategy.HEIGHT])
 def test_upsample_multi_core(device, input_shape, scale_h, scale_w, shard_strategy):
     ## input shape is N C H W
     batch_size, num_channels, height, width = input_shape
     torch.manual_seed(0)
     input = torch.rand(input_shape, dtype=torch.bfloat16)
-    for i in range(input_shape[0]):
-        for j in range(input_shape[1]):
-            for k in range(input_shape[2]):
-                for l in range(input_shape[3]):
-                    input[i, j, k, l] = k * width + l + 1
+    # for i in range(input_shape[0]):
+    #     for j in range(input_shape[1]):
+    #         for k in range(input_shape[2]):
+    #             for l in range(input_shape[3]):
+    #                 input[i, j, k, l] = k * width + l + 1
 
     ## golden reference using torch
     scale_factor = (scale_h, scale_w)
@@ -164,8 +168,7 @@ def test_upsample_multi_core(device, input_shape, scale_h, scale_w, shard_strate
                 break
             nshards -= 1
         # nshards = height * width
-        # ncores = nshards
-        ncores = 4
+        ncores = nshards
         print("nshards = ", ncores)
     elif shard_strategy == ttnn.ShardStrategy.BLOCK:
         max_nshards_h = min(batch_size * height, max_grid_size[0])  ## height along NHW
@@ -246,14 +249,14 @@ def test_upsample_multi_core(device, input_shape, scale_h, scale_w, shard_strate
     write_to_file("ref.txt", torch_result.float())
     write_to_file("out.txt", output_tensor.float())
     assert_with_pcc(torch_result, output_tensor)
-    #
-    # allclose = torch.allclose(output_tensor, torch_result)
-    # isclose = torch.all(torch.isclose(output_tensor, torch_result))
-    # isequal = torch.equal(output_tensor, torch_result)
-    #
-    # assert allclose
-    # assert isclose
-    # assert isequal
+
+    allclose = torch.allclose(output_tensor, torch_result)
+    isclose = torch.all(torch.isclose(output_tensor, torch_result))
+    isequal = torch.equal(output_tensor, torch_result)
+
+    assert allclose
+    assert isclose
+    assert isequal
 
 
 @skip_for_grayskull()
