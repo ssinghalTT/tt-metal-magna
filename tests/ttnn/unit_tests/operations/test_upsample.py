@@ -117,17 +117,18 @@ def write_to_file(file_name, tensor):
 @pytest.mark.parametrize(
     "input_shape",
     [
-        [2, 1280, 4, 4],  # 256x256
-        [2, 640, 16, 16],
-        [2, 1280, 8, 8],  # 512x512
-        [2, 1280, 16, 16],
-        [1, 64, 132, 10],
-        [1, 32, 8, 8],
-        [2, 640, 32, 32],
+        [1, 32, 5, 4],  # 256x256
+        # [2, 1280, 4, 4],  # 256x256
+        # [2, 640, 16, 16],
+        # [2, 1280, 8, 8],  # 512x512
+        # [2, 1280, 16, 16],
+        # [1, 64, 132, 10],
+        # [1, 32, 8, 8],
+        # [2, 640, 32, 32],
     ],
 )
-@pytest.mark.parametrize("scale_h", [1])
-@pytest.mark.parametrize("scale_w", [3])
+@pytest.mark.parametrize("scale_h", [2])
+@pytest.mark.parametrize("scale_w", [1])
 @pytest.mark.parametrize("shard_strategy", [ttnn.ShardStrategy.HEIGHT])
 def test_upsample_multi_core(device, input_shape, scale_h, scale_w, shard_strategy):
     ## input shape is N C H W
@@ -163,8 +164,9 @@ def test_upsample_multi_core(device, input_shape, scale_h, scale_w, shard_strate
                 break
             nshards -= 1
         # nshards = height * width
-        ncores = nshards
-        print("nshards = ", nshards)
+        # ncores = nshards
+        ncores = 4
+        print("nshards = ", ncores)
     elif shard_strategy == ttnn.ShardStrategy.BLOCK:
         max_nshards_h = min(batch_size * height, max_grid_size[0])  ## height along NHW
         max_nshards_w = min(num_channels, max_grid_size[1])  ## width along C

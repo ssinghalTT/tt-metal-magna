@@ -34,37 +34,123 @@ Tensor create_config_tensor(Device *device, ShardSpec &input_shard_spec, const u
     auto curr_scale_h = 0;
     uint32_t in_cores_per_row = in_w / input_nsticks_per_core;
     uint32_t curr_stick = 0;
-    uint32_t temp = std::min(input_nsticks_per_core, in_w);
-    for(uint32_t out_core = 0; out_core < ncores; out_core++) {
-        for(uint32_t scale_h = 0; scale_h < scale_factor_h * temp; scale_h++) {
-            if(w == in_w) {
-                w = 0;
-                curr_in_core = in_core;
-                curr_scale_h++;
+    using namespace std;
+    cout << "input_nsticks_per_core = " << input_nsticks_per_core << endl;
+    if(in_w >= input_nsticks_per_core) {
+        for(uint32_t out_core = 0; out_core < ncores; out_core++) {
+            for(uint32_t scale_h = 0; scale_h < scale_factor_h * input_nsticks_per_core; scale_h++) {
+                if(w == in_w) {
+                    w = 0;
+                    curr_in_core = in_core;
+                    curr_scale_h++;
+                }
+                if(curr_scale_h == scale_factor_h) {
+                    curr_scale_h = 0;
+                    in_core += in_cores_per_row;
+                    curr_in_core = in_core;
+                }
+                using namespace std;
+                cout << "sch = " << curr_scale_h;
+                cout << " in_core = " << in_core;
+                cout << " w = "  << w;
+                cout << " curr_in_core = " << curr_in_core << endl;
+                auto core_coords = device->worker_core_from_logical_core(CoreCoord(curr_in_core % ncores_x, curr_in_core / ncores_x));
+                for(uint16_t scale_w = 0; scale_w < scale_factor_w; ++scale_w) {
+                    config_vector.push_back(core_coords.x);
+                    config_vector.push_back(core_coords.y);
+                    config_vector.push_back(curr_stick);
+                    config_vector.push_back(0);
+                    std::cout << core_coords.x << " " << core_coords.y << "  offset = " << curr_stick << std::endl;
+                }
+                w++;
+                curr_stick++;
+                if(curr_stick == input_nsticks_per_core) {
+                    curr_stick = 0;
+                    curr_in_core++;
+                }
             }
-            if(curr_scale_h == scale_factor_h) {
-                curr_scale_h = 0;
-                in_core += in_cores_per_row;
-                curr_in_core = in_core;
+        }
+    }
+    else {
+        uint32_t prev_core = 0;
+        /* TODO: change below 3 loops to run properly in case reads are needed like 2, 1, 4*/
+        for(uint32_t out_core = 0; out_core < ncores; out_core++) {
+            // handle special case
+            if((w % in_w != 0) || (curr_scale_h != 0)) {
+                auto core_coords = device->worker_core_from_logical_core(CoreCoord(out_core % ncores_x, out_core / ncores_x));
+                uint32_t i = 0;
+                auto prev_core_idx = input_nsticks_per_core - w;
+                auto temp_w = w;
+                while(temp_w != in_w) {
+                    config_vector.push_back(core_coords.x);
+                    config_vector.push_back(core_coords.y);
+                    config_vector.push_back(i++);
+                    config_vector.push_back(0);
+                cout << " i = "  << i;
+                cout << " out_core = " << out_core << endl;
+                    temp_w++;
+                }
+                core_coords = device->worker_core_from_logical_core(CoreCoord(prev_core % ncores_x, prev_core / ncores_x));
+                while(prev_core_idx < input_nsticks_per_core) {
+                    config_vector.push_back(core_coords.x);
+                    config_vector.push_back(core_coords.y);
+                    config_vector.push_back(prev_core_idx);
+                    config_vector.push_back(0);
+                cout << " i = "  << prev_core_idx;
+                cout << " prev_core = " << prev_core << endl;
+                    prev_core_idx++;
+                }
+                temp_w = w;
+                core_coords = device->worker_core_from_logical_core(CoreCoord(out_core % ncores_x, out_core / ncores_x));
+                i = 0;
+                while(temp_w != in_w) {
+                    config_vector.push_back(core_coords.x);
+                    config_vector.push_back(core_coords.y);
+                    config_vector.push_back(i++);
+                    config_vector.push_back(0);
+                cout << " i = "  << i;
+                cout << " out_core = " << out_core << endl;
+                    temp_w++;
+                }
             }
-            using namespace std;
-            cout << "sch = " << curr_scale_h;
-            cout << " in_core = " << in_core;
-            cout << " w = "  << w;
-            cout << " curr_in_core = " << curr_in_core << endl;
-            auto core_coords = device->worker_core_from_logical_core(CoreCoord(curr_in_core % ncores_x, curr_in_core / ncores_x));
-            for(uint16_t scale_w = 0; scale_w < scale_factor_w; ++scale_w) {
-                config_vector.push_back(core_coords.x);
-                config_vector.push_back(core_coords.y);
-                config_vector.push_back(curr_stick);
-                config_vector.push_back(0);
-                std::cout << core_coords.x << " " << core_coords.y << "  offset = " << curr_stick << std::endl;
-            }
-            w++;
-            curr_stick++;
-            if(curr_stick == input_nsticks_per_core) {
-                curr_stick = 0;
-                curr_in_core++;
+            prev_core = out_core;
+            auto core_coords = device->worker_core_from_logical_core(CoreCoord(out_core % ncores_x, out_core / ncores_x));
+            auto offset = (in_w - w) % in_w;
+            curr_stick = offset;
+            w = 0;
+            auto curr_core = out_core;
+            cout << "offset = " << offset << endl;
+            auto scale_h_loop_count = input_nsticks_per_core - offset;
+            for(uint32_t scale_h = 0; scale_h < scale_factor_h * scale_h_loop_count; scale_h++) {
+                if(w == in_w) {
+                    w = 0;
+                    curr_stick = offset;
+                    curr_scale_h++;
+                }
+                if(curr_scale_h == scale_factor_h) {
+                    curr_scale_h = 0;
+                    offset += in_w;
+                    curr_stick = offset;
+                }
+                if(curr_stick >= input_nsticks_per_core) {
+                    offset = 0;
+                    curr_stick = 0;
+                    curr_core++;
+                    core_coords = device->worker_core_from_logical_core(CoreCoord((curr_core) % ncores_x, (curr_core) / ncores_x));
+                }
+                using namespace std;
+                cout << "sch = " << curr_scale_h;
+                cout << " w = "  << w;
+                cout << " curr_core = " << curr_core << endl;
+                for(uint16_t scale_w = 0; scale_w < scale_factor_w; ++scale_w) {
+                    config_vector.push_back(core_coords.x);
+                    config_vector.push_back(core_coords.y);
+                    config_vector.push_back(curr_stick);
+                    config_vector.push_back(0);
+                    std::cout << core_coords.x << " " << core_coords.y << "  curr_stick = " << curr_stick << std::endl;
+                }
+                w++;
+                curr_stick++;
             }
         }
     }
