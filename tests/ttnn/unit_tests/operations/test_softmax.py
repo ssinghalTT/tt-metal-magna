@@ -305,3 +305,16 @@ def test_specific_tensor_combination(device):
     assert len(output.shape) == len(torch_output_tensor.shape)
     assert output.shape == torch_output_tensor.shape
     assert_with_pcc(torch_output_tensor, output, 0.9999)
+
+
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 79104}], indirect=True)
+def test_softmax_petr(device):
+    torch_input_tensor = torch.load("torch_input.pt")
+    print(torch.max(torch_input_tensor), torch.min(torch_input_tensor))
+    torch_output_tensor = F.softmax(torch_input_tensor, dim=-1)
+    input_tensor = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
+    output_tensor = ttnn.softmax(input_tensor, dim=-1)
+    output_tensor = ttnn.from_device(output_tensor)
+    output_tensor = ttnn.to_torch(output_tensor)
+
+    assert_with_pcc(torch_output_tensor, output_tensor, 0.99)
