@@ -2679,3 +2679,28 @@ def test_shallow_conv_with_tiled_input(device):
     passing, pcc_msg = check_with_pcc_without_tensor_printout(torch_output_tensor, torch_out_golden_tensor, pcc=0.99)
     logger.info(f"PCC = {pcc_msg}. Threshold = 0.99")
     assert passing
+
+
+@skip_for_grayskull()
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
+def test_dc2d(device):
+    t2 = run_conv(
+        device,
+        ttnn.MathFidelity.HiFi4,
+        ttnn.float32,
+        ttnn.float32,
+        1,  # batch_size
+        64,  # output_channels
+        3,  # input_channels
+        128,  # input_height
+        128,  # input_width
+        3,  # filter_height
+        3,  # filter_width
+        1,  # stride_h
+        1,  # stride_w
+        1,  # pad_h
+        1,  # pad_w
+        True,  # use_1d_systolic_array
+        None,  # config_override
+    )
+    print(f"conv2d result: {t2}")
