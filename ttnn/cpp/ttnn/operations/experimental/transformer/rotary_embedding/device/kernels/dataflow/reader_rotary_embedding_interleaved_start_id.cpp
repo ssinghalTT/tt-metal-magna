@@ -6,6 +6,7 @@
 #include "dataflow_api.h"
 #include "debug/dprint.h"
 
+/*
 inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
     DPRINT << "======" << ENDL();
     for (uint8_t r = 0; r < 32; ++ r) {
@@ -14,7 +15,7 @@ inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize 
     }
     DPRINT << "++++++" << ENDL();
 }
-
+*/
 void kernel_main() {
     uint32_t src_addr = get_arg_val<uint32_t>(0);
     uint32_t sin_addr = get_arg_val<uint32_t>(2);
@@ -47,20 +48,12 @@ void kernel_main() {
     const InterleavedAddrGenFast<sin_is_dram> s2 = {
         .bank_base_address = sin_addr, .page_size = sin_tile_bytes, .data_format = sin_data_format};
 
-
-    DPRINT << "In DF " << input_data_format << " Sine DF " << sin_data_format << ENDL();
-    DPRINT << "input Tsz " << input_tile_bytes << " sine Tsz " << sin_tile_bytes << ENDL();
-    DPRINT << "num_rows " << num_rows << " Wt " << Wt <<  " start_id " << start_id << ENDL();
-    DPRINT << "start_row_id " << start_row_id << " cos_sin_start_id " << ENDL();
-
-    // Fill tile with zeros
-    const uint32_t scalar_tile_bytes = get_tile_size(scalar_cb_id);
-    cb_reserve_back(scalar_cb_id, onetile);
-    uint32_t l1_zeros_addr_in_scalar = get_write_ptr(scalar_cb_id);
-    volatile tt_l1_ptr uint16_t* scalar_buffer =
-        reinterpret_cast<volatile tt_l1_ptr uint16_t*>(l1_zeros_addr_in_scalar);
-    scalar_buffer[0] = scalar_value;
-    cb_push_back(scalar_cb_id, onetile);
+    //
+    //    DPRINT << "In DF " << input_data_format << " Sine DF " << sin_data_format << ENDL();
+    //    DPRINT << "input Tsz " << input_tile_bytes << " sine Tsz " << sin_tile_bytes << ENDL();
+    //    DPRINT << "num_rows " << num_rows << " Wt " << Wt <<  " start_id " << start_id << ENDL();
+    //    DPRINT << "start_row_id " << start_row_id << " cos_sin_start_id " << ENDL();
+    //
 
     uint32_t input_curr_id = start_id;
     uint32_t cos_sin_curr_id = cos_sin_start_id;

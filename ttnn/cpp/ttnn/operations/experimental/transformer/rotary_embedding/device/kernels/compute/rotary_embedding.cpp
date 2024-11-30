@@ -54,20 +54,8 @@ ALWI void TILIZE_ROWS(uint32_t in0_cb, uint32_t sync_cb, uint32_t out_cb, uint32
     cb_wait_front(sync_cb, num_tiles);
     cb_reserve_back(out_cb, num_tiles);
 
-    tensix_sync();
-    UNPACK(DPRINT << "in0 in tile " << in0_cb <<" sync " << sync_cb << " out " << out_cb << " num_tiles " << num_tiles);
-    UNPACK(print_full_tile(in0_cb, 0, false));
-    UNPACK(print_full_tile(in0_cb, 1, false));
-    tensix_sync();
-
     tilize_block(in0_cb, num_tiles, out_cb);
     cb_push_back(out_cb, num_tiles);
-
-    tensix_sync();
-    PACK(print_full_tile(out_cb, 0, true));
-    PACK(print_full_tile(out_cb, 1, true));
-    tensix_sync();
-
 
     // Pop shared cbs after tilize
     cb_pop_front(in0_cb, num_tiles);
@@ -92,23 +80,19 @@ void MAIN {
     constexpr uint32_t retilized_sin_cb = get_compile_time_arg_val(17);
 
     tensix_sync();
-    UNPACK(print_full_tile(sin_cb));
+    UNPACK(print_full_tile(sin_cb, 0, false));
+    UNPACK(print_full_tile(sin_cb, 1, false));
     tensix_sync();
 
     binary_op_init_common(sin_cb, untilized_sin_sync_cb, untilized_sin_cb);
     UNTILIZE_TILES(sin_cb, untilized_sin_cb, Wt);
 
-    tensix_sync();
-    UNPACK(print_full_tile(untilized_sin_cb, 0, false));
-    tensix_sync();
-
     reconfig_data_format_srca(sin_cb, untilized_sin_cb);
     pack_reconfig_data_format(untilized_sin_cb, retilized_sin_cb);
     TILIZE_ROWS(untilized_sin_cb, untilized_sin_sync_cb, retilized_sin_cb, Wt);
     updated_sin_cb = retilized_sin_cb;
+
     uint32_t in1_idx = 0;
-
-
     for (uint32_t i = 0; i < num_rows; ++i) {
         for (uint32_t j = 0; j < Wt; ++j) {
             in1_idx = j;

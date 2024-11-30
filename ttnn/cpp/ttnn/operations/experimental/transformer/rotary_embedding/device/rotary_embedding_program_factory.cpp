@@ -56,11 +56,14 @@ operation::ProgramWithCallbacks rotary_embedding_multi_core(
     std::cout <<"Bfp8_b " << DataFormat::Bfp8_b << std::endl;
     std::cout <<"Input DF " << input_cb_data_format << std::endl;
     std::cout <<"Input TSz " << input_single_tile_size << std::endl;
-    std::cout <<"Sine DF " << input_cb_data_format << std::endl;
+    std::cout << "Sine DF " << sin_cb_data_format << std::endl;
     std::cout <<"Sine TSz " << sin_single_tile_size << std::endl;
     std::cout <<"num_tiles " << num_tiles << " num_rows " << num_rows << std::endl;
     std::cout <<"Ht " << Ht << " Wt " << Wt << " Wbytes " << Wbytes << std::endl;
 
+    // This printed okay.
+    // std::cout <<"Sin tensor" << std::endl;
+    // sin.print();
 
     tt_metal::Device* device = input.device();
 

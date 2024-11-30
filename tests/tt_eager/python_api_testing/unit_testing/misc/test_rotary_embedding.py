@@ -14,8 +14,8 @@ def apply_rotary_pos_emb(x, cos_cached, sin_cached, token_idx):
     seq_len = x.shape[-2]
     sin = sin_cached[:, :, token_idx : token_idx + 1, ...]
 
-    print("Sine")
-    print(sin)
+    #    print("Sine")
+    #    print(sin)
 
     x_embed = x * sin
     return x_embed
@@ -41,7 +41,7 @@ def test_rotary_embedding_decode(
     # sequence of 0-1 in increments of 1/64. The cos values
     # are not used. If indexing is wrong, we will get 8.
     x = torch.ones(input_shape).bfloat16().float()
-    sin_cached = torch.ones(sin_cos_shape).bfloat16().float() * 8
+    sin_cached = torch.reshape(torch.arange(2, 2050), sin_cos_shape).bfloat16().float()
     sin_cached[0, 0, 0, 0:64] = torch.arange(0, 64) / 64
 
     cos_cached = torch.randn(sin_cos_shape).bfloat16().float()
@@ -58,6 +58,9 @@ def test_rotary_embedding_decode(
 
     cost = ttnn.Tensor(cos_cached, sincos_dtype).to(ttnn.TILE_LAYOUT).to(device)
     sint = ttnn.Tensor(sin_cached, sincos_dtype).to(ttnn.TILE_LAYOUT).to(device)
+
+    ttnn.set_printoptions(profile="full")
+
     xtt = ttnn.experimental.rotary_embedding(xt, cost, sint, token_idx, memory_config=out_mem_config)
 
     tt_got_back = xtt.cpu().to(ttnn.ROW_MAJOR_LAYOUT).to_torch()
