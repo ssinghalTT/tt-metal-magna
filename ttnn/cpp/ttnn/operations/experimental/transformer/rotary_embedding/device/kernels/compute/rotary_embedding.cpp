@@ -14,8 +14,8 @@
 inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
     DPRINT << "======" << ENDL();
     for (uint8_t r = 0; r < 32; ++ r) {
-        SliceRange sr = SliceRange{.h0 = r, .h1 = (uint8_t)(r+1), .hs = 1, .w0 = 0, .w1 = 64, .ws = 2};
-        DPRINT << (uint) r << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL();
+        SliceRange sr = SliceRange{.h0 = r, .h1 = (uint8_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
+        DPRINT << (uint)r << " " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL();
     }
     DPRINT << "++++++" << ENDL();
 }
@@ -44,7 +44,13 @@ ALWI void UNTILIZE_TILES(uint32_t in0_cb, uint32_t out_cb, uint32_t num_tiles) {
     cb_reserve_back(out_cb, num_tiles);
     untilize_block(in0_cb, num_tiles, out_cb);
     cb_push_back(out_cb, num_tiles);
-    cb_pop_front(in0_cb, num_tiles);
+
+    tensix_sync();
+    UNPACK(print_full_tile(in0_cb, 0, false));
+    UNPACK(print_full_tile(in0_cb, 1, false));
+    tensix_sync();
+
+    //    cb_pop_front(in0_cb, num_tiles);
     untilize_uninit(in0_cb);
 }
 
@@ -79,11 +85,6 @@ void MAIN {
     constexpr uint32_t untilized_sin_sync_cb = get_compile_time_arg_val(15);
     constexpr uint32_t retilized_sin_cb = get_compile_time_arg_val(17);
 
-    tensix_sync();
-    UNPACK(print_full_tile(sin_cb, 0, false));
-    UNPACK(print_full_tile(sin_cb, 1, false));
-    tensix_sync();
-
     binary_op_init_common(sin_cb, untilized_sin_sync_cb, untilized_sin_cb);
     UNTILIZE_TILES(sin_cb, untilized_sin_cb, Wt);
 
@@ -92,14 +93,16 @@ void MAIN {
     TILIZE_ROWS(untilized_sin_cb, untilized_sin_sync_cb, retilized_sin_cb, Wt);
     updated_sin_cb = retilized_sin_cb;
 
-    uint32_t in1_idx = 0;
-    for (uint32_t i = 0; i < num_rows; ++i) {
-        for (uint32_t j = 0; j < Wt; ++j) {
-            in1_idx = j;
-            reconfig_data_format(in_cb, updated_sin_cb);
-            pack_reconfig_data_format(retilized_sin_cb, out_cb);
-            MUL_TILES(in_cb, updated_sin_cb, out_cb, onetile, in1_idx);
+    /*
+        uint32_t in1_idx = 0;
+        for (uint32_t i = 0; i < num_rows; ++i) {
+            for (uint32_t j = 0; j < Wt; ++j) {
+                in1_idx = j;
+                reconfig_data_format(in_cb, updated_sin_cb);
+                pack_reconfig_data_format(retilized_sin_cb, out_cb);
+                MUL_TILES(in_cb, updated_sin_cb, out_cb, onetile, in1_idx);
+            }
         }
-    }
+    */
 }
 }  // namespace NAMESPACE

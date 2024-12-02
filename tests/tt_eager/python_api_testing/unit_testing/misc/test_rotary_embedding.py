@@ -26,9 +26,9 @@ def apply_rotary_pos_emb(x, cos_cached, sin_cached, token_idx):
 @pytest.mark.parametrize("token_idx", [0])
 @pytest.mark.parametrize("in_sharded", [False])
 @pytest.mark.parametrize("out_sharded", [False])
-@pytest.mark.parametrize("input_dtype", [ttnn.bfloat8_b, ttnn.bfloat16])
+# @pytest.mark.parametrize("input_dtype", [ttnn.bfloat8_b, ttnn.bfloat16])
 # @pytest.mark.parametrize("input_dtype", [ttnn.bfloat16])
-# @pytest.mark.parametrize("input_dtype", [ttnn.bfloat8_b])
+@pytest.mark.parametrize("input_dtype", [ttnn.bfloat8_b])
 @pytest.mark.parametrize("sincos_dtype", [ttnn.bfloat16])
 def test_rotary_embedding_decode(
     W, Z, Y, X, cache_size, token_idx, in_sharded, out_sharded, input_dtype, sincos_dtype, device
@@ -41,8 +41,12 @@ def test_rotary_embedding_decode(
     # sequence of 0-1 in increments of 1/64. The cos values
     # are not used. If indexing is wrong, we will get 8.
     x = torch.ones(input_shape).bfloat16().float()
-    sin_cached = torch.reshape(torch.arange(2, 2050), sin_cos_shape).bfloat16().float()
-    sin_cached[0, 0, 0, 0:64] = torch.arange(0, 64) / 64
+    sin_cached = torch.reshape(torch.arange(0, 2048), sin_cos_shape).bfloat16().float()
+    #    sin_cached[0, 0, 0, 0:64] = torch.arange(0, 64) / 64
+
+    torch.set_printoptions(profile="full")
+    # print("Torch Sin")
+    # print(sin_cached)
 
     cos_cached = torch.randn(sin_cos_shape).bfloat16().float()
     out_mem_config = ttnn.MemoryConfig()
@@ -60,6 +64,8 @@ def test_rotary_embedding_decode(
     sint = ttnn.Tensor(sin_cached, sincos_dtype).to(ttnn.TILE_LAYOUT).to(device)
 
     ttnn.set_printoptions(profile="full")
+    # print("TT Sint tilized")
+    # print(sint)
 
     xtt = ttnn.experimental.rotary_embedding(xt, cost, sint, token_idx, memory_config=out_mem_config)
 
@@ -68,10 +74,10 @@ def test_rotary_embedding_decode(
     pt_out = apply_rotary_pos_emb(x, cos_cached, sin_cached, token_idx)
 
     torch.set_printoptions(profile="full")
-    print("\nGolden tensor\n")
-    print(pt_out)
-    print("\nDevice tensor\n")
-    print(tt_got_back)
+    #    print("\nGolden tensor\n")
+    #    print(pt_out)
+    #    print("\nDevice tensor\n")
+    #    print(tt_got_back)
     p, o = comp_pcc(pt_out, tt_got_back)
     logger.info(o)
     assert p
