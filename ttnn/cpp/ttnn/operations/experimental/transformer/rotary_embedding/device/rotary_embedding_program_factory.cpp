@@ -52,18 +52,9 @@ operation::ProgramWithCallbacks rotary_embedding_multi_core(
     uint32_t HtWt = Ht * Wt;
     uint32_t Wbytes = input.get_legacy_shape()[-1] * sizeof(bfloat16);
 
-    std::cout <<"Float16_b " << DataFormat::Float16_b << std::endl;
-    std::cout <<"Bfp8_b " << DataFormat::Bfp8_b << std::endl;
-    std::cout <<"Input DF " << input_cb_data_format << std::endl;
-    std::cout <<"Input TSz " << input_single_tile_size << std::endl;
-    std::cout << "Sine DF " << sin_cb_data_format << std::endl;
-    std::cout <<"Sine TSz " << sin_single_tile_size << std::endl;
-    std::cout <<"num_tiles " << num_tiles << " num_rows " << num_rows << std::endl;
-    std::cout <<"Ht " << Ht << " Wt " << Wt << " Wbytes " << Wbytes << std::endl;
-
     // This printed okay.
-    // std::cout <<"Sin tensor" << std::endl;
-    // sin.print();
+    std::cout << "Sin tensor" << std::endl;
+    sin.print();
 
     tt_metal::Device* device = input.device();
 
@@ -208,6 +199,24 @@ operation::ProgramWithCallbacks rotary_embedding_multi_core(
         writer_kernel_defines["DECODE_MODE"] = "1";
         compute_kernel_defines["DECODE_MODE"] = "1";
     }
+
+    std::cout << "Float16_b " << (int)DataFormat::Float16_b << std::endl;
+    std::cout << "Bfp8_b " << (int)DataFormat::Bfp8_b << std::endl;
+    std::cout << "Input ID " << input_cb_index << std::endl;
+    std::cout << "Input DF " << input_cb_data_format << std::endl;
+    std::cout << "Input TSz " << input_single_tile_size << std::endl;
+    std::cout << "Sine ID " << sin_cb_index << std::endl;
+    std::cout << "Sine DF " << sin_cb_data_format << std::endl;
+    std::cout << "Sine TSz " << sin_single_tile_size << std::endl;
+    std::cout << "For untilzied data scalar cb data type and size is used" << std::endl;
+    std::cout << "Untilized Sine ID " << untilized_sin_interm_cb_index << std::endl;
+    std::cout << "Untilized Sine DF " << scalar_cb_data_format << std::endl;
+    std::cout << "Untilized Sine TSz " << scalar_single_tile_size << std::endl;
+    std::cout << "Retilized Sine ID " << retilized_sin_cb_index << std::endl;
+    std::cout << "Sine DF " << sin_cb_data_format << std::endl;
+    std::cout << "Sine TSz " << sin_single_tile_size << std::endl;
+    std::cout << "num_tiles " << num_tiles << " num_rows " << num_rows << std::endl;
+    std::cout << "Ht " << Ht << " Wt " << Wt << " Wbytes " << Wbytes << std::endl;
 
     const uint16_t bfloat16_scalar = bfloat16(-1.0f).to_uint16();
 
