@@ -9,16 +9,48 @@
 #include "compute_kernel_api/bcast.h"
 #include "compute_kernel_api/tilize.h"
 #include "compute_kernel_api/untilize.h"
+
+#include "chlkc_pack_data_format.h"
+#include "chlkc_unpack_data_format.h"
 #include "debug/dprint.h"
 
+#define DEBUG_COMPUTE 1
+
+#ifdef DEBUG_COMPUTE
 inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
     DPRINT << "======" << ENDL();
     for (uint8_t r = 0; r < 32; ++ r) {
+        if (r % 8 == 0) {
+            DPRINT << ENDL();
+        }
         SliceRange sr = SliceRange{.h0 = r, .h1 = (uint8_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
-        DPRINT << (uint)r << " " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL();
+        DPRINT << (uint)r << ":  " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL();
     }
     DPRINT << "++++++" << ENDL();
 }
+
+inline void print_cb_details(uint32_t cb_id) {
+    UNPACK(
+        DPRINT << "cb_id " << cb_id << ": { "
+               << "unpack data format: " << (uint)unpack_src_format[cb_id] << ", "
+               << "size: " << cb_interface[cb_id].fifo_size << ", "
+               << "limit: " << cb_interface[cb_id].fifo_limit << ", "
+               << "page_size: " << cb_interface[cb_id].fifo_page_size << ", "
+               << "num_pages: " << cb_interface[cb_id].fifo_num_pages << ", "
+               << "rd_ptr: " << cb_interface[cb_id].fifo_rd_ptr << ", "
+               << "wr_ptr: " << cb_interface[cb_id].fifo_wr_ptr << ", "
+               << "wr_tile_ptr: " << cb_interface[cb_id].fifo_wr_tile_ptr << " }" << ENDL());
+}
+
+inline void print_two_tiles(uint32_t cb_id) {
+    cb_wait_front(cb_id, 2);
+    print_cb_details(cb_id);
+    tensix_sync();
+    UNPACK(print_full_tile(cb_id, 0, false));
+    UNPACK(print_full_tile(cb_id, 1, false));
+    tensix_sync();
+}
+#endif
 
 ALWI void ACQ() { acquire_dst(); }
 ALWI void REL() { release_dst(); }
@@ -45,12 +77,12 @@ ALWI void UNTILIZE_TILES(uint32_t in0_cb, uint32_t out_cb, uint32_t num_tiles) {
     untilize_block(in0_cb, num_tiles, out_cb);
     cb_push_back(out_cb, num_tiles);
 
-    tensix_sync();
-    UNPACK(print_full_tile(in0_cb, 0, false));
-    UNPACK(print_full_tile(in0_cb, 1, false));
-    tensix_sync();
+#ifdef DEBUG_COMPUTE
+    UNPACK(DPRINT << "Tilized original sin tiles " << ENDL(););
+    print_two_tiles(in0_cb);
+#endif
 
-    //    cb_pop_front(in0_cb, num_tiles);
+    cb_pop_front(in0_cb, num_tiles);
     untilize_uninit(in0_cb);
 }
 
@@ -88,10 +120,20 @@ void MAIN {
     binary_op_init_common(sin_cb, untilized_sin_sync_cb, untilized_sin_cb);
     UNTILIZE_TILES(sin_cb, untilized_sin_cb, Wt);
 
+#ifdef DEBUG_COMPUTE
+    UNPACK(DPRINT << "Untilized sin tiles " << ENDL(););
+    print_two_tiles(untilized_sin_cb);
+#endif
+
     reconfig_data_format_srca(sin_cb, untilized_sin_cb);
     pack_reconfig_data_format(untilized_sin_cb, retilized_sin_cb);
     TILIZE_ROWS(untilized_sin_cb, untilized_sin_sync_cb, retilized_sin_cb, Wt);
     updated_sin_cb = retilized_sin_cb;
+
+#ifdef DEBUG_COMPUTE
+    UNPACK(DPRINT << "Retilized sin tiles " << ENDL(););
+    print_two_tiles(retilized_sin_cb);
+#endif
 
     /*
         uint32_t in1_idx = 0;
