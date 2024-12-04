@@ -96,7 +96,7 @@ ALWI void tilizeA_B_dot_product_init(
 /**
  * Re-initialize for the tilize operation. This can be called after a full init.
  */
-ALWI void tilize_init_short(uint32_t icb, uint32_t block, uint32_t ocb = 16) {
+void __attribute__((noinline)) tilize_init_short(uint32_t icb, uint32_t block, uint32_t ocb = 16) {
     MATH((llk_math_eltwise_unary_datacopy_init<
           A2D,
           BroadcastType::NONE,
@@ -136,7 +136,7 @@ ALWI void tilize_init_short_with_dt(uint32_t old_icb, uint32_t new_icb, uint32_t
 /**
  * Perform tilize operation on a block. This simply loops over the provided blocks.
  */
-ALWI void tilize_block(uint32_t icb, uint32_t block, uint32_t ocb) {
+void __attribute__((noinline)) tilize_block(uint32_t icb, uint32_t block, uint32_t ocb) {
     UNPACK((llk_unpack_tilize_block(icb, block)));
 
     for (uint32_t t = 0; t < block; t++) {
@@ -197,7 +197,7 @@ ALWI void unpack_tilizeA_B_dot_product_block(
 /**
  * Uninitialize tilize operation before re-initializing for another operation.
  */
-ALWI void tilize_uninit(uint32_t icb, uint32_t ocb = 16) {
+void __attribute__((noinline)) tilize_uninit(uint32_t icb, uint32_t ocb = 16) {
     UNPACK((llk_unpack_tilize_uninit(icb)));
 #ifdef ARCH_BLACKHOLE
     PACK((llk_pack_init(ocb)));

@@ -45,7 +45,8 @@ ALWI void reconfig_data_format_srca(const uint32_t srca_new_operand) {
  * Helper function to reconfigure srca input data format, only if it differs from existing format.
  */
 template <bool to_from_int8 = false>
-ALWI void reconfig_data_format_srca(const uint32_t srca_old_operand, const uint32_t srca_new_operand) {
+void __attribute__((noinline)) reconfig_data_format_srca(
+    const uint32_t srca_old_operand, const uint32_t srca_new_operand) {
     UNPACK((llk_unpack_reconfig_data_format_srca<to_from_int8, DST_ACCUM_MODE>(srca_old_operand, srca_new_operand)));
     MATH((llk_math_reconfig_data_format_srca<to_from_int8, DST_ACCUM_MODE>(srca_old_operand, srca_new_operand)));
 }
