@@ -7,15 +7,16 @@
 #include "debug/dprint.h"
 
 inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
-    DPRINT_DATA1({ DPRINT << "======" << ENDL(); });
+    DPRINT << "======" << ENDL();
     for (uint8_t r = 0; r < 32; ++ r) {
+        if (r % 8 == 0) {
+            DPRINT << ENDL();
+        }
         SliceRange sr = SliceRange{.h0 = r, .h1 = (uint8_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
-        DPRINT_DATA1({
-            DPRINT << (uint)r << TileSlice(cb_id, tile_id, sr, TSLICE_INPUT_CB, TSLICE_RD_PTR, true, untilize)
-                   << ENDL();
-        });
+        DPRINT << (uint)r << ":  " << TileSlice(cb_id, tile_id, sr, TSLICE_INPUT_CB, TSLICE_RD_PTR, true, untilize)
+               << ENDL();
     }
-    DPRINT_DATA1({ DPRINT << "++++++" << ENDL(); });
+    DPRINT << "++++++" << ENDL();
 }
 
 void kernel_main() {
@@ -49,10 +50,10 @@ void kernel_main() {
     const InterleavedAddrGenFast<sin_is_dram> s2 = {
         .bank_base_address = sin_addr, .page_size = sin_tile_bytes, .data_format = sin_data_format};
 
-    DPRINT_DATA1({ DPRINT << "In DF " << input_data_format << " Sine DF " << sin_data_format << ENDL(); });
-    DPRINT_DATA1({ DPRINT << "input Tsz " << input_tile_bytes << " sine Tsz " << sin_tile_bytes << ENDL(); });
-    DPRINT_DATA1({ DPRINT << "num_rows " << num_rows << " Wt " << Wt << " start_id " << start_id << ENDL(); });
-    DPRINT_DATA1({ DPRINT << "start_row_id " << start_row_id << " cos_sin_start_id " << ENDL(); });
+    DPRINT << "Input DF " << (uint32_t)input_data_format << " Input Tsz " << input_tile_bytes << ENDL();
+    DPRINT << "Sine DF " << (uint32_t)sin_data_format << " Sine Tsz " << sin_tile_bytes << ENDL();
+    DPRINT << "num_rows " << num_rows << " Wt " << Wt << " start_id " << start_id << ENDL();
+    DPRINT << "start_row_id " << start_row_id << " cos_sin_start_id " << cos_sin_start_id << ENDL();
 
     uint32_t input_curr_id = start_id;
     uint32_t cos_sin_curr_id = cos_sin_start_id;

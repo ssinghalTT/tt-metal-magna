@@ -73,15 +73,15 @@ ALWI void MUL_TILES(uint32_t in0_cb, uint32_t in1_cb, uint32_t out_cb, uint32_t 
 ALWI void UNTILIZE_TILES(uint32_t in0_cb, uint32_t out_cb, uint32_t num_tiles) {
     untilize_init_short(in0_cb);
     cb_wait_front(in0_cb, num_tiles);
-    cb_reserve_back(out_cb, num_tiles);
-    untilize_block(in0_cb, num_tiles, out_cb);
-    cb_push_back(out_cb, num_tiles);
 
 #ifdef DEBUG_COMPUTE
     UNPACK(DPRINT << "Tilized original sin tiles " << ENDL(););
     print_two_tiles(in0_cb);
 #endif
 
+    cb_reserve_back(out_cb, num_tiles);
+    untilize_block(in0_cb, num_tiles, out_cb);
+    cb_push_back(out_cb, num_tiles);
     cb_pop_front(in0_cb, num_tiles);
     untilize_uninit(in0_cb);
 }
