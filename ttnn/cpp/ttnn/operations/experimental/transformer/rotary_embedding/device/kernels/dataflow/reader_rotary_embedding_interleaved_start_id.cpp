@@ -6,6 +6,9 @@
 #include "dataflow_api.h"
 #include "debug/dprint.h"
 
+// #define DEBUG_READER 1
+
+#ifdef DEBUG_READER
 inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
     DPRINT << "======" << ENDL();
     for (uint8_t r = 0; r < 32; ++ r) {
@@ -18,6 +21,7 @@ inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize 
     }
     DPRINT << "++++++" << ENDL();
 }
+#endif
 
 void kernel_main() {
     uint32_t src_addr = get_arg_val<uint32_t>(0);
@@ -50,10 +54,12 @@ void kernel_main() {
     const InterleavedAddrGenFast<sin_is_dram> s2 = {
         .bank_base_address = sin_addr, .page_size = sin_tile_bytes, .data_format = sin_data_format};
 
+#ifdef DEBUG_READER
     DPRINT << "Input DF " << (uint32_t)input_data_format << " Input Tsz " << input_tile_bytes << ENDL();
     DPRINT << "Sine DF " << (uint32_t)sin_data_format << " Sine Tsz " << sin_tile_bytes << ENDL();
     DPRINT << "num_rows " << num_rows << " Wt " << Wt << " start_id " << start_id << ENDL();
     DPRINT << "start_row_id " << start_row_id << " cos_sin_start_id " << cos_sin_start_id << ENDL();
+#endif
 
     uint32_t input_curr_id = start_id;
     uint32_t cos_sin_curr_id = cos_sin_start_id;
@@ -69,9 +75,11 @@ void kernel_main() {
     noc_async_read_barrier();
     cb_push_back(sin_cb_id, Wt);
 
+#ifdef DEBUG_READER
     cb_wait_front(sin_cb_id, Wt);
     print_full_tile(sin_cb_id, 0, false);
     print_full_tile(sin_cb_id, 1, false);
+#endif
 
     /*
         // read a ublock of tiles from src to CB, and then push the ublock to unpacker

@@ -14,7 +14,7 @@
 #include "chlkc_unpack_data_format.h"
 #include "debug/dprint.h"
 
-#define DEBUG_COMPUTE 1
+// #define DEBUG_COMPUTE 1
 
 #ifdef DEBUG_COMPUTE
 inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
@@ -116,6 +116,13 @@ void MAIN {
     constexpr uint32_t untilized_sin_cb = get_compile_time_arg_val(14);
     constexpr uint32_t untilized_sin_sync_cb = get_compile_time_arg_val(15);
     constexpr uint32_t retilized_sin_cb = get_compile_time_arg_val(17);
+
+#ifdef DEBUG_COMPUTE
+    print_cb_details(sin_cb);
+    print_cb_details(untilized_sin_cb);
+    print_cb_details(untilized_sin_sync_cb);
+    print_cb_details(retilized_sin_cb);
+#endif
 
     binary_op_init_common(sin_cb, untilized_sin_sync_cb, untilized_sin_cb);
     UNTILIZE_TILES(sin_cb, untilized_sin_cb, Wt);
