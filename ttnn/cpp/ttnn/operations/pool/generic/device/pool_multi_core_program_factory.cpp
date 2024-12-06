@@ -72,13 +72,6 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
 
     printf("in_tiles_c: %d\n", in_ntiles_c);
 
-    uint32_t max_rows_for_reduction = 16;
-    // TODO temporarily disable 32 row reductions due to issues in large kernels
-    /* uint32_t max_rows_for_reduction = tt::constants::TILE_HEIGHT;
-    // For GRAYSKULL, make reduction for 16 rows at a time.
-    if (device->arch() == tt::ARCH::GRAYSKULL)
-        max_rows_for_reduction /= 2; */
-
     // Hardware can do reduction of 8 tiles at a time.
     // CB sizes can be restricted to this in case input channels are more than 256 to perform reduction iteratively.
     constexpr uint32_t MAX_TILES_PER_REDUCTION = 8;
@@ -219,7 +212,8 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
     uint32_t out_cb_pagesize = output.shard_spec().value().shape[1] * out_nbytes / in_nblocks_c;  // there is just one row of channels after each reduction (or 1 block of c if its greater than 8 tiles)
     uint32_t out_cb_npages = output.shard_spec().value().shape[0] * in_nblocks_c;
     if (is_wide_reduction) {
-        out_cb_pagesize = ceil_multiple_of(out_cb_pagesize, MAX_TILES_PER_REDUCTION * tt::constants::TILE_WIDTH * out_nbytes);
+        out_cb_pagesize =
+            tt::round_up(out_cb_pagesize, MAX_TILES_PER_REDUCTION * tt::constants::TILE_WIDTH * out_nbytes);
         //out_cb_npages = ceil_multiple_of(out_cb_npages, MAX_TILES_PER_REDUCTION);
     }
 
