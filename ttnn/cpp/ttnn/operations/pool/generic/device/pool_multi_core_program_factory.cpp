@@ -70,6 +70,15 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
     if (device->arch() == tt::ARCH::GRAYSKULL)
         max_rows_for_reduction /= 2; */
 
+    printf("in_tiles_c: %d\n", in_ntiles_c);
+
+    uint32_t max_rows_for_reduction = 16;
+    // TODO temporarily disable 32 row reductions due to issues in large kernels
+    /* uint32_t max_rows_for_reduction = tt::constants::TILE_HEIGHT;
+    // For GRAYSKULL, make reduction for 16 rows at a time.
+    if (device->arch() == tt::ARCH::GRAYSKULL)
+        max_rows_for_reduction /= 2; */
+
     // Hardware can do reduction of 8 tiles at a time.
     // CB sizes can be restricted to this in case input channels are more than 256 to perform reduction iteratively.
     constexpr uint32_t MAX_TILES_PER_REDUCTION = 8;
@@ -105,9 +114,9 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
         nblocks);
 
     // CBs
-    uint32_t multi_buffering_factor = 2;
+    uint32_t multi_buffering_factor = 1;
 
-    uint32_t split_reader = 1;
+    uint32_t split_reader = 0;
 
     // scalar CB as coefficient of reduce
     uint32_t in_scalar_cb_id = tt::CBIndex::c_4;
@@ -152,21 +161,16 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
     uint32_t in_cb_sz = 0;
     uint32_t in_nblocks_c = 1;
     if (is_large_kernel) {
-        in_cb_sz =
-            (input_shape[3] / num_shards_c * kernel_size_hw_padded) > (tt::constants::TILE_HW * MAX_TILES_PER_REDUCTION)
-                ? (tt::constants::TILE_HW * MAX_TILES_PER_REDUCTION)
-                : input_shape[3] / num_shards_c * kernel_size_hw_padded;
+        in_cb_sz = (input_shape[3] / num_shards_c * kernel_size_hw_padded) > (tt::constants::TILE_HW * MAX_TILES_PER_REDUCTION)
+            ? (tt::constants::TILE_HW * MAX_TILES_PER_REDUCTION)
+            : input_shape[3] / num_shards_c * kernel_size_hw_padded;
         if (is_wide_reduction) {
-            in_nblocks_c = in_ntiles_c / MAX_TILES_PER_REDUCTION;
+            in_nblocks_c = std::ceil((float)in_ntiles_c / MAX_TILES_PER_REDUCTION);
         }
     } else {
         if (is_wide_reduction) {
             in_cb_sz = MAX_TILES_PER_REDUCTION * tt::constants::TILE_WIDTH * kernel_size_hw_padded;
-            TT_FATAL(
-                in_ntiles_c % MAX_TILES_PER_REDUCTION == 0,
-                "input channels should be multiple of {} tiles. General case TODO.",
-                MAX_TILES_PER_REDUCTION);
-            in_nblocks_c = in_ntiles_c / MAX_TILES_PER_REDUCTION;
+            in_nblocks_c = std::ceil((float)in_ntiles_c / MAX_TILES_PER_REDUCTION);
         } else {
             in_cb_sz = input_shape[3] / num_shards_c * kernel_size_hw_padded;
         }
@@ -179,6 +183,8 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
         tt::constants::TILE_HW);  // NOTE: ceil to tile size since triscs work with tilesize instead of pagesize
     uint32_t in_cb_pagesize = in_nbytes * in_cb_page_padded;
     uint32_t in_cb_npages = multi_buffering_factor * nblocks;
+
+    printf("in_cb_sz: %d, in_cb_page_padded: %d, in_cb_pagesize: %d, in_cb_npages: %d\n", in_cb_sz, in_cb_page_padded, in_cb_pagesize, in_cb_npages);
 
     CircularBufferConfig in_cb_config_0 = CircularBufferConfig(in_cb_npages * in_cb_pagesize, {{in_cb_id_0, in_df}})
                                               .set_page_size(in_cb_id_0, in_cb_pagesize);
@@ -196,19 +202,31 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
     uint32_t in_tiled_cb_id = tt::CBIndex::c_24;  // tiled input
     uint32_t in_tiled_cb_pagesize = tile_size(in_df);
     uint32_t in_tiled_cb_npages = in_ntiles_c * in_ntiles_hw * nblocks;
+    if (is_wide_reduction) {
+        //in_tiled_cb_npages = ceil_multiple_of(in_tiled_cb_npages, MAX_TILES_PER_REDUCTION);
+    }
     CircularBufferConfig in_tiled_cb_config =
         CircularBufferConfig(in_tiled_cb_npages * in_tiled_cb_pagesize, {{in_tiled_cb_id, in_df}})
             .set_page_size(in_tiled_cb_id, in_tiled_cb_pagesize);
     auto in_tiled_cb = tt::tt_metal::CreateCircularBuffer(program, all_cores, in_tiled_cb_config);
     log_debug(tt::LogOp, "CB {} :: PS = {}, NP = {}", in_tiled_cb_id, in_tiled_cb_pagesize, in_tiled_cb_npages);
 
+    printf("in_tiled_cb_pagesize: %d, in_tiled_cb_npages: %d\n", in_tiled_cb_pagesize, in_tiled_cb_npages);
+
     // output of reduce == writer to write
-    uint32_t out_cb_id = tt::CBIndex::c_16;  // output rows in RM
+    uint32_t out_cb_id = tt::CB::c_out0;  // output rows in RM
     // after reduction
-    uint32_t out_cb_pagesize = output.shard_spec().value().shape[1] * out_nbytes /
-                               in_nblocks_c;  // there is just one row of channels after each reduction (or 1 block of c
-                                              // if its greater than 8 tiles)
+    uint32_t out_cb_pagesize = output.shard_spec().value().shape[1] * out_nbytes / in_nblocks_c;  // there is just one row of channels after each reduction (or 1 block of c if its greater than 8 tiles)
     uint32_t out_cb_npages = output.shard_spec().value().shape[0] * in_nblocks_c;
+    if (is_wide_reduction) {
+        out_cb_pagesize = ceil_multiple_of(out_cb_pagesize, MAX_TILES_PER_REDUCTION * tt::constants::TILE_WIDTH * out_nbytes);
+        //out_cb_npages = ceil_multiple_of(out_cb_npages, MAX_TILES_PER_REDUCTION);
+    }
+
+    printf("shard 0: %d, shard 1: %d\n", output.shard_spec().value().shape[0], output.shard_spec().value().shape[1]);
+    printf("out_nbytes: %d, in_nblocks_c: %d\n", out_nbytes, in_nblocks_c);
+    printf("out_cb_pagesize: %d, out_cb_npages: %d\n", out_cb_pagesize, out_cb_npages);
+
     CircularBufferConfig cb_out_config = CircularBufferConfig(out_cb_npages * out_cb_pagesize, {{out_cb_id, out_df}})
                                              .set_page_size(out_cb_id, out_cb_pagesize)
                                              .set_globally_allocated_address(*output.buffer());

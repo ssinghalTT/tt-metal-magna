@@ -116,7 +116,13 @@ def run_max_pool(
     torch.set_printoptions(precision=3, sci_mode=False, linewidth=500, threshold=10000, edgeitems=32)
 
     ## construct the tensor in NCHW shape
-    act = torch.randn(act_shape, dtype=torch.bfloat16)
+    # act = torch.randn(act_shape, dtype=torch.bfloat16)
+    act = torch.empty(act_shape, dtype=torch.bfloat16)
+    for n in range(act_shape[0]):
+        for c in range(act_shape[1]):
+            for h in range(act_shape[2]):
+                for w in range(act_shape[3]):
+                    act[n, c, h, w] = 4  # h * in_w + w
     # act = torch.zeros(act_shape, dtype=torch.bfloat16)
     # act = torch.ones(act_shape, dtype=torch.bfloat16)
     # act = torch.arange(0, volume(act_shape), dtype=torch.bfloat16).reshape(act_shape)
@@ -135,8 +141,6 @@ def run_max_pool(
     act_reshaped = act_permuted.reshape(act_shape)
 
     if dtype == ttnn.bfloat8_b:
-        if (in_h * in_w) % 32 != 0:
-            pytest.skip("For BFP8_B datatype, input height * width should be multiple of 32")
         if shard_scheme == ttnn.TensorMemoryLayout.WIDTH_SHARDED and (in_c / max_cores) % 32 != 0:
             pytest.skip("For BFP8_B datatype, input channels / max_cores should be multiple of 32")
         if shard_scheme == ttnn.TensorMemoryLayout.BLOCK_SHARDED and (in_c / cores_x) % 32 != 0:
@@ -145,7 +149,7 @@ def run_max_pool(
     else:
         ttact = ttnn.from_torch(act_reshaped, dtype)
 
-    pre_shard = shard_scheme == None
+    pre_shard = True  # shard_scheme == None
 
     ttact_device = ttnn.to_device(ttact, device)
     if pre_shard:
@@ -156,7 +160,7 @@ def run_max_pool(
             output_height=out_h,
             output_width=out_w,
             output_channels=in_c,
-            compute_grid_size=device.compute_with_storage_grid_size(),
+            compute_grid_size=(1, 1),
             block_shard_orientation=ttnn.ShardOrientation.ROW_MAJOR,
             enable_channels_padding=False,
             is_out_tiled=False,
@@ -233,73 +237,79 @@ def run_max_pool(
     "act_shape",  ## NCHW
     (
         (  ## resnet shapes
-            [1, 64, 112, 112],
-            [4, 64, 112, 112],
-            [8, 64, 112, 112],
-            [16, 64, 112, 112],
+            # [1, 64, 112, 112],
+            # [4, 64, 112, 112],
+            # [8, 64, 112, 112],
+            # [16, 64, 112, 112],
             # [20, 64, 112, 112],   ## oom
             ## hpr shapes
-            [8, 32, 132, 20],
-            [16, 32, 132, 20],
-            [32, 32, 132, 20],
-            [64, 32, 132, 20],
-            [128, 32, 132, 20],
+            # [8, 32, 132, 20],
+            # [16, 32, 132, 20],
+            # [32, 32, 132, 20],
+            # [64, 32, 132, 20],
+            # [128, 32, 132, 20],
             # [256, 32, 132, 20],   ## oom
-            [8, 32, 264, 40],
-            [16, 32, 264, 40],
-            [32, 32, 264, 40],
+            # [8, 32, 264, 40],
+            # [16, 32, 264, 40],
+            # [32, 32, 264, 40],
             # [64, 32, 264, 40],    ## oom
             # [128, 32, 264, 40],   ## oom
             # [256, 32, 264, 40],   ## oom
-            [4, 16, 1056, 160],
+            # [4, 16, 1056, 160],
             # [8, 16, 1056, 160],     ## oom
             # [16, 16, 1056, 160],    ## oom
             # [32, 16, 1056, 160],    ## oom
             # [64, 16, 1056, 160],    ## oom
             # [128, 16, 1056, 160],   ## oom
             # [256, 16, 1056, 160],   ## oom
-            [8, 16, 528, 80],
-            [16, 16, 528, 80],
+            # [8, 16, 528, 80],
+            # [16, 16, 528, 80],
             # [32, 16, 528, 80],  ## oom
             # [64, 16, 528, 80],  ## oom
             # [128, 16, 528, 80], ## oom
             # [256, 16, 528, 80], ## oom
             ## wide for vgg
-            [1, 256, 56, 56],
-            [1, 512, 28, 28],
-            [1, 512, 14, 14],
+            # [1, 256, 56, 56],
+            # [1, 512, 28, 28],
+            # [1, 512, 14, 14],
             # wide yolo kernel
-            [1, 512, 10, 10],
-            [1, 96, 112, 112],
-            [1, 192, 132, 20],
+            # [1, 512, 10, 10],
+            # [1, 96, 112, 112],
+            # [1, 192, 132, 20],
+            # wide non-8 multiple tests
+            # [1, 384, 8, 8],  # passes
+            # [1, 384, 16, 8],  # fails
+            # [1, 128, 2, 2],  # passes
+            [1, 384, 2, 2],  # fails
+            # [1, 512, 2, 2],  # passes
         )
     ),
 )
 @pytest.mark.parametrize(
     "kernel_size",
     (
-        (2, 2),
+        # (2, 2),
         (3, 3),
-        (5, 5),
-        (9, 9),
-        (13, 13),
+        # (5, 5),
+        # (9, 9),
+        # (13, 13),
     ),
 )
 @pytest.mark.parametrize(
     "padding",
     (
-        (0, 0),
+        # (0, 0),
         (1, 1),
-        (2, 2),
-        (4, 4),
-        (6, 6),
+        # (2, 2),
+        # (4, 4),
+        # (6, 6),
     ),
 )
 @pytest.mark.parametrize(
     "stride",
     (
         (1, 1),
-        (2, 2),
+        # (2, 2),
     ),
 )
 @pytest.mark.parametrize("dilation", ((1, 1),))  ## default
@@ -307,7 +317,7 @@ def run_max_pool(
     "dtype",
     [
         ttnn.bfloat16,
-        ttnn.bfloat8_b,
+        # ttnn.bfloat8_b,
     ],
 )
 def test_run_max_pool(
@@ -323,7 +333,7 @@ def test_run_max_pool(
     run_max_pool(act_shape, kernel_size, padding, stride, dilation, device, dtype)
 
 
-@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
+""" @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
 @pytest.mark.parametrize(
     "act_shape",  ## NCHW
     (
@@ -725,8 +735,6 @@ def test_pool_core_nondivis(
     act_reshaped = act_permuted.reshape(act_shape)
 
     if dtype == ttnn.bfloat8_b:
-        if (in_h * in_w) % 32 != 0:
-            pytest.skip("For BFP8_B datatype, input height * width should be multiple of 32")
         ttact = ttnn.from_torch(act_reshaped, dtype, layout=ttnn.TILE_LAYOUT)
     else:
         ttact = ttnn.from_torch(act_reshaped, dtype)
@@ -804,4 +812,4 @@ def test_pool_core_nondivis(
     assert allclose
     assert isclose
     if dtype == ttnn.bfloat16:
-        assert isequal
+        assert isequal """

@@ -101,6 +101,8 @@ void MAIN {
 
     constexpr uint32_t MAX_TILES_PER_REDUCTION = 8;
 
+    constexpr uint32_t MAX_TILES_PER_REDUCTION = 8;
+
     constexpr bool is_partial_tile = in_c < 32;
     static_assert((!is_partial_tile || (in_c == 16)), "Partial tile must have c_dim 16");
     constexpr uint32_t num_faces_in_input_tile = is_partial_tile ? 1 : max_rows_for_reduction < 32 ? 2 : 4;
@@ -118,6 +120,7 @@ void MAIN {
 
     uint32_t interm_reduction_chunks = window_size_hw / max_rows_for_reduction;
     cb_wait_front(in_scalar_cb_id, 1);
+    //cb_wait_front(interm_reduction_cb_id, 1);
     cb_reserve_back(out_cb_id, 1);
     for (uint32_t i = 0; i < nsticks_per_core_by_nblocks; ++i) {
         for (uint32_t b_i = 0; b_i < in_nblocks_c; b_i++) {
@@ -176,6 +179,7 @@ void MAIN {
     }
     cb_push_back(out_cb_id, 1);
     cb_pop_front(in_scalar_cb_id, 1);
+    //cb_pop_front(interm_reduction_cb_id, 1);
 }
 
 }  // namespace NAMESPACE
