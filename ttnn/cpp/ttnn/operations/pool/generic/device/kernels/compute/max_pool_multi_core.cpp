@@ -9,7 +9,7 @@
 #include "compute_kernel_api/pack_untilize.h"
 #include "tt_metal/hw/inc/debug/dprint_tensix.h"
 
-#define DEBUG_PRINT 1
+#define DEBUG_PRINT 0
 
 #if DEBUG_PRINT == 1
     #include "debug/dprint.h"
