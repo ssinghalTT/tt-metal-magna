@@ -38,6 +38,12 @@ void NLPCreateHeadsDecodeDeviceOperation::validate(const std::vector<Tensor>& in
             input_tensor.shard_spec().value().shape[0] == input_tensor.volume() / input_tensor.get_legacy_shape()[-1],
             "Error");
         TT_FATAL(input_tensor.shard_spec().value().orientation == ShardOrientation::ROW_MAJOR, "Error");
+        if (this->slice_size.has_value() && this->batch_offset.has_value()) {
+            TT_FATAL(this->slice_size.value() <= num_users, "Slice size should be less than or equal to num_users");
+            TT_FATAL(
+                this->batch_offset.value() + this->slice_size.value() <= num_users,
+                "Batch offset + slice size should be less than or equal to num_users");
+        }
     }
     auto core_grid = input_tensor.device()->compute_with_storage_grid_size();
 
@@ -71,6 +77,9 @@ std::vector<tt::tt_metal::LegacyShape> NLPCreateHeadsDecodeDeviceOperation::comp
     const auto input_shape = input_tensor.get_legacy_shape();
 
     auto batch = input_tensor.get_shape()[2];
+    if (this->batch_offset.has_value() && this->slice_size.has_value()) {
+        batch = this->slice_size.value();
+    }
     auto head_dim = this->head_dim;
 
     // pad up to nearest multiple of TILE_HEIGHT for num_q_heads and num_kv_heads
@@ -126,7 +135,16 @@ operation::ProgramWithCallbacks NLPCreateHeadsDecodeDeviceOperation::create_prog
     auto& output_tensor = output_tensors.at(0);
 
     CoreCoord compute_with_storage_grid_size = input_tensor.device()->compute_with_storage_grid_size();
-    return  multi_core_nlp_create_qkv_heads_decode(input_tensor, this->num_q_heads, this->num_kv_heads, this->head_dim, this->overlap_qk_coregrid, output_tensors, compute_with_storage_grid_size);
+    return multi_core_nlp_create_qkv_heads_decode(
+        input_tensor,
+        this->num_q_heads,
+        this->num_kv_heads,
+        this->head_dim,
+        this->overlap_qk_coregrid,
+        this->batch_offset,
+        this->slice_size,
+        output_tensors,
+        compute_with_storage_grid_size);
 }
 
 }  // namespace ttnn::operations::experimental::transformer
