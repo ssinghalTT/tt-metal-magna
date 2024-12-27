@@ -6,6 +6,42 @@
 
 namespace ttnn::operations::binary_ng {
 
+namespace utils {
+bool is_binary_sfpu_op(BinaryOpType val, DataType a, DataType b) {
+    switch (val) {
+        case BinaryOpType::ADD:
+            return (
+                (a == DataType::FLOAT32 && b == DataType::FLOAT32) || (a == DataType::INT32 && b == DataType::INT32));
+        case BinaryOpType::SUB:
+        case BinaryOpType::MUL:
+        case BinaryOpType::DIV:
+        case BinaryOpType::RSUB:
+        case BinaryOpType::LOGADDEXP:
+        case BinaryOpType::LOGADDEXP2:
+        case BinaryOpType::LDEXP:
+        case BinaryOpType::SQUARED_DIFFERENCE:
+        case BinaryOpType::LOGICAL_OR:
+        case BinaryOpType::LOGICAL_XOR:
+        case BinaryOpType::LOGICAL_AND:
+        case BinaryOpType::BIAS_GELU:
+        case BinaryOpType::GT:
+        case BinaryOpType::LT:
+        case BinaryOpType::GTE:
+        case BinaryOpType::LTE:
+        case BinaryOpType::EQ:
+        case BinaryOpType::NE: return (a == DataType::FLOAT32 && b == DataType::FLOAT32);
+        case BinaryOpType::LEFT_SHIFT:
+        case BinaryOpType::RIGHT_SHIFT:
+        case BinaryOpType::BITWISE_XOR:
+        case BinaryOpType::BITWISE_AND:
+        case BinaryOpType::BITWISE_OR: return (a == DataType::INT32 && b == DataType::INT32);
+        case BinaryOpType::POWER: return true;
+        default: return false;
+    }
+    return false;
+}
+}  // namespace utils
+
 SubtileBroadcastType get_subtile_broadcast_type(uint32_t a_h, uint32_t a_w, uint32_t b_h, uint32_t b_w) {
     if (a_h == b_h && a_w == b_w) {
         return SubtileBroadcastType::NONE;
@@ -147,8 +183,19 @@ BinaryNgDeviceOperation::spec_return_value_t BinaryNgDeviceOperation::compute_ou
 }
 
 BinaryNgDeviceOperation::program_factory_t BinaryNgDeviceOperation::select_program_factory(
-    const operation_attributes_t&, const tensor_args_t&) {
-    return ProgramFactory{};
+    const operation_attributes_t& attributes, const tensor_args_t& tensor_args) {
+    bool device_check = tensor_args.input_tensor_a.device()->arch() != tt::ARCH::GRAYSKULL;
+    BinaryOpType op = attributes.binary_op_type;
+    DataType dtype1 = tensor_args.input_tensor_a.get_dtype();
+    DataType dtype2 = tensor_args.input_tensor_b->get_dtype();
+    bool sfpu_op_check = utils::is_binary_sfpu_op(op, dtype1, dtype2);
+
+    if (device_check && sfpu_op_check) {
+        std::cout << "BinaryNG sfpu pgm factory" << std::endl;
+        return SfpuProgramFactory{};
+    } else {
+        return ProgramFactory{};
+    }
 }
 
 BinaryNgDeviceOperation::tensor_return_value_t BinaryNgDeviceOperation::create_output_tensors(
