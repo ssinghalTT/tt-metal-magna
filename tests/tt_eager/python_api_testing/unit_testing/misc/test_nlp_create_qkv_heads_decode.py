@@ -7,6 +7,7 @@ from loguru import logger
 import torch
 from torch import nn
 import ttnn
+import os
 from tests.tt_eager.python_api_testing.sweep_tests.comparison_funcs import (
     comp_allclose,
     comp_pcc,
@@ -196,12 +197,14 @@ def test_create_head_max_width_shard(
 
 
 def run_test_create_min_width_shard(
-    device,
+    mesh_device,
     batch,
     n_local_heads,
     n_local_kv_heads,
     head_dim,
     overlap_coregrid,
+    batch_offset=None,
+    slice_size=None,
 ):
     ## Split Heads
     if not overlap_coregrid and batch >= 32:
@@ -241,9 +244,23 @@ def run_test_create_min_width_shard(
     HEIGHT_SHARDED_MEMCFG = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.HEIGHT_SHARDED, ttnn.BufferType.L1)
 
     # Prepare tt input
-    proj_output_tt = ttnn.from_torch(
-        proj_output, device=device, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, memory_config=CREATE_HEAD_INPUT_MEMCFG
-    )
+    if mesh_device.get_num_devices() > 1:
+        proj_output_tt = ttnn.from_torch(
+            proj_output,
+            device=mesh_device,
+            layout=ttnn.TILE_LAYOUT,
+            dtype=ttnn.bfloat16,
+            memory_config=CREATE_HEAD_INPUT_MEMCFG,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+        )
+    else:
+        proj_output_tt = ttnn.from_torch(
+            proj_output,
+            device=mesh_device,
+            layout=ttnn.TILE_LAYOUT,
+            dtype=ttnn.bfloat16,
+            memory_config=CREATE_HEAD_INPUT_MEMCFG,
+        )
 
     # tt operation
     (
@@ -256,30 +273,64 @@ def run_test_create_min_width_shard(
         num_kv_heads=n_local_kv_heads,
         memory_config=HEIGHT_SHARDED_MEMCFG,
         overlap_qk_coregrid=overlap_coregrid,
+        batch_offset=batch_offset,
+        slice_size=slice_size,
     )
     logger.info(f"q_heads_tt: {q_heads_tt.shape}, {q_heads_tt.memory_config()}")
     logger.info(f"k_heads_tt: {k_heads_tt.shape}, {k_heads_tt.memory_config()}")
     logger.info(f"v_heads_tt: {v_heads_tt.shape}, {v_heads_tt.memory_config()}")
-
     # torch operation
-    q_heads_torch = proj_output[:, :, :, : head_dim * n_local_heads].view(seq_len, batch, n_local_heads, head_dim)
-    k_heads_torch = proj_output[:, :, :, head_dim * n_local_heads : head_dim * (n_local_heads + n_local_kv_heads)].view(
-        seq_len, batch, n_local_kv_heads, head_dim
+    if batch_offset is None and slice_size is None or mesh_device.get_num_devices() > 1:
+        batch_offset = 0
+        slice_size = batch
+    else:
+        if isinstance(batch_offset, ttnn.Tensor):
+            # convert ttnn.Tensor to torch tensor
+            tensor = ttnn.to_torch(batch_offset)
+            batch_offset = tensor[0][0]
+        batch = slice_size
+    q_heads_torch = proj_output[:, :, batch_offset : batch_offset + slice_size, : head_dim * n_local_heads].view(
+        seq_len, batch, n_local_heads, head_dim
     )
-    v_heads_torch = proj_output[:, :, :, head_dim * (n_local_heads + n_local_kv_heads) :].view(
-        seq_len, batch, n_local_kv_heads, head_dim
-    )
+    k_heads_torch = proj_output[
+        :,
+        :,
+        batch_offset : batch_offset + slice_size,
+        head_dim * n_local_heads : head_dim * (n_local_heads + n_local_kv_heads),
+    ].view(seq_len, batch, n_local_kv_heads, head_dim)
+    v_heads_torch = proj_output[
+        :, :, batch_offset : batch_offset + slice_size, head_dim * (n_local_heads + n_local_kv_heads) :
+    ].view(seq_len, batch, n_local_kv_heads, head_dim)
 
     # compare
-    q_heads_tt_cpu = ttnn.to_torch(q_heads_tt)
+    if mesh_device.get_num_devices() > 1:
+        #
+        q_heads_tt_cpu = ttnn.to_torch(
+            q_heads_tt,
+            mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, list(mesh_device.shape), dims=(0, 1)),
+        )[0:1, ...]
+    else:
+        q_heads_tt_cpu = ttnn.to_torch(q_heads_tt)
     out_pass_q, output_pcc_q = comp_pcc(q_heads_tt_cpu, q_heads_torch)
     logger.info(f"PCC value: {output_pcc_q}")
 
-    k_heads_tt_cpu = ttnn.to_torch(k_heads_tt)
+    if mesh_device.get_num_devices() > 1:
+        k_heads_tt_cpu = ttnn.to_torch(
+            k_heads_tt,
+            mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, list(mesh_device.shape), dims=(0, 1)),
+        )[0:1, ...]
+    else:
+        k_heads_tt_cpu = ttnn.to_torch(k_heads_tt)
     out_pass_k, output_pcc_k = comp_pcc(k_heads_tt_cpu, k_heads_torch)
     logger.info(f"PCC value: {output_pcc_k}")
 
-    v_heads_tt_cpu = ttnn.to_torch(v_heads_tt)
+    if mesh_device.get_num_devices() > 1:
+        v_heads_tt_cpu = ttnn.to_torch(
+            v_heads_tt,
+            mesh_composer=ttnn.ConcatMesh2dToTensor(mesh_device, list(mesh_device.shape), dims=(0, 1)),
+        )[0:1, ...]
+    else:
+        v_heads_tt_cpu = ttnn.to_torch(v_heads_tt)
     out_pass_v, output_pcc_v = comp_pcc(v_heads_tt_cpu, v_heads_torch)
     logger.info(f"PCC value: {output_pcc_v}")
 
@@ -314,6 +365,144 @@ def test_create_min_width_shard(
             n_local_kv_heads,
             head_dim,
             overlap_coregrid,
+        )
+    assert device.num_program_cache_entries() == 1, "Only one Op program cache should exist"
+
+
+@pytest.mark.parametrize(
+    "mesh_device",
+    [
+        {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
+            os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
+        )
+    ],
+    indirect=True,
+)
+@skip_for_blackhole("Requires eth connected devices to run, see #12349")
+@skip_for_grayskull("Requires eth connected devices to run")
+@pytest.mark.parametrize("batch", (32,))
+@pytest.mark.parametrize(
+    "n_local_heads, n_local_kv_heads, head_dim",
+    ((8, 1, 128),),
+)
+@pytest.mark.parametrize("overlap_coregrid", (True,))
+# @pytest.mark.parametrize("batch_offset", (0, 8, 16, 24))
+@pytest.mark.parametrize("slice_size", (8,))
+def test_create_heads_with_slice_tensor_galaxy(
+    batch,
+    n_local_heads,
+    n_local_kv_heads,
+    head_dim,
+    mesh_device,
+    overlap_coregrid,
+    # batch_offset,
+    slice_size,
+    use_program_cache,
+):
+    batch_offsets = [0, 8, 16, 24]
+    torch.manual_seed(0)
+    # create tensor with shape (1, 1) with batch_offset value
+    batch_offset_tensor = torch.tensor(batch_offsets, dtype=torch.int32).reshape((4, 1))
+    # convert to tt tensor
+    batch_offset_tensor_tt = ttnn.as_tensor(
+        batch_offset_tensor,
+        dtype=ttnn.int32,
+        device=mesh_device,
+        mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device=mesh_device, dims=(None, 0), mesh_shape=list(mesh_device.shape)),
+        layout=ttnn.TILE_LAYOUT,
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,
+    )
+
+    for i in range(3):
+        # multiple loops to test program caching
+        run_test_create_min_width_shard(
+            mesh_device,
+            batch,
+            n_local_heads,
+            n_local_kv_heads,
+            head_dim,
+            overlap_coregrid=True,
+            batch_offset=batch_offset_tensor_tt,
+            slice_size=slice_size,
+        )
+    # assert mesh_device.num_program_cache_entries() == 1, "Only one Op program cache should exist"
+
+
+@skip_for_blackhole("Requires eth connected devices to run, see #12349")
+@skip_for_grayskull("Requires eth connected devices to run")
+@pytest.mark.parametrize("batch", (32,))
+@pytest.mark.parametrize(
+    "n_local_heads, n_local_kv_heads, head_dim",
+    ((8, 1, 128),),
+)
+@pytest.mark.parametrize("overlap_coregrid", (True,))
+@pytest.mark.parametrize("batch_offset", (0, 8, 16, 24))
+@pytest.mark.parametrize("slice_size", (8,))
+def test_create_heads_with_slice_tensor(
+    batch,
+    n_local_heads,
+    n_local_kv_heads,
+    head_dim,
+    device,
+    overlap_coregrid,
+    batch_offset,
+    slice_size,
+    use_program_cache,
+):
+    torch.manual_seed(0)
+    # create tensor with shape (1, 1) with batch_offset value
+    batch_offset_tensor = torch.tensor([batch_offset], dtype=torch.int32)
+    # convert to tt tensor
+    batch_offset_tensor_tt = ttnn.from_torch(batch_offset_tensor, device=device, layout=ttnn.TILE_LAYOUT)
+    for i in range(3):
+        # multiple loops to test program caching
+        run_test_create_min_width_shard(
+            device,
+            batch,
+            n_local_heads,
+            n_local_kv_heads,
+            head_dim,
+            overlap_coregrid=True,
+            batch_offset=batch_offset_tensor_tt,
+            slice_size=slice_size,
+        )
+    assert device.num_program_cache_entries() == 1, "Only one Op program cache should exist"
+
+
+@skip_for_blackhole("Requires eth connected devices to run, see #12349")
+@skip_for_grayskull("Requires eth connected devices to run")
+@pytest.mark.parametrize("batch", (32,))
+@pytest.mark.parametrize(
+    "n_local_heads, n_local_kv_heads, head_dim",
+    ((8, 1, 128),),
+)
+@pytest.mark.parametrize("overlap_coregrid", (True,))
+@pytest.mark.parametrize("batch_offset", (0, 8, 16, 24))
+@pytest.mark.parametrize("slice_size", (8,))
+def test_create_heads_with_slice(
+    batch,
+    n_local_heads,
+    n_local_kv_heads,
+    head_dim,
+    device,
+    overlap_coregrid,
+    batch_offset,
+    slice_size,
+    use_program_cache,
+):
+    torch.manual_seed(0)
+
+    for i in range(3):
+        # multiple loops to test program caching
+        run_test_create_min_width_shard(
+            device,
+            batch,
+            n_local_heads,
+            n_local_kv_heads,
+            head_dim,
+            overlap_coregrid,
+            batch_offset,
+            slice_size,
         )
     assert device.num_program_cache_entries() == 1, "Only one Op program cache should exist"
 
