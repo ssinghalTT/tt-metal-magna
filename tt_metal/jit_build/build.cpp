@@ -582,6 +582,15 @@ void JitBuildState::compile_one(
         settings->process_compile_time_args([&defines](int i, uint32_t value) {
             defines += "-DKERNEL_COMPILE_TIME_ARG_" + to_string(i) + "=" + to_string(value) + " ";
         });
+
+        std::stringstream args;
+        for (size_t i = 0; i < static_cast<const Kernel*>(settings)->compile_time_args().size(); i++) {
+            if (i != 0) {
+                args << ",";
+            }
+            args << static_cast<const Kernel*>(settings)->compile_time_arg(i);
+        }
+        defines += "-DKERNEL_COMPILE_TIME_ARGS=\\(int[]\\){" + args.str() + "} ";
     }
 
     string cmd;
