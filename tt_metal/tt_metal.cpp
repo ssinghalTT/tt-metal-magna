@@ -1152,7 +1152,7 @@ uint32_t CreateSemaphore(
             if constexpr (std::is_same_v<T, CoreRange>) {
                 crs = CoreRangeSet(c);
             } else {
-                crs = c;
+                crs = c.optimize();
             }
             std::optional<uint32_t> semaphore_id;
             TT_FATAL(crs.ranges().size() > 0, "Expecting a non-empty CoreRangeSet!");

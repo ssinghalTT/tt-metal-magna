@@ -169,6 +169,9 @@ public:
 
     CoreRange bounding_box() const;
 
+    // Return a CoreRangeSet with the same core ranges but with as few CoreRanges as possible.
+    CoreRangeSet optimize() const;
+
 private:
     void validate_no_overlap();
 
