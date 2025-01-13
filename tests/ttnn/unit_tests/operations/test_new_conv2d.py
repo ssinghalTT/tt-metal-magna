@@ -128,7 +128,24 @@ def run_conv(
             mesh_mapper=weight_mesh_mapper,
         )
 
-    tt_input_tensor = ttnn.from_torch(torch_input_tensor, ttnn.bfloat16, mesh_mapper=input_mesh_mapper)
+    # Pre-shard inputs to trigger bad PCC
+    core_grid = ttnn.CoreRangeSet(
+        {
+            ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 4)),
+            ttnn.CoreRange(ttnn.CoreCoord(0, 5), ttnn.CoreCoord(3, 5)),
+        }
+    )
+    shard_shape = (960, 96)
+    shard_spec = ttnn.ShardSpec(core_grid, shard_shape, ttnn.ShardOrientation.ROW_MAJOR)
+    memory_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.HEIGHT_SHARDED, ttnn.BufferType.L1, shard_spec)
+    tt_input_tensor = ttnn.from_torch(
+        torch_input_tensor,
+        ttnn.bfloat16,
+        mesh_mapper=input_mesh_mapper,
+        memory_config=memory_config,
+        layout=ttnn.TILE_LAYOUT,
+        device=device,
+    )
 
     if shard_layout is None and not auto_shard:
         shard_layout = (
@@ -1713,22 +1730,22 @@ def test_unet_conv_wh(
 @pytest.mark.parametrize(
     "output_channels, input_channels, input_height, input_width, filter_height, filter_width, stride_h, stride_w, pad_h, pad_w, use_1d_systolic_array, config_override, use_shallow_conv_variant",
     (
-        (16, 4, 1056, 160, 3, 3, 1, 1, 1, 1, True, {"act_block_h": 16 * 32}, True),
-        (16, 16, 1056, 160, 3, 3, 1, 1, 1, 1, True, {"act_block_h": 16 * 32}, True),
-        (16, 16, 528, 80, 3, 3, 1, 1, 1, 1, True, {"act_block_h": 8 * 32}, True),
-        (32, 16, 264, 40, 3, 3, 1, 1, 1, 1, True, None, False),
-        (32, 32, 264, 40, 3, 3, 1, 1, 1, 1, True, None, False),
-        (32, 32, 132, 20, 3, 3, 1, 1, 1, 1, True, None, False),
-        (64, 32, 66, 10, 3, 3, 1, 1, 1, 1, True, None, False),
-        (64, 64, 66, 10, 3, 3, 1, 1, 1, 1, True, None, False),
-        (32, 96, 132, 20, 3, 3, 1, 1, 1, 1, True, None, False),
-        (32, 32, 132, 20, 3, 3, 1, 1, 1, 1, True, None, False),
-        (32, 64, 264, 40, 3, 3, 1, 1, 1, 1, True, None, False),
-        (32, 32, 264, 40, 3, 3, 1, 1, 1, 1, True, None, False),
-        (16, 48, 528, 80, 3, 3, 1, 1, 1, 1, True, {"act_block_h": 8 * 32}, True),
-        (16, 16, 528, 80, 3, 3, 1, 1, 1, 1, True, {"act_block_h": 8 * 32}, True),
-        (16, 32, 1056, 160, 3, 3, 1, 1, 1, 1, True, {"act_block_h": 16 * 32}, True),
-        (1, 16, 1056, 160, 1, 1, 1, 1, 0, 0, True, {"act_block_h": 5 * 32}, False),
+        # (16, 4, 1056, 160, 3, 3, 1, 1, 1, 1, True, {"act_block_h": 16 * 32}, True),
+        # (16, 16, 1056, 160, 3, 3, 1, 1, 1, 1, True, {"act_block_h": 16 * 32}, True),
+        # (16, 16, 528, 80, 3, 3, 1, 1, 1, 1, True, {"act_block_h": 8 * 32}, True),
+        # (32, 16, 264, 40, 3, 3, 1, 1, 1, 1, True, None, False),
+        # (32, 32, 264, 40, 3, 3, 1, 1, 1, 1, True, None, False),
+        # (32, 32, 132, 20, 3, 3, 1, 1, 1, 1, True, None, False),
+        # (64, 32, 66, 10, 3, 3, 1, 1, 1, 1, True, None, False),
+        # (64, 64, 66, 10, 3, 3, 1, 1, 1, 1, True, None, False),
+        # (32, 96, 132, 20, 3, 3, 1, 1, 1, 1, True, None, False),
+        # (32, 32, 132, 20, 3, 3, 1, 1, 1, 1, True, None, False),
+        # (32, 64, 264, 40, 3, 3, 1, 1, 1, 1, True, None, False),
+        # (32, 32, 264, 40, 3, 3, 1, 1, 1, 1, True, None, False),
+        (16, 48, 528, 80, 3, 3, 1, 1, 1, 1, True, {"act_block_h": 224}, True),
+        # (16, 16, 528, 80, 3, 3, 1, 1, 1, 1, True, {"act_block_h": 8 * 32}, True),
+        # (16, 32, 1056, 160, 3, 3, 1, 1, 1, 1, True, {"act_block_h": 16 * 32}, True),
+        # (1, 16, 1056, 160, 1, 1, 1, 1, 0, 0, True, {"act_block_h": 5 * 32}, False),
     ),
 )
 @pytest.mark.parametrize(
