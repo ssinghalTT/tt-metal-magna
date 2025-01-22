@@ -435,8 +435,8 @@ class UNet:
         )
 
         self.input_sharded_memory_config = ttnn.create_sharded_memory_config(
-            [1, 16, 1056, 160],
-            ttnn.CoreGrid(x=8, y=6),
+            [1, 16, 1024, 192],
+            ttnn.CoreGrid(x=8, y=8),
             ttnn.ShardStrategy.HEIGHT,
         )
 

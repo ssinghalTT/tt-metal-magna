@@ -362,7 +362,7 @@ def test_unet_trace_2cq_multi_device(
 )
 @pytest.mark.parametrize(
     "batch, groups, iterations",
-    ((1, 2, 128),),
+    ((1, 6, 128),),
 )
 def test_unet_trace_2cq_same_io(
     batch: int,
