@@ -69,6 +69,9 @@ std::vector<TensorSpec> HaloDeviceOperation::compute_output_specs(const std::vec
         TT_FATAL(input_core_w == output_core_w, "Error");
     }
 
+    tt::log_info(tt::LogAlways, "halo_device_operation - Deallocating input buffer");
+    DeallocateBuffer(*input_tensor.buffer());
+
     auto out_mem_config = output_memory_config_;
     std::array<uint32_t, 2> shard_shape = {
         tt::div_up(output_shape[0] * output_shape[2], config_.num_cores_nhw),

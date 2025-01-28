@@ -42,6 +42,23 @@ operation::ProgramWithCallbacks untilize_with_halo_multi_core_v2(
     auto input_shape = input_tensor.get_padded_shape();
     auto output_shape = output_tensor.get_padded_shape();
 
+    tt::log_info(
+        "input_size = {} B, output_size = {} B,  difference = {} B",
+        input_tensor.buffer()->size(),
+        output_tensor.buffer()->size(),
+        output_tensor.buffer()->size() - input_tensor.buffer()->size());
+    tt::log_info(
+        "aligned input_size = {} B, aligned output_size = {} B, aligned difference = {} B",
+        input_tensor.buffer()->aligned_size_per_bank(),
+        output_tensor.buffer()->aligned_size_per_bank(),
+        output_tensor.buffer()->aligned_size_per_bank() - input_tensor.buffer()->aligned_size_per_bank());
+
+    tt::log_info(
+        "input_address={}, output_address={}, difference={}",
+        input_tensor.buffer()->address(),
+        output_tensor.buffer()->address(),
+        input_tensor.buffer()->address() - output_tensor.buffer()->address());
+
     tt::DataFormat in_df = datatype_to_dataformat_converter(input_tensor.get_dtype());
     tt::DataFormat out_df = datatype_to_dataformat_converter(output_tensor.get_dtype());
     uint32_t out_nbytes = datum_size(out_df);
@@ -166,8 +183,8 @@ operation::ProgramWithCallbacks untilize_with_halo_multi_core_v2(
             .set_globally_allocated_address(*remote_config_buffer);
     CBHandle remote_config_cb = CreateCircularBuffer(program, all_cores, remote_config_cb_config);
 
-    bool const is_block_sharded = input_tensor.memory_config().memory_layout == TensorMemoryLayout::BLOCK_SHARDED;
-    bool const is_width_sharded = input_tensor.memory_config().memory_layout == TensorMemoryLayout::WIDTH_SHARDED;
+    const bool is_block_sharded = input_tensor.memory_config().memory_layout == TensorMemoryLayout::BLOCK_SHARDED;
+    const bool is_width_sharded = input_tensor.memory_config().memory_layout == TensorMemoryLayout::WIDTH_SHARDED;
 
     auto aligned_input_nstick_nbytes = out_stick_nbytes;
     log_debug(tt::LogOp, "out_stick_nbytes = {}", out_stick_nbytes);
