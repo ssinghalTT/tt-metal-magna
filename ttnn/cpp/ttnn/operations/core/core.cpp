@@ -130,7 +130,14 @@ ttnn::Tensor from_device(const ttnn::Tensor& tensor, bool blocking, uint8_t cq_i
     }
 }
 
-void deallocate(Tensor& tensor, bool force) { tensor.deallocate(force); }
+void deallocate(Tensor& tensor, bool force) {
+    tt::log_info(
+        "DEALLOCATING TENSOR: address={}, size={}, bank_size={}",
+        tensor.buffer()->address(),
+        tensor.buffer()->size(),
+        tensor.buffer()->aligned_size_per_bank());
+    tensor.deallocate(force);
+}
 
 Tensor reallocate(const Tensor& input_tensor, const std::optional<MemoryConfig>& memory_config) {
     return ttnn::move(input_tensor, memory_config);
