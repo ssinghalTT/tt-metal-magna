@@ -50,13 +50,14 @@ def get_core_grid_from_num_cores(num_cores: int, grid_rows: int = 8, grid_cols: 
     return ttnn.CoreRangeSet({*ranges})
 
 
-def concatenate(inputs: List, dim=-1, groups=2):
+def concatenate(inputs: List, dim=-1, groups=4):
     assert len(inputs) > 0
     assert dim < 0
     assert all(tensor.is_sharded() for tensor in inputs), "All inputs to `ttnn.concat` must be sharded"
     max_idx, output_memory_config = max(
         ((i, t.memory_config()) for i, t in enumerate(inputs)), key=lambda m: m[1].shard_spec.num_cores()
     )
+    ttnn.dump_device_memory_state(inputs[0].device(), "concat_begin_")
     for i in range(0, len(inputs)):
         if i == max_idx:
             continue
@@ -74,6 +75,8 @@ def concatenate(inputs: List, dim=-1, groups=2):
             memory_config.shard_spec.grid = output_memory_config.shard_spec.grid
             memory_config.shard_spec.orientation = output_memory_config.shard_spec.orientation
             inputs[i] = ttnn.reshard(tensor, memory_config)
+
+    ttnn.dump_device_memory_state(inputs[0].device(), "concat_input_")
     return ttnn.concat(inputs, dim=dim, memory_config=output_memory_config, groups=groups)
 
 
@@ -181,7 +184,7 @@ class UNetConv2D:
             "stride": self.stride,
             "padding": self.padding,
             "dilation": [1, 1],
-            "groups": 2,
+            "groups": 4,
             "device": self.device,
             "conv_config": self.conv_config,
         }
