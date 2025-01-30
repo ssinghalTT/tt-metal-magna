@@ -50,14 +50,18 @@ def get_core_grid_from_num_cores(num_cores: int, grid_rows: int = 8, grid_cols: 
     return ttnn.CoreRangeSet({*ranges})
 
 
-def concatenate(inputs: List, dim=-1, groups=4):
+def concatenate(x, residual, dim=-1, groups=4):
+    inputs = [x, residual]
+
     assert len(inputs) > 0
     assert dim < 0
     assert all(tensor.is_sharded() for tensor in inputs), "All inputs to `ttnn.concat` must be sharded"
     max_idx, output_memory_config = max(
         ((i, t.memory_config()) for i, t in enumerate(inputs)), key=lambda m: m[1].shard_spec.num_cores()
     )
+
     ttnn.dump_device_memory_state(inputs[0].device(), "concat_begin_")
+
     for i in range(0, len(inputs)):
         if i == max_idx:
             continue
@@ -76,8 +80,11 @@ def concatenate(inputs: List, dim=-1, groups=4):
             memory_config.shard_spec.orientation = output_memory_config.shard_spec.orientation
             inputs[i] = ttnn.reshard(tensor, memory_config)
 
+    inputs[0] = ttnn.to_memory_config(inputs[0], ttnn.DRAM_MEMORY_CONFIG)
+    inputs[1] = ttnn.to_memory_config(inputs[1], ttnn.DRAM_MEMORY_CONFIG)
     ttnn.dump_device_memory_state(inputs[0].device(), "concat_input_")
-    return ttnn.concat(inputs, dim=dim, memory_config=output_memory_config, groups=groups)
+
+    return ttnn.concat(inputs, dim=dim, groups=1)
 
 
 def is_valid_device_for_unet(device):
@@ -257,7 +264,7 @@ class UNetDownblock:
         ], f"Expected downblock input to flattened into [1, 1, BHW, C] but was {list(x.shape)}"
         x = self.conv1(x)
         x = self.conv2(x)
-        residual = x
+        residual = ttnn.to_layout(x, ttnn.ROW_MAJOR_LAYOUT, memory_config=ttnn.DRAM_MEMORY_CONFIG)
         x = self.pool1(x)
         return x, residual
 
@@ -309,7 +316,6 @@ class UNetUpblock:
             1,
         ], f"Expected upblock input to flattened into [1, 1, BHW, C] but was {list(x.shape)}"
 
-        residual = ttnn.to_layout(residual, ttnn.ROW_MAJOR_LAYOUT)
         x = ttnn.to_layout(x, layout=ttnn.ROW_MAJOR_LAYOUT)
 
         x = self.upsample(x)
@@ -321,9 +327,14 @@ class UNetUpblock:
             )
             residual = ttnn.to_memory_config(residual, memory_config)
 
-        y = concatenate([x, residual], dim=-1)
+        residual = ttnn.to_layout(residual, ttnn.ROW_MAJOR_LAYOUT)
+
+        y = concatenate(x, residual, dim=-1)
         ttnn.deallocate(x)
         ttnn.deallocate(residual)
+
+        y = ttnn.reallocate(y)
+        ttnn.dump_device_memory_state(self.device, "upblock_conv1_input_")
 
         y = self.conv1(y)
         y = self.conv2(y)
@@ -492,6 +503,9 @@ class UNet:
         ttnn.deallocate(c3_residual)
         x = self.upblock3(x, c2_residual)
         ttnn.deallocate(c2_residual)
+
+        x = ttnn.reallocate(x)
+        ttnn.dump_device_memory_state(self.device, "upblock4_input")
         x = self.upblock4(x, c1_residual)
         ttnn.deallocate(c1_residual)
 
