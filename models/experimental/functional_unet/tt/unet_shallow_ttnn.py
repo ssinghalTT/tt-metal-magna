@@ -50,7 +50,7 @@ def get_core_grid_from_num_cores(num_cores: int, grid_rows: int = 8, grid_cols: 
     return ttnn.CoreRangeSet({*ranges})
 
 
-def concatenate(activation, residual, dim=-1, groups=4):
+def concatenate(activation, residual, dim=-1, groups=6):
     assert dim < 0
     assert activation.is_sharded() and residual.is_sharded(), "Both inputs to `ttnn.concat` must be sharded"
 
@@ -188,7 +188,7 @@ class UNetConv2D:
             "stride": self.stride,
             "padding": self.padding,
             "dilation": [1, 1],
-            "groups": 4,
+            "groups": 6,
             "device": self.device,
             "conv_config": self.conv_config,
         }
@@ -489,7 +489,7 @@ class UNet:
         )
 
         self.input_sharded_memory_config = ttnn.create_sharded_memory_config(
-            [1, 16, 1056, 160],
+            [1, 24, 1056, 160],
             ttnn.CoreGrid(x=8, y=6),
             ttnn.ShardStrategy.HEIGHT,
         )
