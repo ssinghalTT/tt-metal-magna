@@ -5,6 +5,7 @@
 #include "char_tokenizer_trainer.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <set>
 #include <string>
 
