@@ -110,10 +110,10 @@ def create_unet_model_parameters(
     parameters.c5_3["use_activation_double_buffer"] = False
     parameters.c5_3["input_channels_alignment"] = 16
 
-    parameters.c6["conv_blocking_and_parallelization_config_override"] = None
-    parameters.c6["use_split_reader"] = True
-    parameters.c6["use_activation_double_buffer"] = True
-    parameters.c6["input_channels_alignment"] = 16
+    parameters.c6["conv_blocking_and_parallelization_config_override"] = {"act_block_h": 1 * 32}
+    parameters.c6["use_split_reader"] = False
+    parameters.c6["use_activation_double_buffer"] = False
+    parameters.c6["input_channels_alignment"] = 8
     parameters.c6_2["conv_blocking_and_parallelization_config_override"] = None
     parameters.c6_2["use_split_reader"] = True
     parameters.c6_2["use_activation_double_buffer"] = True

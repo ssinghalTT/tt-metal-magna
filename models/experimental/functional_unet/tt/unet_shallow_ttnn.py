@@ -246,6 +246,7 @@ class UNetMaxPool2D:
             stride=[self.pool.stride, self.pool.stride],
             padding=[self.pool.padding, self.pool.padding],
             dilation=[self.pool.dilation, self.pool.dilation],
+            in_place=self.pool.in_place if "in_place" in self.pool else False,
         )
         return x
 
@@ -274,7 +275,7 @@ class UNetDownblock:
         )
         self.pool1 = UNetMaxPool2D(pool, conv2.out_channels, device=device)
 
-    def __call__(self, x):
+    def __call__(self, x, reallocate_residual=False):
         assert list(x.shape) == [
             1,
             1,
@@ -283,7 +284,10 @@ class UNetDownblock:
         ], f"Expected downblock input to flattened into [1, 1, BHW, C] but was {list(x.shape)}"
         x = self.conv1(x)
         x = self.conv2(x)
+        if reallocate_residual:
+            x = ttnn.reallocate(x)
         residual = x
+        ttnn.dump_device_memory_state(residual.device(), "why")
         x = self.pool1(x)
         return x, residual
 
@@ -363,6 +367,7 @@ class UNetUpblock:
             memory_config = ttnn.create_sharded_memory_config_(
                 residual_rm.shape, core_grid, ttnn.ShardStrategy.HEIGHT, orientation=ttnn.ShardOrientation.ROW_MAJOR
             )
+            ttnn.dump_device_memory_state(residual_rm.device(), "why")
             residual = ttnn.to_memory_config(residual_rm, memory_config)
             ttnn.deallocate(residual_rm)
             residual_rm = residual
@@ -546,7 +551,8 @@ class UNet:
 
         x = self.preprocess_input_tensor(x)
 
-        x, c1_residual = self.downblock1(x)
+        breakpoint()
+        x, c1_residual = self.downblock1(x, reallocate_residual=True)
         x, c2_residual = self.downblock2(x)
         x, c3_residual = self.downblock3(x)
         x, c4_residual = self.downblock4(x)
