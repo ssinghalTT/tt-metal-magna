@@ -682,6 +682,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/tensor)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/ccl)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/experimental/ccl)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/deprecated)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/graph)
 
 set(TTNN_PUBLIC_INCLUDE_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR} # ${PROJECT_SOURCE_DIR}/ttnn
