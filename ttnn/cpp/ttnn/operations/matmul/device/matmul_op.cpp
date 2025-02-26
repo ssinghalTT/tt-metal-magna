@@ -2209,6 +2209,18 @@ operation::ProgramWithCallbacks Matmul::create_program(
     const auto& bias = optional_input_tensors.at(0);
     auto& output_tensor = output_tensors.at(0);
 
+    tt::log_info(
+        tt::LogOp,
+        "matmul_ input_size: {}, {}; memory_config: {}, {}, {}; data_type: {}, {}, {}",
+        input_tensor_a.get_logical_shape(),
+        input_tensor_b.get_logical_shape(),
+        input_tensor_a.memory_config(),
+        input_tensor_b.memory_config(),
+        output_tensor.memory_config(),
+        input_tensor_a.get_dtype(),
+        input_tensor_b.get_dtype(),
+        output_tensor.get_dtype());
+
     TT_FATAL(this->output_dtype.has_value(), "Error: output_dtype field should have been populated");
     tt::tt_metal::DataType output_dtype = this->output_dtype.value();
 
@@ -2235,6 +2247,7 @@ operation::ProgramWithCallbacks Matmul::create_program(
                 TT_FATAL(!bias.has_value(), "Bias is not supported for MatmulMultiCoreReuseProgramConfig!");
                 // TODO: fuse_batch doesn't do anything for this variant! Code is
                 // doing fuse_batch=false
+                tt::log_info(tt::LogOp, "matmul_1");
                 return bmm_multi_core_reuse_optimized(
                     input_tensor_a,
                     input_tensor_b,
@@ -2251,6 +2264,7 @@ operation::ProgramWithCallbacks Matmul::create_program(
                     /*fuse_batch=*/false,
                     this->untilize_out);
             } else if constexpr (std::is_same_v<ProgramConfigType, MatmulMultiCoreReuseMultiCastProgramConfig>) {
+                tt::log_info(tt::LogOp, "matmul_2");
                 return matmul_multi_core_reuse_mcast_2d_optimized(
                     input_tensor_a,
                     input_tensor_b,
@@ -2275,6 +2289,7 @@ operation::ProgramWithCallbacks Matmul::create_program(
                 if (this->global_cb.has_value()) {
                     global_cb = get_global_circular_buffer(*this->global_cb, input_tensor_a.device()->id());
                 }
+                tt::log_info(tt::LogOp, "matmul_3");
                 return matmul_multi_core_reuse_mcast_1d_optimized(
                     input_tensor_a,
                     input_tensor_b,
@@ -2301,6 +2316,7 @@ operation::ProgramWithCallbacks Matmul::create_program(
             } else if constexpr (std::is_same_v<
                                      ProgramConfigType,
                                      MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig>) {
+                tt::log_info(tt::LogOp, "matmul_4");
                 return matmul_multi_core_reuse_dram_sharded_optimized(
                     input_tensor_a,
                     input_tensor_b,
@@ -2320,9 +2336,11 @@ operation::ProgramWithCallbacks Matmul::create_program(
                     !bias.has_value(),
                     "Bias is not supported for matmul multi core non-optimized "
                     "reuse");
+                tt::log_info(tt::LogOp, "matmul_5");
                 return matmul_multi_core_reuse(input_tensor_a, input_tensor_b, output_tensor, broadcast_batch);
             } else if constexpr (std::is_same_v<ProgramConfigType, MatmulMultiCoreProgramConfig>) {
                 TT_FATAL(!bias.has_value(), "Bias is not supported for matmul multi core");
+                tt::log_info(tt::LogOp, "matmul_6");
                 return matmul_multi_core(input_tensor_a, input_tensor_b, output_tensor, broadcast_batch);
             } else {
                 TT_THROW("Unrecognized Config");
