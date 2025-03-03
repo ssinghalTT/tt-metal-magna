@@ -346,6 +346,34 @@ uint32_t generate_max_out_nsticks_per_core(const std::vector<ShardBoundary>& sha
     return max_out_nsticks_per_core;
 }
 
+using GatherStep = std::tuple<uint32_t, uint32_t, uint32_t>;
+using PerCoreGatherData = std::map<std::pair<uint32_t, uint32_t>, std::vector<GatherStep>>;
+using ReblockedData = std::map<std::pair<uint32_t, uint32_t>, std::map<uint32_t, std::vector<GatherStep>>>;
+
+ReblockedData reblock_per_core_gather_data(const PerCoreGatherData& per_core_gather_data, uint32_t block_size) {
+    ReblockedData block_data;
+    for (const auto& [core_src_dst, step] : per_core_gather_data) {
+        for (const auto& [src_start, dst_start, len] : step) {
+            uint32_t src_offset = src_start;
+            uint32_t dst_offset = dst_start;
+            uint32_t length = len;
+            while (length > 0) {
+                const uint32_t block_id = src_offset / block_size;
+                const uint32_t offset_in_block = src_offset % block_size;
+                const uint32_t remaining_space_in_block = block_size - offset_in_block;
+                const uint32_t transfer_size = (length <= remaining_space_in_block ? length : remaining_space_in_block);
+
+                block_data[core_src_dst][block_id].push_back({offset_in_block, dst_offset, transfer_size});
+
+                src_offset += transfer_size;
+                dst_offset += transfer_size;
+                length -= transfer_size;
+            }
+        }
+    }
+    return block_data;
+}
+
 std::tuple<std::vector<std::vector<uint16_t>>, std::vector<std::vector<uint16_t>>, std::vector<std::vector<uint16_t>>>
 generate_halo_kernel_config_tensors(
     const std::vector<PixelMetadata>& tensor_metadata,
@@ -391,6 +419,10 @@ generate_halo_kernel_config_tensors(
         }
         ++core_id;
     }
+
+    tt::log_info("per core gather data = {}", per_core_gather_data);
+    auto blocked_gather_data = reblock_per_core_gather_data(per_core_gather_data, 32);
+    tt::log_info("reblocked per core gather data = {}", blocked_gather_data);
 
     // construct the config tensors
     /**
