@@ -798,4 +798,4 @@ tt::tt_metal::operation::ProgramWithCallbacks multi_core_nlp_create_qkv_heads_de
 
     return {.program = std::move(program), .override_runtime_arguments_callback = override_runtime_arguments_callback};
 }
-} // namespace ttnn::operations::experimental::transformer
+}  // namespace ttnn::operations::experimental::transformer
