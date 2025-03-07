@@ -379,9 +379,9 @@ class UNetUpblock:
             print("y_rm: ", y_rm.layout)
             # y_rm = ttnn.reallocate(y_rm)
 
-            ttnn.dump_device_memory_state(y_rm.device(), "pre_conv_block_")
-
             y = self.conv1(y_rm)
+            y = ttnn.reallocate(y)
+            ttnn.dump_device_memory_state(y.device(), "pre_conv2")
             y = self.conv2(y)
             y = self.conv3(y)
 
