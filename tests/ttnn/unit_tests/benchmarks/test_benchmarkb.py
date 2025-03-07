@@ -85,7 +85,9 @@ def get_device_freq():
 matmul_shapes_bfloat16 = [
     (256, 256, 256, False, False, 1, 1, 1),
 ]
+
 matmul_configs = [
+    #    (ttnn.bfloat16, ttnn.MathFidelity.HiFi2, False),
     (ttnn.bfloat16, ttnn.MathFidelity.HiFi4, False),
 ]
 
@@ -107,8 +109,6 @@ def test_matmul_2d_host_perf(
 ):
     ENVS = dict(os.environ)
     TT_METAL_HOME = Path(ENVS["TT_METAL_HOME"])
-    ARTIFACTS_DIR = TT_METAL_HOME / "generated"
-    FILE_NAME = ARTIFACTS_DIR / "matmul_2d_host_perf_report.csv"
 
     LoFi_cycle = 16
     HiFi2_cycle = LoFi_cycle * 2
@@ -175,41 +175,18 @@ def test_matmul_2d_host_perf(
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
             )
 
-            if is_grayskull():
-                compute_kernel_config = ttnn.GrayskullComputeKernelConfig(
-                    math_fidelity=math_fidelity,
-                    math_approx_mode=True,
-                )
-            else:
-                compute_kernel_config = ttnn.WormholeComputeKernelConfig(
-                    math_fidelity=math_fidelity,
-                    math_approx_mode=True,
-                    fp32_dest_acc_en=False,
-                    packer_l1_acc=True,
-                )
-            if out_sharded:
-                out_mem_config = ttnn.MemoryConfig(
-                    memory_layout=ttnn.TensorMemoryLayout.BLOCK_SHARDED,
-                    buffer_type=ttnn.BufferType.L1,
-                )
-            else:
-                out_mem_config = ttnn.DRAM_MEMORY_CONFIG
-            if out_sharded:
-                output_tile = ttnn.Tile([tile_h, 32]) if tile_h <= 16 else ttnn.Tile([tile_h, tile_w])
-            else:
-                output_tile = ttnn.Tile([tile_h, tile_w])
-
-            max_nops_unpack = 25
-            max_nops_math = 25
-            max_nops_pack = 25
-            max_reps = 1
+            max_nops_unpack = 50
+            max_nops_math = 50
+            max_nops_pack = 50
+            max_reps = 10
             for x in range(0, max_nops_unpack):
                 for y in range(0, max_nops_math):
                     for z in range(0, max_nops_pack):
                         ttnn.device.DisablePersistentKernelCache()
-                        os.environ["TT_NOP_UNPACK"] = str(x)
-                        os.environ["TT_NOP_MATH"] = str(y)
-                        os.environ["TT_NOP_PACK"] = str(z)
+                        count_fail = 0
+                        os.environ["TT_NOP_UNPACK"] = str(0)
+                        os.environ["TT_NOP_MATH"] = str(1)
+                        os.environ["TT_NOP_PACK"] = str(14)
 
                         program_config = ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
                             compute_with_storage_grid_size=grid_size,
@@ -224,8 +201,32 @@ def test_matmul_2d_host_perf(
                             fused_activation=None,
                         )
 
+                        if is_grayskull():
+                            compute_kernel_config = ttnn.GrayskullComputeKernelConfig(
+                                math_fidelity=math_fidelity,
+                                math_approx_mode=True,
+                            )
+                        else:
+                            compute_kernel_config = ttnn.WormholeComputeKernelConfig(
+                                math_fidelity=math_fidelity,
+                                math_approx_mode=True,
+                                fp32_dest_acc_en=False,
+                                packer_l1_acc=True,
+                            )
+                        if out_sharded:
+                            out_mem_config = ttnn.MemoryConfig(
+                                memory_layout=ttnn.TensorMemoryLayout.BLOCK_SHARDED,
+                                buffer_type=ttnn.BufferType.L1,
+                            )
+                        else:
+                            out_mem_config = ttnn.DRAM_MEMORY_CONFIG
+                        if out_sharded:
+                            output_tile = ttnn.Tile([tile_h, 32]) if tile_h <= 16 else ttnn.Tile([tile_h, tile_w])
+                        else:
+                            output_tile = ttnn.Tile([tile_h, tile_w])
+
                         ttnn.device.EnablePersistentKernelCache()
-                        for iter in range(0, max_reps):
+                        for n in range(0, max_reps):
                             output_t = ttnn.matmul(
                                 in0_t,
                                 in1_t,
@@ -235,8 +236,7 @@ def test_matmul_2d_host_perf(
                                 compute_kernel_config=compute_kernel_config,
                                 output_tile=output_tile,
                             )
-                            ttnn.deallocate(output_t)
-
-            ttnn.synchronize_device(device)
+            output_tensor = ttnn.to_torch(output_t)
+            ttnn.deallocate(output_t)
             ttnn.deallocate(in0_t)
             ttnn.deallocate(in1_t)

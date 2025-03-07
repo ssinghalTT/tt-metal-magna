@@ -13,6 +13,7 @@
 #include "ttnn/operation.hpp"
 #include "ttnn/operations/matmul/device/matmul_op.hpp"
 #include "ttnn/operations/eltwise/unary/common/unary_op_utils.hpp"
+#include <iostream>
 
 using namespace tt::constants;
 using namespace tt;
@@ -523,6 +524,15 @@ operation::ProgramWithCallbacks create_program_mcast_in0_in1(
         mm_kernel_defines["IN1_TRANSPOSE_TILE"] = "1";
     }
 
+    const uint32_t unpack_nops = std::stoi(std::getenv("TT_NOP_UNPACK"));
+    const uint32_t math_nops = std::stoi(std::getenv("TT_NOP_MATH"));
+    const uint32_t pack_nops = std::stoi(std::getenv("TT_NOP_PACK"));
+    std::cout << "Factory nops " << "Unpack " << unpack_nops << " Math " << math_nops << " Pack " << pack_nops
+              << std::endl;
+    mm_kernel_defines["UNPACK_NOPS"] = std::to_string(unpack_nops);
+    mm_kernel_defines["MATH_NOPS"] = std::to_string(math_nops);
+    mm_kernel_defines["PACK_NOPS"] = std::to_string(pack_nops);
+
     bmm_op_utils::add_stagger_defines_if_needed(device->arch(), cores.size(), mm_kernel_defines);
 
     if (in0_receiver_interleaved.num_cores() == 0) {
@@ -672,6 +682,7 @@ operation::ProgramWithCallbacks create_program_mcast_in0_in1(
 
     uint32_t out_subblock_num_tiles = out_subblock_h * out_subblock_w;
 
+    std::cout << "Inside factory mcast2d" << std::endl;
     std::vector<uint32_t> compute_kernel_args = {
         in0_block_w,             // in0_block_w
         in0_num_subblocks,       // in0_num_subblocks

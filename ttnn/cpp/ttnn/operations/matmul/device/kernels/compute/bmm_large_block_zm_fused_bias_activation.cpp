@@ -8,6 +8,8 @@
 #include "compute_kernel_api/pack_untilize.h"
 #include "compute_kernel_api/tile_move_copy.h"
 #include "mod_div_lib.h"
+#include "debug/dprint.h"
+#include "debug/assert.h"
 
 #ifdef FUSE_BIAS
 #include "compute_kernel_api/bcast.h"
@@ -79,6 +81,12 @@ inline void reblock_and_untilize(
     cb_pop_front(interm_cb_id, num_tiles_in_row_of_subblocks);
 }
 
+inline void add_nops(const int num_nops) {
+    for (int i = 0; i < num_nops; i++) {
+        TTI_NOP;
+    }
+}
+
 void MAIN {
 // RUNTIME ARGS
 #ifdef MATMUL_DRAM_SHARDED
@@ -139,6 +147,10 @@ void MAIN {
 
     mm_block_init(
         in0_cb_id, in1_cb_id, mm_partials_cb_id, in1_transpose_tile, out_subblock_w, out_subblock_h, in0_block_w);
+
+    // DPRINT << in0_num_subblocks << " " << in1_num_subblocks << " " <<  num_blocks_h_dim << " " << num_blocks_w_dim <<
+    // " " << num_blocks_inner_dim << ENDL();
+    DPRINT << "Unpack nops " << UNPACK_NOPS << " Math nops " << MATH_NOPS << " Pack nops " << PACK_NOPS << ENDL();
     for (uint32_t b = 0; b < batch; b++) {
         for (uint32_t bh = 0; bh < num_blocks_h_dim; ++bh) {
             for (uint32_t bw = 0; bw < num_blocks_w_dim; ++bw) {
@@ -168,9 +180,14 @@ void MAIN {
 
                     cb_wait_front(in0_cb_id, in0_block_num_tiles);
                     cb_wait_front(in1_cb_id, in1_block_num_tiles);
-
+                    add_nops(1000);
                     int in0_index_subblock_offset = 0;
                     for (uint32_t in0_subblock = 0; in0_subblock < in0_num_subblocks; in0_subblock++) {
+#ifdef MM_ADD_NOPS
+                        UNPACK(add_nops(UNPACK_NOPS));
+                        MATH(add_nops(MATH_NOPS));
+                        PACK(add_nops(PACK_NOPS));
+#endif
                         int in1_index_subblock_offset = 0;
                         for (uint32_t in1_subblock = 0; in1_subblock < in1_num_subblocks; in1_subblock++) {
                             tile_regs_acquire();
