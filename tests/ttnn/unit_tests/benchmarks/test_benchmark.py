@@ -83,7 +83,7 @@ def get_device_freq():
 
 
 matmul_shapes_bfloat16 = [
-    (256, 256, 256, False, False, 1, 1, 1),
+    (512, 512, 512, False, False, 1, 1, 1),
 ]
 matmul_configs = [
     (ttnn.bfloat16, ttnn.MathFidelity.HiFi4, False),
@@ -106,9 +106,7 @@ def test_matmul_2d_host_perf(
     num_measurement_iterations,
 ):
     ENVS = dict(os.environ)
-    TT_METAL_HOME = Path(ENVS["TT_METAL_HOME"])
-    ARTIFACTS_DIR = TT_METAL_HOME / "generated"
-    FILE_NAME = ARTIFACTS_DIR / "matmul_2d_host_perf_report.csv"
+    LAST_HANG_FILE = Path(ENVS["LAST_HANG_FILE"])
 
     LoFi_cycle = 16
     HiFi2_cycle = LoFi_cycle * 2
@@ -199,44 +197,64 @@ def test_matmul_2d_host_perf(
             else:
                 output_tile = ttnn.Tile([tile_h, tile_w])
 
-            max_nops_unpack = 25
-            max_nops_math = 25
-            max_nops_pack = 25
-            max_reps = 1
-            for x in range(0, max_nops_unpack):
-                for y in range(0, max_nops_math):
-                    for z in range(0, max_nops_pack):
-                        ttnn.device.DisablePersistentKernelCache()
-                        os.environ["TT_NOP_UNPACK"] = str(x)
-                        os.environ["TT_NOP_MATH"] = str(y)
-                        os.environ["TT_NOP_PACK"] = str(z)
+            max_nops_unpack = 50
+            max_nops_math = 50
+            max_nops_pack = 50
+            max_reps = 10
+            COUNTER = 0
+            print(LAST_HANG_FILE)
+            with open(LAST_HANG_FILE, "r") as f:
+                lines = f.read().splitlines()
+                last_line = lines[-1]
+                START_COUNT = int(last_line) + 1
+                f.close()
+                f = open(LAST_HANG_FILE, "a")
+                f.write("-------------HANGED/ABORT-------------\n")
+                f.write(f"{START_COUNT}\n")
+                f.close()
+                print(f"Starting from id {START_COUNT}")
+                for x in range(0, max_nops_unpack):
+                    for y in range(0, max_nops_math):
+                        for z in range(0, max_nops_pack):
+                            if COUNTER < START_COUNT:
+                                COUNTER += 1
+                                continue
 
-                        program_config = ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
-                            compute_with_storage_grid_size=grid_size,
-                            in0_block_w=in0_block_w,
-                            out_subblock_h=out_subblock_h,
-                            out_subblock_w=out_subblock_w,
-                            out_block_h=out_block_h,
-                            out_block_w=out_block_w,
-                            per_core_M=per_core_M,
-                            per_core_N=per_core_N,
-                            transpose_mcast=False,
-                            fused_activation=None,
-                        )
+                            ttnn.device.DisablePersistentKernelCache()
+                            os.environ["TT_NOP_UNPACK"] = str(x)
+                            os.environ["TT_NOP_MATH"] = str(y)
+                            os.environ["TT_NOP_PACK"] = str(z)
 
-                        ttnn.device.EnablePersistentKernelCache()
-                        for iter in range(0, max_reps):
-                            output_t = ttnn.matmul(
-                                in0_t,
-                                in1_t,
-                                program_config=program_config,
-                                memory_config=out_mem_config,
-                                dtype=dtype,
-                                compute_kernel_config=compute_kernel_config,
-                                output_tile=output_tile,
+                            program_config = ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
+                                compute_with_storage_grid_size=grid_size,
+                                in0_block_w=in0_block_w,
+                                out_subblock_h=out_subblock_h,
+                                out_subblock_w=out_subblock_w,
+                                out_block_h=out_block_h,
+                                out_block_w=out_block_w,
+                                per_core_M=per_core_M,
+                                per_core_N=per_core_N,
+                                transpose_mcast=False,
+                                fused_activation=None,
                             )
-                            ttnn.deallocate(output_t)
 
-            ttnn.synchronize_device(device)
-            ttnn.deallocate(in0_t)
-            ttnn.deallocate(in1_t)
+                            ttnn.device.EnablePersistentKernelCache()
+                            for iter in range(0, max_reps):
+                                output_t = ttnn.matmul(
+                                    in0_t,
+                                    in1_t,
+                                    program_config=program_config,
+                                    memory_config=out_mem_config,
+                                    dtype=dtype,
+                                    compute_kernel_config=compute_kernel_config,
+                                    output_tile=output_tile,
+                                )
+                                ttnn.deallocate(output_t)
+                            COUNTER += 1
+                            with open(LAST_HANG_FILE, "a") as f:
+                                f.write(f"{COUNTER}\n")
+                                f.close()
+
+                ttnn.synchronize_device(device)
+                ttnn.deallocate(in0_t)
+                ttnn.deallocate(in1_t)
