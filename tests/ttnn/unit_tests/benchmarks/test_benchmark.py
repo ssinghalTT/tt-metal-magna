@@ -197,6 +197,21 @@ def test_matmul_2d_host_perf(
             else:
                 output_tile = ttnn.Tile([tile_h, tile_w])
 
+            program_config = ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
+                compute_with_storage_grid_size=grid_size,
+                in0_block_w=in0_block_w,
+                out_subblock_h=out_subblock_h,
+                out_subblock_w=out_subblock_w,
+                out_block_h=out_block_h,
+                out_block_w=out_block_w,
+                per_core_M=per_core_M,
+                per_core_N=per_core_N,
+                transpose_mcast=False,
+                fused_activation=None,
+            )
+
+            ttnn.device.EnablePersistentKernelCache()
+
             max_nops_unpack = 50
             max_nops_math = 50
             max_nops_pack = 50
@@ -220,25 +235,11 @@ def test_matmul_2d_host_perf(
                                 COUNTER += 1
                                 continue
 
-                            ttnn.device.DisablePersistentKernelCache()
+                            # ttnn.device.DisablePersistentKernelCache()
                             os.environ["TT_NOP_UNPACK"] = str(x)
                             os.environ["TT_NOP_MATH"] = str(y)
                             os.environ["TT_NOP_PACK"] = str(z)
 
-                            program_config = ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
-                                compute_with_storage_grid_size=grid_size,
-                                in0_block_w=in0_block_w,
-                                out_subblock_h=out_subblock_h,
-                                out_subblock_w=out_subblock_w,
-                                out_block_h=out_block_h,
-                                out_block_w=out_block_w,
-                                per_core_M=per_core_M,
-                                per_core_N=per_core_N,
-                                transpose_mcast=False,
-                                fused_activation=None,
-                            )
-
-                            ttnn.device.EnablePersistentKernelCache()
                             for iter in range(0, max_reps):
                                 output_t = ttnn.matmul(
                                     in0_t,
