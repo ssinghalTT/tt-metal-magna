@@ -114,6 +114,11 @@ inline void llk_math_eltwise_unary_sfpu_typecast(uint dst_index, int vector_mode
         // no SFPU kernel needed, handled by unpacker/packer
     } else if constexpr (IN_DTYPE == (uint32_t)DataFormat::Float32 && OUT_DTYPE == (uint32_t)DataFormat::Bfp4_b) {
         // no SFPU kernel needed, handled by packer
+    
+    //Added Bos
+    } else if constexpr (IN_DTYPE == (uint32_t)DataFormat::Float16_b && OUT_DTYPE == (uint32_t)DataFormat::UInt8) {
+        llk_math_eltwise_unary_sfpu_params<APPROXIMATE>(
+            ckernel::sfpu::calculate_typecast_fp16b_to_uint8<APPROXIMATE, 8>, dst_index, vector_mode);
     }
 }
 

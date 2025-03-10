@@ -18,6 +18,9 @@ set(PROGRAMMING_EXAMPLES_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/sharding/shard_data_rm.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/vecadd_sharding/vecadd_sharding.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/vecadd_multi_core/vecadd_multi_core.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bos/sfpu_typecasting_bfloat16_uint8_0.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bos/sfpu_typecasting_bfloat16_uint8_1.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bos/sfpu_typecasting_bfloat16_uint16.cpp
 )
 
 include(${PROJECT_SOURCE_DIR}/cmake/helper_functions.cmake)
