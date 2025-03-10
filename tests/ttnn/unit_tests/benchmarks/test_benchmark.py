@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import time
+from timeit import default_timer as timer
 
 from loguru import logger
 import csv
@@ -106,7 +107,7 @@ def test_matmul_2d_host_perf(
     num_measurement_iterations,
 ):
     ENVS = dict(os.environ)
-    LAST_HANG_FILE = Path(ENVS["LAST_HANG_FILE"])
+    ERR_FILE_PATH = Path(ENVS["ERR_FILE_PATH"])
 
     LoFi_cycle = 16
     HiFi2_cycle = LoFi_cycle * 2
@@ -217,15 +218,14 @@ def test_matmul_2d_host_perf(
             max_nops_pack = 50
             max_reps = 10
             COUNTER = 0
-            print(LAST_HANG_FILE)
-            with open(LAST_HANG_FILE, "r") as f:
+            with open(ERR_FILE_PATH, "r") as f:
                 lines = f.read().splitlines()
                 last_line = lines[-1]
-                START_COUNT = int(last_line) + 1
+                # Skip the one after the last successful run
+                START_COUNT = int(last_line.split()[0]) + 2
                 f.close()
-                f = open(LAST_HANG_FILE, "a")
-                f.write("-------------HANGED/ABORT-------------\n")
-                f.write(f"{START_COUNT}\n")
+                f = open(ERR_FILE_PATH, "a")
+                f.write(f"{START_COUNT-1} : HANGED/ABORT\n")
                 f.close()
                 print(f"Starting from id {START_COUNT}")
                 for x in range(0, max_nops_unpack):
@@ -239,7 +239,7 @@ def test_matmul_2d_host_perf(
                             os.environ["TT_NOP_UNPACK"] = str(x)
                             os.environ["TT_NOP_MATH"] = str(y)
                             os.environ["TT_NOP_PACK"] = str(z)
-
+                            start = timer()
                             for iter in range(0, max_reps):
                                 output_t = ttnn.matmul(
                                     in0_t,
@@ -251,11 +251,15 @@ def test_matmul_2d_host_perf(
                                     output_tile=output_tile,
                                 )
                                 ttnn.deallocate(output_t)
-                            COUNTER += 1
-                            with open(LAST_HANG_FILE, "a") as f:
-                                f.write(f"{COUNTER}\n")
+                            end = timer()
+                            time_taken = end - start
+                            runtime_spike = "True" if (time_taken > 0.1) else "False"
+                            with open(ERR_FILE_PATH, "a") as f:
+                                f.write(
+                                    f"{COUNTER} unpack_nop={x} math_nop={y}, pack_nop={z} time={time_taken} runtime_spike={runtime_spike}\n"
+                                )
                                 f.close()
-
+                            COUNTER += 1
                 ttnn.synchronize_device(device)
                 ttnn.deallocate(in0_t)
                 ttnn.deallocate(in1_t)
