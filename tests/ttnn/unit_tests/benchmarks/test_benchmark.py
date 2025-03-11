@@ -14,6 +14,7 @@ from models.utility_functions import run_for_wormhole_b0, is_grayskull, profiler
 from tests.ttnn.utils_for_testing import assert_with_pcc
 from pathlib import Path
 import os
+import sys
 
 
 SUBBLOCK_HW_CHOICES = [

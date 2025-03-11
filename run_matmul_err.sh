@@ -6,6 +6,17 @@
   STDOUT_FILE=$LOG_DIR/stdout_log
   TIME_LIMIT=100
 
+  run_bw_tests() {
+     echo "DRAM READ TEST"
+     build_Release/test/tt_metal/perf_microbenchmark/dispatch/test_bw_and_latency -bs 256 -p 4096 -m 3 # read dram
+
+     echo "L1 FAR READ TEST"
+     build_Release/test/tt_metal/perf_microbenchmark/dispatch/test_bw_and_latency -bs 256 -p 4096 -m 2 -rx 0 -ry 0 -sx 6 -sy 5 # read far l1
+
+     echo "MCAST TO GRID TEST"
+     build_Release/test/tt_metal/perf_microbenchmark/dispatch/test_bw_and_latency -bs 256 -p 4096 -m 6 -rx 0 -ry 0 -sx 0 -sy 1 -tx 12 -ty 9 # mcast to grid
+  }
+
   run_test_in_loop() {
 
      export ERR_FILE_PATH=$ERROR_FILE
