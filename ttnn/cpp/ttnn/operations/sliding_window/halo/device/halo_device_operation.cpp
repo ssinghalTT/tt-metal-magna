@@ -109,6 +109,7 @@ operation::ProgramWithCallbacks HaloDeviceOperation::create_program(
         transpose_mcast_,
         remote_read_,
         device,
+<<<<<<< HEAD
         max_out_nsticks_per_core_,
         in_nsticks_per_core_,
         this->in_place_);
@@ -146,6 +147,31 @@ operation::ProgramWithCallbacks HaloDeviceOperation::create_program(
         sliding_window::move_config_tensor_to_device(remote_config_tensor1, parallel_config_, is_block_sharded, device);
     auto remote_config_device_tensor2 =
         sliding_window::move_config_tensor_to_device(remote_config_tensor2, parallel_config_, is_block_sharded, device);
+=======
+        is_in_tiled,
+        UNTILIZE_BLOCK_SIZE);
+
+    const auto& pad_config = kernel_config.pad_config;
+    const auto& gather_config0 = kernel_config.gather_config0;
+    const auto& gather_config1 = kernel_config.gather_config1;
+
+    const auto pad_config_tensor =
+        sliding_window::construct_on_host_config_tensor(pad_config, this->config_, this->parallel_config_);
+    const auto gather_config_tensor0 =
+        sliding_window::construct_on_host_config_tensor(gather_config0, this->config_, this->parallel_config_);
+    const auto gather_config_tensor1 =
+        sliding_window::construct_on_host_config_tensor(gather_config1, this->config_, this->parallel_config_);
+
+    auto pad_config_device_tensor =
+        sliding_window::move_config_tensor_to_device(pad_config_tensor, parallel_config_, is_block_sharded, device);
+    auto gather_config_device_tensor0 =
+        sliding_window::move_config_tensor_to_device(gather_config_tensor0, parallel_config_, is_block_sharded, device);
+    auto gather_config_device_tensor1 =
+        sliding_window::move_config_tensor_to_device(gather_config_tensor1, parallel_config_, is_block_sharded, device);
+
+    const auto number_of_blocks_per_core = sliding_window::remap_nhw_scalar_argument_across_full_grid(
+        kernel_config.number_of_blocks_per_core, this->parallel_config_);
+>>>>>>> 1f5be0507a... Fuse untilize operation with halo
 
     DataType type = input_tensor.get_dtype();
     int num_cores = this->parallel_config_.grid.num_cores();
@@ -175,6 +201,7 @@ operation::ProgramWithCallbacks HaloDeviceOperation::create_program(
         config_.num_cores_nhw,
         config_.num_cores_c,
         max_out_nsticks_per_core_,
+<<<<<<< HEAD
         pad_config_device_tensor1,
         pad_config_device_tensor2,
         local_config_device_tensor1,
@@ -188,6 +215,17 @@ operation::ProgramWithCallbacks HaloDeviceOperation::create_program(
         output_tensor,
         /*capture_buffers=*/true,
         this->in_place_)};
+=======
+        pad_config_device_tensor,
+        gather_config_device_tensor0,
+        gather_config_device_tensor1,
+        number_of_blocks_per_core,
+        remote_read_,
+        transpose_mcast_,
+        output_tensor,
+        UNTILIZE_BLOCK_SIZE,
+        /*capture_buffers=*/true)};
+>>>>>>> 1f5be0507a... Fuse untilize operation with halo
 }
 
 Tensor halo_op(
@@ -207,7 +245,8 @@ Tensor halo_op(
             input_tensor.memory_config().memory_layout == TensorMemoryLayout::WIDTH_SHARDED,
         "Only height, width or block sharded tensors are supported.");
     // NOTE: for HEIGHT_SHARDED, ncores_nhw == ncores
-    //       for BLOCK_SHARDED, ncores_nhw is just the ncores along height dim (last tensor dim is split along width)
+    //       for BLOCK_SHARDED, ncores_nhw is just the ncores along height dim (last tensor dim is split along
+    //       width)
     bool is_block_sharded = input_tensor.memory_config().memory_layout == TensorMemoryLayout::BLOCK_SHARDED;
     auto halo_func =
         [config,
