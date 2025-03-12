@@ -120,6 +120,7 @@ def create_tt_model(
         optimizations=optimizations,
         max_seq_len=max_seq_len,
     )
+    tt_model_args.n_layers = 6
     state_dict = tt_model_args.load_state_dict()
 
     page_table = None
@@ -177,14 +178,14 @@ def create_tt_model(
     "input_prompts, instruct, repeat_batches, max_seq_len, batch_size, max_generated_tokens, paged_attention, page_params, sampling_params, stop_at_eos, ci_only",
     [
         (  # Batch-1 run (Latency) - single user, small prompt
-            "models/demos/llama3/demo/sample_prompts/input_data_questions_prefill_128.json",  # input_prompts
+            "models/demos/llama3/demo/sample_prompts/input_data_questions_prefill_256.json",  # input_prompts
             True,  # instruct mode
             1,  # repeat_batches
             1024,  # max_seq_len
             1,  # batch_size
             200,  # max_generated_tokens
             True,  # paged_attention
-            {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params
+            {"page_block_size": 64, "page_max_num_blocks": 2048},  # page_params
             {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
             True,  # stop_at_eos
             False,  # ci_only
@@ -426,6 +427,8 @@ def test_llama_demo_text(
         )
         profiler.end(f"compile_prefill", iteration=batch_idx)
         logger.info("Finished prefill warmup")
+
+        breakpoint()  # testing hang
 
         logger.info(f"Starting prefill...")
         profiler.start(f"inference_prefill", iteration=batch_idx)
