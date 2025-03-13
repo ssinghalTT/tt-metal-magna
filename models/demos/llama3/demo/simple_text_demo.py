@@ -120,6 +120,7 @@ def create_tt_model(
         optimizations=optimizations,
         max_seq_len=max_seq_len,
     )
+    tt_model_args.n_layers = 2
     state_dict = tt_model_args.load_state_dict()
 
     page_table = None
@@ -184,7 +185,7 @@ def create_tt_model(
             1,  # batch_size
             200,  # max_generated_tokens
             True,  # paged_attention
-            {"page_block_size": 64, "page_max_num_blocks": 1024},  # page_params
+            {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params
             {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
             True,  # stop_at_eos
             False,  # ci_only
@@ -386,6 +387,9 @@ def test_llama_demo_text(
     for batch_idx, input_prompts in enumerate(repeat_batch_prompts):
         logger.info(f"Processing batch {batch_idx}")
         profiler.start(f"preprocess_prefill_inputs", iteration=batch_idx)
+
+        input_prompts[0] = input_prompts[0][:125]  # prompt len 34, 2 blocks with 32 block size
+
         # Preprocess initial prompt inputs
         (
             input_tokens_prefill_pt,

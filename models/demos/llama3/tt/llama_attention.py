@@ -660,8 +660,10 @@ class TtLlamaAttention(LightweightModule):
             page_len = fill_page_table.shape[1] * block_size
             k_fill_sliced = k_fill[:, :, :page_len, :] if page_len < k_fill.shape[2] else k_fill
             v_fill_sliced = v_fill[:, :, :page_len, :] if page_len < v_fill.shape[2] else v_fill
+            print("start fill cache")
             ttnn.experimental.paged_fill_cache(keys_BKSD, k_fill_sliced, fill_page_table, batch_idx=user_id)
             ttnn.experimental.paged_fill_cache(values_BKSD, v_fill_sliced, fill_page_table, batch_idx=user_id)
+            print("end fill cache")
         else:
             ttnn.fill_cache(
                 keys_BKSD,
@@ -693,6 +695,7 @@ class TtLlamaAttention(LightweightModule):
                 program_config=self.model_config["SDPA_PROGCFG"](seq_len),
             )
         else:
+            print("start sdpa")
             attn_output_84SD = ttnn.transformer.scaled_dot_product_attention(
                 q_heads_1QSD_8b,
                 k_heads_1KSD_8b,
@@ -702,6 +705,7 @@ class TtLlamaAttention(LightweightModule):
                 compute_kernel_config=self.compute_kernel_config_hifi4,
                 program_config=self.model_config["SDPA_PROGCFG"](seq_len),
             )
+            print("end sdpa")
 
         # deallocate keys and values
         ttnn.deallocate(q_heads_1QSD_8b)
