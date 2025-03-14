@@ -139,6 +139,9 @@ void MAIN {
 
     constexpr bool spill = num_blocks_inner_dim > 1;
 
+    DPRINT << num_blocks_h_dim << " " << num_blocks_w_dim << " " << num_blocks_inner_dim << " " << in0_num_subblocks
+           << " " << in1_num_subblocks << " " << out_subblock_h << " " << out_subblock_w << " " << in0_block_w
+           << ENDL();
     mm_block_init(
         in0_cb_id, in1_cb_id, mm_partials_cb_id, in1_transpose_tile, out_subblock_w, out_subblock_h, in0_block_w);
     for (uint32_t b = 0; b < batch; b++) {
