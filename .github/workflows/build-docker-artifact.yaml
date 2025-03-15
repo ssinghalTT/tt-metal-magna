@@ -16,6 +16,8 @@ on:
         type: string
         default: "amd64"
     outputs:
+      # TODO: add more outputs here for other stages
+      # TODO: for any tests that use old way of getting tag, ensure they don't break and we can move over to new one nicely
       ci-build-tag:
         description: "Docker tag for the CI Build Docker image for building TT-Metalium et al"
         value: ${{ jobs.check-docker-images.outputs.ci-build-tag }}
@@ -48,6 +50,9 @@ on:
 env:
   IMAGE_NAME: ${{ inputs.distro }}-${{ inputs.version }}-${{ inputs.architecture }}
 
+# we can use https://docs.docker.com/reference/cli/docker/buildx/build/#cache-from
+# to do some more internal caching of layers when building
+
 jobs:
   check-docker-images:
     runs-on: ubuntu-latest
@@ -65,6 +70,8 @@ jobs:
       - name: Compute tags
         id: tags
         run: |
+          # opt: can have multiple dockerfiles for each stage
+          # and previous stages can feed sha into next stage sha
           BUILD_TAG=$(cat \
             install_dependencies.sh \
             dockerfile/Dockerfile \
@@ -111,6 +118,11 @@ jobs:
         with:
           context: ${{ github.workspace }}
           file: dockerfile/Dockerfile
+            # only builds end of docker stage chain (Dev)
+            # docker seems to be able to tag only the one we actually
+            # request, nothing in between, which is what we're trying to do
+            # with base -> ci -> dev etc.
+            # would be nice to build iterative in one envrionment
           target: dev
           push: true
           tags: ${{ needs.check-docker-images.outputs.ci-build-tag }}

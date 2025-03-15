@@ -8,6 +8,9 @@ FROM public.ecr.aws/ubuntu/ubuntu:${UBUNTU_VERSION} AS base
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install runtime deps
+# TODO: this would invalidate all layers
+# could have different stages as diff dockerfiles and compute those hashes separately
+# probably a longer term thing
 COPY /install_dependencies.sh /opt/tt_metal_infra/scripts/docker/install_dependencies.sh
 RUN /bin/bash /opt/tt_metal_infra/scripts/docker/install_dependencies.sh --docker --mode runtime
 
