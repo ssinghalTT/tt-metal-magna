@@ -54,6 +54,8 @@ class LlamaGenerator:
                 page_table, torch.Tensor
             ), "page_table must be a torch.Tensor when passing into prefill_forward"
 
+        logger.info(f"Starting prefill for all users up to {batch_seq_len} tokens...")
+
         for user_id in range(batch):
             logger.info(f"Prefilling User {user_id + 1}")
             seq_len = prompt_lens[user_id]

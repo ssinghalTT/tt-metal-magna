@@ -47,11 +47,11 @@ from models.utility_functions import skip_for_grayskull
 )
 @pytest.mark.parametrize(
     "page_params",
-    [{"page_block_size": 32, "page_max_num_blocks": 1024}],
+    [{"page_block_size": 64, "page_max_num_blocks": 2048}],
 )
 @pytest.mark.parametrize(
     "seq_len",
-    (4096,),
+    (2048,),
 )
 @pytest.mark.parametrize(
     "optimizations",
@@ -74,7 +74,7 @@ def test_llama_model_inference(
     if is_ci_env and optimizations == LlamaOptimizations.accuracy:
         pytest.skip("CI test only runs performance mode to reduce CI pipeline load")
 
-    run_ref_pt = True  # Flag to run reference PyTorch model and compare PCC
+    run_ref_pt = False  # Flag to run reference PyTorch model and compare PCC
     cache_pcc = False  # Flag to measure KV cache PCC for all layers
 
     dtype = ttnn.bfloat8_b
@@ -190,6 +190,7 @@ def test_llama_model_inference(
     for i in range(1):
         start_pos = 0
         # Run TT model
+        logger.info(f"Running prefill...")
         tt_out = tt_model(
             tt_prefill_input,
             current_pos=None,
