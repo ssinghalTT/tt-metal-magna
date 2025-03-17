@@ -142,6 +142,9 @@ void MAIN {
     DPRINT << num_blocks_h_dim << " " << num_blocks_w_dim << " " << num_blocks_inner_dim << " " << in0_num_subblocks
            << " " << in1_num_subblocks << " " << out_subblock_h << " " << out_subblock_w << " " << in0_block_w
            << ENDL();
+
+    DPRINT << "Unpack nops " << UNPACK_NOPS << " Math nops " << MATH_NOPS << " Pack nops " << PACK_NOPS << ENDL();
+
     mm_block_init(
         in0_cb_id, in1_cb_id, mm_partials_cb_id, in1_transpose_tile, out_subblock_w, out_subblock_h, in0_block_w);
     for (uint32_t b = 0; b < batch; b++) {
@@ -199,6 +202,11 @@ void MAIN {
                             uint32_t in1_index = in1_index_subblock_offset;  // offset into in1 block
                             // inner dim that we accumualte is the inner dim of in0/in1, which is in0_block_w
                             for (uint32_t inner_dim_idx = 0; inner_dim_idx < in0_block_w; ++inner_dim_idx) {
+#ifdef MM_ADD_NOPS
+                                UNPACK(add_nops(UNPACK_NOPS));
+                                MATH(add_nops(MATH_NOPS));
+                                PACK(add_nops(PACK_NOPS));
+#endif
                                 // matmul outer product of (out_subblock_h x out_subblock_w) tiles that fill dst
                                 // accumulation is done by iterating matmul_block across inner dim
                                 // in0_block_w is passed as innder dim (kt) to matmul_block, interally used to stride
