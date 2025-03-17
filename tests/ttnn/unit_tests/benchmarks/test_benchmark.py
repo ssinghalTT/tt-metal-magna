@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import time
+from timeit import default_timer as timer
 
 from loguru import logger
 import csv
@@ -83,13 +84,13 @@ def get_device_freq():
 
 
 matmul_shapes_bfloat16 = [
-    #     (16384, 16384, 16384, False, False, 4, 8, 8),
-    (16384, 65536, 16384, False, False, 16, 8, 8),
+    (16384, 16384, 16384, False, False, 4, 8, 8),
+    # (16384, 65536, 16384, False, False, 16, 8, 8),
 ]
 
 matmul_shapes_bfloat8_b = [
-    #    (512, 1024, 1024, True, True, 1, 1, 1),
-    (512, 4096, 1024, True, True, 4, 1, 1),
+    (512, 1024, 1024, True, True, 1, 1, 1),
+    # (512, 4096, 1024, True, True, 4, 1, 1),
 ]
 
 matmul_shapes_bfloat4_b = [
@@ -125,7 +126,7 @@ matmul_configs = [
 
 # @pytest.mark.skip(reason="WH didt hang, need to skip CI and run locally only")
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576, "trace_region_size": 3855488}], indirect=True)
-@pytest.mark.parametrize("grid_size", [(1, 1)])
+@pytest.mark.parametrize("grid_size", [(4, 2)])
 @pytest.mark.parametrize("tile_h", [32])
 @pytest.mark.parametrize("tile_w", [32])
 @pytest.mark.parametrize("num_warmup_iterations", [0])
@@ -137,9 +138,10 @@ def test_matmul_2d_host_perf(
     tile_w,
     num_warmup_iterations,
     num_measurement_iterations,
-    use_program_cache,
+    #    use_program_cache,
 ):
     ENVS = dict(os.environ)
+    ERR_FILE_PATH = Path(ENVS["ERR_FILE_PATH"])
     TT_METAL_HOME = Path(ENVS["TT_METAL_HOME"])
     ARTIFACTS_DIR = TT_METAL_HOME / "generated"
     FILE_NAME = ARTIFACTS_DIR / "matmul_2d_host_perf_report.csv"
@@ -254,18 +256,54 @@ def test_matmul_2d_host_perf(
                 else:
                     output_tile = ttnn.Tile([tile_h, tile_w])
 
-                for iter in range(0, num_measurement_iterations):
-                    output_t = ttnn.matmul(
-                        in0_t,
-                        in1_t,
-                        program_config=program_config,
-                        memory_config=out_mem_config,
-                        dtype=dtype,
-                        compute_kernel_config=compute_kernel_config,
-                        output_tile=output_tile,
-                    )
-                ttnn.synchronize_device(device)
-                output_tensor = ttnn.to_torch(output_t)
-                ttnn.deallocate(output_t)
+                max_nops_unpack = 1
+                max_nops_math = 1
+                max_nops_pack = 1
+                max_reps = 1
+                COUNTER = 0
+                with open(ERR_FILE_PATH, "r") as f:
+                    lines = f.read().splitlines()
+                    last_line = lines[-1]
+                    # Skip the one after the last successful run
+                    START_COUNT = int(last_line.split()[0]) + 2
+                    f.close()
+                    f = open(ERR_FILE_PATH, "a")
+                    f.write(f"{START_COUNT-1} : HANGED/ABORT\n")
+                    f.close()
+                    print(f"Starting from id {START_COUNT}")
+                    for x in range(0, max_nops_unpack):
+                        for y in range(0, max_nops_math):
+                            for z in range(0, max_nops_pack):
+                                if COUNTER < START_COUNT:
+                                    COUNTER += 1
+                                # continue
+
+                                # ttnn.device.DisablePersistentKernelCache()
+                                os.environ["TT_NOP_UNPACK"] = str(x)
+                                os.environ["TT_NOP_MATH"] = str(y)
+                                os.environ["TT_NOP_PACK"] = str(z)
+                                start = timer()
+
+                                for iter in range(0, num_measurement_iterations):
+                                    output_t = ttnn.matmul(
+                                        in0_t,
+                                        in1_t,
+                                        program_config=program_config,
+                                        memory_config=out_mem_config,
+                                        dtype=dtype,
+                                        compute_kernel_config=compute_kernel_config,
+                                        output_tile=output_tile,
+                                    )
+                                end = timer()
+                                time_taken = end - start
+                                runtime_spike = "True" if (time_taken > 0.1) else "False"
+                                with open(ERR_FILE_PATH, "a") as f:
+                                    f.write(
+                                        f"{COUNTER} unpack_nop={x} math_nop={y}, pack_nop={z} time={time_taken} runtime_spike={runtime_spike}\n"
+                                    )
+                                    f.close()
+                                COUNTER += 1
+                                ttnn.synchronize_device(device)
+                                ttnn.deallocate(output_t)
                 ttnn.deallocate(in0_t)
                 ttnn.deallocate(in1_t)
