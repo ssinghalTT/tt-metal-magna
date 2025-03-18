@@ -89,7 +89,7 @@ matmul_shapes_bfloat16 = [
 ]
 
 matmul_shapes_bfloat8_b = [
-    # (512, 1024, 1024, True, True, 1, 1, 1),
+    #  (512, 1024, 1024, True, True, 1, 1, 1),
     (512, 4096, 1024, True, True, 4, 1, 1),
 ]
 
@@ -151,11 +151,11 @@ def test_matmul_2d_host_perf(
     HiFi3_cycle = LoFi_cycle * 3
     HiFi4_cycle = LoFi_cycle * 4
 
-    max_nops_unpack = 5
-    max_nops_math = 5
-    max_nops_pack = 5
-    for x in range(0, max_nops_unpack):
-        for y in range(0, max_nops_math):
+    max_nops_unpack = 15
+    max_nops_math = 15
+    max_nops_pack = 1
+    for x in range(6, max_nops_unpack):
+        for y in range(6, max_nops_math):
             for z in range(0, max_nops_pack):
                 for dtype, math_fidelity, use_trace in matmul_configs:
                     if dtype == ttnn.bfloat16:
