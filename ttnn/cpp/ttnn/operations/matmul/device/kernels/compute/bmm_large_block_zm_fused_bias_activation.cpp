@@ -208,6 +208,7 @@ void MAIN {
                                     out_subblock_w,
                                     out_subblock_h,
                                     in0_block_w);
+                                asm volatile("nop");
                                 in0_index++;               // stride right by 1
                                 in1_index += in1_block_w;  // to stride down by 1 need to stride by in_per_core_w
                                                            // (should be called in1_block_w)

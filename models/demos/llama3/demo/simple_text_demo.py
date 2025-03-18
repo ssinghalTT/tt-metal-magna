@@ -120,7 +120,6 @@ def create_tt_model(
         optimizations=optimizations,
         max_seq_len=max_seq_len,
     )
-    tt_model_args.n_layers = 6
     state_dict = tt_model_args.load_state_dict()
 
     page_table = None
