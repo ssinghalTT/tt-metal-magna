@@ -84,13 +84,13 @@ def get_device_freq():
 
 
 matmul_shapes_bfloat16 = [
-    (16384, 16384, 16384, False, False, 4, 8, 8),
-    # (16384, 65536, 16384, False, False, 16, 8, 8),
+    # (16384, 16384, 16384, False, False, 4, 8, 8),
+    (16384, 65536, 16384, False, False, 16, 8, 8),
 ]
 
 matmul_shapes_bfloat8_b = [
-    (512, 1024, 1024, True, True, 1, 1, 1),
-    # (512, 4096, 1024, True, True, 4, 1, 1),
+    # (512, 1024, 1024, True, True, 1, 1, 1),
+    (512, 4096, 1024, True, True, 4, 1, 1),
 ]
 
 matmul_shapes_bfloat4_b = [
@@ -126,7 +126,7 @@ matmul_configs = [
 
 # @pytest.mark.skip(reason="WH didt hang, need to skip CI and run locally only")
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576, "trace_region_size": 3855488}], indirect=True)
-@pytest.mark.parametrize("grid_size", [(4, 2)])
+@pytest.mark.parametrize("grid_size", [(1, 1)])
 @pytest.mark.parametrize("tile_h", [32])
 @pytest.mark.parametrize("tile_w", [32])
 @pytest.mark.parametrize("num_warmup_iterations", [0])
@@ -151,20 +151,23 @@ def test_matmul_2d_host_perf(
     HiFi3_cycle = LoFi_cycle * 3
     HiFi4_cycle = LoFi_cycle * 4
 
-    max_nops_unpack = 1
-    max_nops_math = 1
-    max_nops_pack = 1
+    max_nops_unpack = 5
+    max_nops_math = 5
+    max_nops_pack = 5
     for x in range(0, max_nops_unpack):
         for y in range(0, max_nops_math):
             for z in range(0, max_nops_pack):
-                os.environ["TT_NOP_UNPACK"] = str(x)
-                os.environ["TT_NOP_MATH"] = str(y)
-                os.environ["TT_NOP_PACK"] = str(z)
                 for dtype, math_fidelity, use_trace in matmul_configs:
                     if dtype == ttnn.bfloat16:
                         matmul_shapes = matmul_shapes_bfloat16
+                        os.environ["TT_NOP_UNPACK"] = str(0)
+                        os.environ["TT_NOP_MATH"] = str(0)
+                        os.environ["TT_NOP_PACK"] = str(0)
                     elif dtype == ttnn.bfloat8_b:
                         matmul_shapes = matmul_shapes_bfloat8_b
+                        os.environ["TT_NOP_UNPACK"] = str(x)
+                        os.environ["TT_NOP_MATH"] = str(y)
+                        os.environ["TT_NOP_PACK"] = str(z)
                     elif dtype == ttnn.bfloat4_b:
                         matmul_shapes = matmul_shapes_bfloat4_b
                     logger.info(f"dtype = {dtype}, math_fidelity = {math_fidelity}, use_trace = {use_trace}")

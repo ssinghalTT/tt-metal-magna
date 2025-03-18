@@ -528,6 +528,7 @@ operation::ProgramWithCallbacks create_program_mcast_in0_in1(
     const uint32_t pack_nops = std::stoi(std::getenv("TT_NOP_PACK"));
     std::cout << "Factory nops " << "Unpack " << unpack_nops << " Math " << math_nops << " Pack " << pack_nops
               << std::endl;
+    mm_kernel_defines["MM_ADD_NOPS"] = "1";
     mm_kernel_defines["UNPACK_NOPS"] = std::to_string(unpack_nops);
     mm_kernel_defines["MATH_NOPS"] = std::to_string(math_nops);
     mm_kernel_defines["PACK_NOPS"] = std::to_string(pack_nops);

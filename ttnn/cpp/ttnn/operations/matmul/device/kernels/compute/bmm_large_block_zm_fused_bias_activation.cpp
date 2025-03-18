@@ -23,6 +23,14 @@
 
 namespace NAMESPACE {
 
+inline void add_nops(const int num_nops) {
+#pragma GCC urnoll num_nops
+    for (int i = 0; i < num_nops; i++) {
+        // TTI_NOP;
+        asm volatile("nop");
+    }
+}
+
 FORCE_INLINE void reload_from_cb_to_dst(
     uint32_t in0_cb_id,
     uint32_t in1_cb_id,
