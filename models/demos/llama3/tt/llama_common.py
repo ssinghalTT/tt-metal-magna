@@ -453,7 +453,7 @@ def get_max_prefill_chunk_size(seq_len, max_prefill_seq_len):
     - `seq_len` is a multiple of 2048.
     - `max_prefill_seq_len` is a multiple of 2048.
     """
-    MIN_CHUNK_SIZE = 2048
+    MIN_CHUNK_SIZE = 1024
 
     if not isinstance(seq_len, int) or not isinstance(max_prefill_seq_len, int):
         raise TypeError("Both seq_len and max_prefill_seq_len must be integers.")
