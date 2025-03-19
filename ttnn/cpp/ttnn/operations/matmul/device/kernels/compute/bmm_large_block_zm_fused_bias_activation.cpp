@@ -188,6 +188,7 @@ void MAIN {
                     cb_wait_front(in0_cb_id, in0_block_num_tiles);
                     cb_wait_front(in1_cb_id, in1_block_num_tiles);
 
+                    add_nops(1000);
                     int in0_index_subblock_offset = 0;
                     for (uint32_t in0_subblock = 0; in0_subblock < in0_num_subblocks; in0_subblock++) {
                         int in1_index_subblock_offset = 0;
@@ -208,6 +209,7 @@ void MAIN {
                             }
 
 #ifndef SKIP_COMPUTE
+
                             // Compute output sub-block
                             uint32_t dst_index =
                                 0;  // start at 0, each call to matmul_block internally increments dst_index
@@ -220,6 +222,7 @@ void MAIN {
                                 MATH(add_nops(MATH_NOPS));
                                 PACK(add_nops(PACK_NOPS));
 #endif
+
                                 // matmul outer product of (out_subblock_h x out_subblock_w) tiles that fill dst
                                 // accumulation is done by iterating matmul_block across inner dim
                                 // in0_block_w is passed as innder dim (kt) to matmul_block, interally used to stride
