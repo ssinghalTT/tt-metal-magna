@@ -48,10 +48,12 @@ FORCE_INLINE void reload_from_cb_to_dst(
     uint32_t start_tile_index = 0;
     copy_block_matmul_partials(mm_partials_cb_id, start_tile_index, start_dst_index, out_subblock_num_tiles);
 
+    // MATH(WAYPOINT("MREW"));
     cb_pop_front(mm_partials_cb_id, out_subblock_num_tiles);
     // Reconfigure srcA back
     mm_block_init_short_with_dt(
         in0_cb_id, in1_cb_id, mm_partials_cb_id, in1_transpose_tile, out_subblock_w, out_subblock_h, in0_block_w);
+    // MATH(WAYPOINT("MRED"));
 }
 
 template <uint32_t out_subblock_w, uint32_t out_block_w>
@@ -153,6 +155,7 @@ void MAIN {
 
     DPRINT << "Unpack nops " << UNPACK_NOPS << " Math nops " << MATH_NOPS << " Pack nops " << PACK_NOPS << ENDL();
 
+    DPRINT << "Untilize out " << (uint32_t)untilize_out << ENDL();
     mm_block_init(
         in0_cb_id, in1_cb_id, mm_partials_cb_id, in1_transpose_tile, out_subblock_w, out_subblock_h, in0_block_w);
     for (uint32_t b = 0; b < batch; b++) {
@@ -191,6 +194,7 @@ void MAIN {
                         for (uint32_t in1_subblock = 0; in1_subblock < in1_num_subblocks; in1_subblock++) {
                             tile_regs_acquire();
                             if (enable_reload) {
+                                // MATH(WAYPOINT("REW"));
                                 reload_from_cb_to_dst(
                                     in0_cb_id,
                                     in1_cb_id,
@@ -200,6 +204,7 @@ void MAIN {
                                     out_subblock_w,
                                     out_subblock_h,
                                     in0_block_w);
+                                // MATH(WAYPOINT("RED"));
                             }
 
 #ifndef SKIP_COMPUTE
@@ -220,6 +225,8 @@ void MAIN {
                                 // in0_block_w is passed as innder dim (kt) to matmul_block, interally used to stride
                                 // in0
                                 // UNPACK(DPRINT << "matmul_block start" << ENDL());
+
+                                //	MATH(WAYPOINT("MAW"));
                                 matmul_block(
                                     in0_cb_id,
                                     in1_cb_id,
@@ -230,6 +237,7 @@ void MAIN {
                                     out_subblock_w,
                                     out_subblock_h,
                                     in0_block_w);
+                                //	MATH(WAYPOINT("MAD"));
                                 in0_index++;               // stride right by 1
                                 in1_index += in1_block_w;  // to stride down by 1 need to stride by in_per_core_w
                                 // (should be called in1_block_w)
@@ -238,6 +246,7 @@ void MAIN {
 #endif  // SKIP_COMPUTE
 
                             if (last_out) {
+                                PACK(WAYPOINT("PLOW"));
 // If we fuse bias, we will pack out and run bias + optional sfpu in a separate loop
 #if not defined FUSE_BIAS and defined SFPU_OP_INIT_ACTIVATION
                                 for (uint32_t i = 0; i < out_subblock_num_tiles; i++) {
@@ -270,7 +279,7 @@ void MAIN {
 
                                 tile_regs_release();
                                 cb_push_back(mm_out_cb_id, out_subblock_num_tiles);
-
+                                PACK(WAYPOINT("PLOD"));
                             } else {
                                 tile_regs_commit();
                                 // Wait for tiles in output buffer to be written out since interm and output share
@@ -344,7 +353,7 @@ void MAIN {
 #ifdef PACKER_L1_ACC
                 PACK((llk_pack_reconfig_l1_acc(0)));
 #endif
-
+                DPRINT << "INSIDE FUSE" << ENDL();
                 reconfig_data_format(in1_cb_id, mm_partials_cb_id, in0_cb_id, bias_cb_id);
                 add_bcast_rows_init_short(mm_partials_cb_id, bias_cb_id);
                 // reconfigure unpacker df for src B

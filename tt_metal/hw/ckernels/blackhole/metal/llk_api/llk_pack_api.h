@@ -259,7 +259,6 @@ inline void llk_pack_untilize(
             pack_dst_format[output_id],
             (block_c_index * ((num_faces > 2) ? num_faces / 2 : num_faces) * block_ct_dim * FACE_C_DIM)) /
             16;
-
     for (std::uint32_t block_rt = 0; block_rt < block_rt_dim; block_rt++) {
         _llk_pack_untilize_<block_ct_dim, full_ct_dim, diagonal>(
             pack_tile_addr, pack_dst_format[output_id], face_r_dim, num_faces, block_rt * block_ct_dim);
@@ -274,20 +273,25 @@ inline void llk_matmul_pack(
     std::uint8_t output_id = get_output_id(output);
 
     static_assert((!(untilize && out_of_order_output)) && "untilize out of order packing is not supported!");
-
+    //    WAYPOINT("PMPW");
     for (uint32_t tile_index = start_tile_index; tile_index < start_tile_index + ntiles; tile_index++) {
         std::uint32_t pack_tile_addr =
             get_output_tile_address<out_of_order_output, untilize>(output_id, output_tile_index);
 
         _llk_pack_<DST_SYNC_MODE, untilize, is_fp32_dest_acc_en>(tile_index, pack_tile_addr);
     }
+    //    WAYPOINT("PMPD");
 }
 
 /*************************************************************************
  * LLK PACK COMMON
  *************************************************************************/
 
-inline void llk_packer_wait_for_math_done() { _llk_packer_wait_for_math_done_(); }
+inline void llk_packer_wait_for_math_done() {
+    WAYPOINT("PWMW");
+    _llk_packer_wait_for_math_done_();
+    WAYPOINT("PWMD");
+}
 
 template <uint WaitRes = p_stall::NONE>
 inline void llk_packer_set_math_semaphore() {
@@ -296,7 +300,9 @@ inline void llk_packer_set_math_semaphore() {
 
 template <bool is_fp32_dest_acc_en = false>
 inline void llk_pack_dest_section_done() {
+    WAYPOINT("PDW");
     _llk_pack_dest_section_done_<DST_SYNC_MODE, is_fp32_dest_acc_en>();
+    WAYPOINT("PDD");
 }
 
 template <bool untilize = false, bool diagonal = false>

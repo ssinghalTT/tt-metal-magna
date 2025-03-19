@@ -35,4 +35,4 @@
 
   }
 
-  run_test_in_loop > $STDOUT_FILE
+  run_test_in_loop # > $STDOUT_FILE

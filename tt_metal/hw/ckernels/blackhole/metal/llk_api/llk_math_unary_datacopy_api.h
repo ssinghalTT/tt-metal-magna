@@ -29,11 +29,12 @@ template <
     bool unpack_to_dest = false>
 inline void llk_math_eltwise_unary_datacopy_block(uint start_dst_index, uint ntiles, uint operand = 0) {
     const std::uint32_t operand_id = get_operand_id(operand);
-
+    // WAYPOINT("MDCW");
     for (uint32_t dst_index = start_dst_index; dst_index < start_dst_index + ntiles; dst_index++) {
         _llk_math_eltwise_unary_datacopy_<type, DST_SYNC_MODE, src_b_bcast_type, is_fp32_dest_acc_en, unpack_to_dest>(
             dst_index, unpack_src_format[operand_id], unpack_dst_format[operand_id]);
     }
+    // WAYPOINT("MDCD");
 }
 
 template <
