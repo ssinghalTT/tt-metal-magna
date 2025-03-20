@@ -62,6 +62,7 @@ jobs:
 
   clang-static-analysis:
     name: 🤖 Clang Static Analysis
+    needs: [ build-docker-image ]
     runs-on:
       - build
       - in-service
