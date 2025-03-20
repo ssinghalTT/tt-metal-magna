@@ -94,7 +94,7 @@ jobs:
         run: |
           mkdir -pv .build/clang-static-analysis
           cd .build/clang-static-analysis
-          cmake ../.. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DTT_UNITY_BUILDS=OFF -DWITH_PYTHON_BINDINGS=OFF
+          cmake ../.. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DTT_UNITY_BUILDS=OFF -DWITH_PYTHON_BINDINGS=OFF --toolchain=cmake/x86_64-linux-clang-17-libcpp-toolchain.cmake
 
       - uses: whisperity/codechecker-analysis-action@v1
         id: codechecker
