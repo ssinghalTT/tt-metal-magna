@@ -60,10 +60,60 @@ jobs:
       version: ${{ inputs.version }}
       architecture: ${{ inputs.architecture }}
 
+  clang-static-analysis:
+    name: 🤖 Clang Static Analysis
+    runs-on:
+      - build
+      - in-service
+    container:
+      image: ${{ needs.build-docker-image.outputs.ci-build-tag || 'docker-image-unresolved!'}}
+      volumes:
+        - ${{ github.workspace }}/docker-job:/work # Subdir to workaround https://github.com/actions/runner/issues/691
+        - /home/ubuntu/.ccache-ci:/github/home/.ccache # HOME is hardcoded for no clear reason: https://github.com/actions/runner/issues/863
+        - /mnt/MLPerf/ccache:/mnt/MLPerf/ccache
+      # Group 1457 is for the shared ccache drive
+      # tmpfs is for efficiency
+      options: >
+        --group-add 1457
+        --tmpfs /tmp
+    defaults:
+      run:
+        shell: bash
+        working-directory: /work # https://github.com/actions/runner/issues/878
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: recursive
+          path: docker-job # Here be dragons; keep it scoped to our desired volume, yet must be under github.workspace and be sure to clean up at the end
+          clean: true
+
+      - name: "Prepare build"
+        run: |
+          mkdir -pv .build/clang-static-analysis
+          cd .build/clang-static-analysis
+          cmake ../.. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DTT_UNITY_BUILDS=OFF -DWITH_PYTHON_BINDINGS=OFF
+
+      - uses: whisperity/codechecker-analysis-action@v1
+        id: codechecker
+        name: "Analyze with CodeChecker"
+        with:
+          logfile: /work/.build/clang-static-analysis/compile_commands.json
+
+      - uses: actions/upload-artifact@v4
+        timeout-minutes: 10
+        with:
+          name: "CodeChecker Bug Reports"
+          path: ${{ steps.codechecker.outputs.result-html-dir }}
+
+      - uses: tenstorrent/tt-metal/.github/actions/cleanup@main
+        if: always()
+
   clang-tidy:
+    if: ${{ false && needs.determine-scan-type.outputs.do-scan == 'true' }}
     name: 🤖 Clang Tidy
     needs: [ build-docker-image, determine-scan-type ]
-    if: ${{ needs.determine-scan-type.outputs.do-scan == 'true' }}
     runs-on:
       - build
       - in-service
