@@ -102,7 +102,7 @@ jobs:
         name: "Analyze with CodeChecker"
         with:
           logfile: /work/.build/clang-static-analysis/compile_commands.json
-          # llvm-version: ignore # Already installed in our Docker container
+          llvm-version: ignore # Already installed in our Docker container
 
       - uses: actions/upload-artifact@v4
         timeout-minutes: 10

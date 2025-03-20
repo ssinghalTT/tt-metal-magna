@@ -200,6 +200,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-utils \
     bc \
     clang-tidy-17 \
+    clang-tools-17 \
     curl \
     dialog \
     file \
