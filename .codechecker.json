@@ -1,0 +1,10 @@
+{
+    "analyzers": {
+      "clangsa": {
+        "checkers": {
+          "all": true,
+          "disabled": ["alpha.*"]
+        }
+      }
+    }
+  }
