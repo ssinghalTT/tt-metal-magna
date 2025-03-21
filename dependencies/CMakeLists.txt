@@ -3,6 +3,8 @@
 # their own .clang-tidy within themselves and still not be clean against it <cough>flatbuffers</cough>
 set(CMAKE_C_CLANG_TIDY "")
 set(CMAKE_CXX_CLANG_TIDY "")
+# Do not export compile commands for dependencies; we're not interested in scanning them
+set(CMAKE_EXPORT_COMPILE_COMMANDS OFF)
 
 ############################################################################################################################
 # Boost
