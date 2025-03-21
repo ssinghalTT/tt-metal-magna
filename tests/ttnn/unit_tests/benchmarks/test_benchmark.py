@@ -14,8 +14,6 @@ from tests.ttnn.utils_for_testing import assert_with_pcc
 from pathlib import Path
 import os
 
-# # Configure loguru to write logs to a file
-# logger.add("test_benchmark.log", rotation="500 MB", retention="15 days", level="INFO")
 
 SUBBLOCK_HW_CHOICES = [
     (4, 2),
@@ -141,20 +139,20 @@ matmul_shapes_bfloat4_b = [
 matmul_configs = [
     (ttnn.bfloat16, ttnn.MathFidelity.HiFi2, False),
     (ttnn.bfloat16, ttnn.MathFidelity.HiFi4, False),
-    (ttnn.bfloat8_b, ttnn.MathFidelity.HiFi4, False),
+    (ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, False),
     (ttnn.bfloat8_b, ttnn.MathFidelity.LoFi, False),
     (ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, False),
-    # (ttnn.bfloat16, ttnn.MathFidelity.HiFi2, True),
-    # (ttnn.bfloat16, ttnn.MathFidelity.HiFi4, True),
-    # (ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, True),
-    # (ttnn.bfloat8_b, ttnn.MathFidelity.LoFi, True),
-    # (ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, True),
+    (ttnn.bfloat16, ttnn.MathFidelity.HiFi2, True),
+    (ttnn.bfloat16, ttnn.MathFidelity.HiFi4, True),
+    (ttnn.bfloat8_b, ttnn.MathFidelity.HiFi2, True),
+    (ttnn.bfloat8_b, ttnn.MathFidelity.LoFi, True),
+    (ttnn.bfloat4_b, ttnn.MathFidelity.LoFi, True),
 ]
 
 
-# @pytest.mark.skip(reason="WH didt hang, need to skip CI and run locally only")
+@pytest.mark.skip(reason="WH didt hang, need to skip CI and run locally only")
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576, "trace_region_size": 3855488}], indirect=True)
-@pytest.mark.parametrize("grid_size", [(2, 4)])
+@pytest.mark.parametrize("grid_size", [(8, 8)])
 @pytest.mark.parametrize("tile_h", [32])
 @pytest.mark.parametrize("tile_w", [32])
 @pytest.mark.parametrize("num_warmup_iterations", [5])
@@ -208,14 +206,8 @@ def test_matmul_2d_host_perf(
                 matmul_shapes = matmul_shapes_bfloat8_b
             elif dtype == ttnn.bfloat4_b:
                 matmul_shapes = matmul_shapes_bfloat4_b
-            logger.info(f"dtype = {dtype}, math_fidelity = {math_fidelity}, use_trace = {use_trace}")
             for m, k, n, in0_sharded, out_sharded, in0_block_w_div, num_out_blocks_h, num_out_blocks_w in matmul_shapes:
                 profiler.clear()
-
-                # scale input size to match BH grid size
-                m = (m // 8) * grid_size[1]
-                n = (n // 8) * grid_size[0]
-                k = (k // 8) * grid_size[0]
 
                 in0_shape = [1, 1, m, k]
                 in1_shape = [1, 1, k, n]
@@ -376,8 +368,7 @@ def test_matmul_2d_host_perf(
                 num_cores_full_grid = compute_grid_size.x * compute_grid_size.y
                 ideal_cycle_full_grid = m * k * n / tile_h / tile_w / 32 * cycle_per_tile / num_cores_full_grid
                 ideal_cycle_user_grid = m * k * n / tile_h / tile_w / 32 * cycle_per_tile / num_cores_user_grid
-                # inference_cycle = inference_time_avg * get_device_freq() * 1e6
-                inference_cycle = inference_time_avg * 800 * 1e6
+                inference_cycle = inference_time_avg * get_device_freq() * 1e6
                 utilization_full_grid = ideal_cycle_full_grid / inference_cycle
                 utilization_user_grid = ideal_cycle_user_grid / inference_cycle
                 utilization_full_grid_percentage = f"{utilization_full_grid * 100:.2f}%"
@@ -440,7 +431,7 @@ matmul_configs_oob = [
 
 @pytest.mark.skip(reason="WH didt hang, need to skip CI and run locally only")
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576, "trace_region_size": 3855488}], indirect=True)
-@pytest.mark.parametrize("grid_size", [(4, 2)])
+@pytest.mark.parametrize("grid_size", [(8, 8)])
 @pytest.mark.parametrize("tile_h", [32])
 @pytest.mark.parametrize("tile_w", [32])
 @pytest.mark.parametrize("num_warmup_iterations", [5])
