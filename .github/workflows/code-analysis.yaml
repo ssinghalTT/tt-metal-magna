@@ -95,7 +95,7 @@ jobs:
         run: |
           mkdir -pv .build/clang-static-analysis
           cd .build/clang-static-analysis
-          cmake ../.. -DCMAKE_BUILD_TYPE=Debug -DENABLE_CCACHE=ON -DCMAKE_DISABLE_PRECOMPILE_HEADERS=TRUE -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DTT_UNITY_BUILDS=OFF -DWITH_PYTHON_BINDINGS=OFF --toolchain=cmake/x86_64-linux-clang-17-libcpp-toolchain.cmake
+          cmake ../.. -G Ninja -DCMAKE_BUILD_TYPE=Debug -DENABLE_CCACHE=ON -DCMAKE_DISABLE_PRECOMPILE_HEADERS=TRUE -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DTT_UNITY_BUILDS=OFF -DWITH_PYTHON_BINDINGS=OFF --toolchain=cmake/x86_64-linux-clang-17-libcpp-toolchain.cmake
           # We need to ensure that generated files have been generated -- better if we had a target for this; for now just build the whole thing
           ninja
 
