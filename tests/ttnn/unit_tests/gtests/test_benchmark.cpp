@@ -70,12 +70,6 @@ public:
     Matmul2DHostPerfTestFixture() : ttnn::distributed::test::TTNNFixtureWithTraceEnabledDevice(24576, 200000) {}
 };
 
-void export_nops(int unpack_nops, int math_nops, int pack_nops) {
-    setenv("UNPACK_NOPS", std::to_string(unpack_nops).c_str(), 1);
-    setenv("MATH_NOPS", std::to_string(math_nops).c_str(), 1);
-    setenv("PACK_NOPS", std::to_string(pack_nops).c_str(), 1);
-}
-
 TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
     const std::tuple<int, int>& grid_size = std::get<0>(GetParam());
     const int& tile_h = std::get<1>(GetParam());
@@ -90,7 +84,10 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
     std::map<int, DataType> i_to_dt{{0, DataType::BFLOAT4_B}, {1, DataType::BFLOAT8_B}, {2, DataType::BFLOAT16}};
     std::map<int, MathFidelity> i_to_fi{{0, MathFidelity::LoFi}, {1, MathFidelity::HiFi2}, {2, MathFidelity::HiFi4}};
 
-    export_nops(0, 0, 0);
+    // SET START ID DEPENDING ON CORE GRID TO GET HANG.
+    // 2X1  start_id = 4;
+    // 1X2  start_id = 75;
+    // 1X1  start_id = 88;
     int start_id = 0;
     int test_id = 0;
     for (int dt_a = 0; dt_a < 3; dt_a++) {
@@ -111,7 +108,9 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
 
                                         // Resetting within c code hangs the system.
                                         // system("/home/software/syseng/bh/tt-smi -r 0");
-                                        std::vector<std::tuple<DataType, MathFidelity, int, int, int, bool, bool>>
+                                        std::vector<
+                                            std::
+                                                tuple<DataType, MathFidelity, int, int, int, bool, bool, int, int, int>>
                                             configs;
                                         configs.push_back(std::make_tuple(
                                             i_to_dt[dt_a],
@@ -120,7 +119,10 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
                                             (64 * k_a),
                                             (64 * n_a),
                                             !shard_flip,
-                                            !shard_flip));
+                                            !shard_flip,
+                                            2,
+                                            2,
+                                            2));
                                         configs.push_back(std::make_tuple(
                                             i_to_dt[dt_b],
                                             i_to_fi[dt_b],
@@ -128,34 +130,43 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
                                             (64 * k_b),
                                             (64 * n_b),
                                             shard_flip,
-                                            shard_flip));
+                                            shard_flip,
+                                            2,
+                                            2,
+                                            2));
                                         for (auto& config : configs) {
                                             DataType dtype = std::get<0>(config);
                                             MathFidelity math_fidelity = std::get<1>(config);
-                                            int m = std::get<2>(config);
-                                            int k = std::get<3>(config);
-                                            int n = std::get<4>(config);
+                                            int m = std::get<2>(config) * std::get<1>(grid_size);
+                                            int k = std::get<3>(config) * std::get<0>(grid_size);
+                                            int n = std::get<4>(config) * std::get<0>(grid_size);
                                             bool in0_sharded = std::get<5>(config);
                                             bool out_sharded = std::get<6>(config);
+                                            const int in0_block_w_div = std::get<7>(config);
+                                            const int num_out_blocks_h = std::get<8>(config);
+                                            const int num_out_blocks_w = std::get<9>(config);
 
-                                            // tt::log_info(
-                                            //     "Running test with dtype: {}, math_fidelity: {}", dtype,
-                                            //     math_fidelity);
+                                            tt::log_info(
+                                                "Running test with dtype: {}, math_fidelity: {}", dtype, math_fidelity);
 
                                             const std::vector<int64_t> in0_shape = {1, 1, m, k};
                                             const std::vector<int64_t> in1_shape = {1, 1, k, n};
-                                            const int in0_block_w = k / 32;
-                                            const int per_core_M = m / tile_h;
-                                            const int per_core_N = n / tile_w;
-                                            const int out_block_h = per_core_M;
-                                            const int out_block_w = per_core_N;
+                                            const int in0_block_w = k / std::get<0>(grid_size) / 32 / in0_block_w_div;
+                                            const int per_core_M = m / std::get<1>(grid_size) / tile_h;
+                                            const int per_core_N = n / std::get<0>(grid_size) / tile_w;
+                                            const int out_block_h = per_core_M / num_out_blocks_h;
+                                            const int out_block_w = per_core_N / num_out_blocks_w;
                                             const auto [out_subblock_h, out_subblock_w] =
                                                 get_subblock_sizes(out_block_h, out_block_w, out_sharded);
-                                            /*
-                                                                tt::log_info(
-                                                                    "M*K*N = {}*{}*{} out_subblock_h: {},
-                                               out_subblock_w: {}", m, k, n, out_subblock_h, out_subblock_w);
-                                            */
+
+                                            tt::log_info(
+                                                "M*K*N = {}*{}*{} out_subblock_h: {}, out_subblock_w: {}",
+                                                m,
+                                                k,
+                                                n,
+                                                out_subblock_h,
+                                                out_subblock_w);
+
                                             std::string in0_storage_type = in0_sharded ? "L1" : "DRAM";
                                             std::string in1_storage_type = "DRAM";
                                             std::string out_storage_type = out_sharded ? "L1" : "DRAM";
