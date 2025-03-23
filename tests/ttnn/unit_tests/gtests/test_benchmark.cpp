@@ -90,6 +90,7 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
     std::map<int, DataType> i_to_dt{{0, DataType::BFLOAT4_B}, {1, DataType::BFLOAT8_B}, {2, DataType::BFLOAT16}};
     std::map<int, MathFidelity> i_to_fi{{0, MathFidelity::LoFi}, {1, MathFidelity::HiFi2}, {2, MathFidelity::HiFi4}};
 
+    export_nops(0, 0, 0);
     int start_id = 0;
     int test_id = 0;
     for (int dt_a = 0; dt_a < 3; dt_a++) {
@@ -102,12 +103,13 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
                                 for (int n_b = 1; n_b <= 6; n_b++) {
                                     for (int shard_flip = 0; shard_flip < 2; shard_flip++) {
                                         if (test_id < start_id) {
+                                            test_id++;
                                             continue;
                                         }
                                         if (test_id % 10 == 0) {
                                             std::cout << "Test = " << test_id << std::endl;
                                         }
-                                        // system("myfile.sh");
+                                        system("/home/software/syseng/bh/tt-smi -r 0");
                                         std::vector<std::tuple<DataType, MathFidelity, int, int, int, bool, bool>>
                                             configs;
                                         configs.push_back(std::make_tuple(
@@ -116,20 +118,16 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
                                             (64 * m_a),
                                             (64 * k_a),
                                             (64 * n_a),
-                                            true,
-                                            true));
-                                        // !shard_flip,
-                                        // !shard_flip));
+                                            !shard_flip,
+                                            !shard_flip));
                                         configs.push_back(std::make_tuple(
                                             i_to_dt[dt_b],
                                             i_to_fi[dt_b],
                                             (64 * m_b),
                                             (64 * k_b),
                                             (64 * n_b),
-                                            true,
-                                            true));
-                                        // shard_flip,
-                                        // shard_flip));
+                                            shard_flip,
+                                            shard_flip));
                                         for (auto& config : configs) {
                                             DataType dtype = std::get<0>(config);
                                             MathFidelity math_fidelity = std::get<1>(config);
@@ -256,6 +254,8 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
                                             in0_t.deallocate();
                                             in1_t.deallocate();
                                         }
+
+                                        test_id++;
                                     }
                                 }
                             }
