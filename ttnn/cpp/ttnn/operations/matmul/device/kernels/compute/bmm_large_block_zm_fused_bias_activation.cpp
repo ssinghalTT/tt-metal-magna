@@ -152,7 +152,7 @@ void MAIN {
            << " " << in1_num_subblocks << " " << out_subblock_h << " " << out_subblock_w << " " << in0_block_w
            << ENDL();
 
-    DPRINT << "Unpack nops " << UNPACK_NOPS << " Math nops " << MATH_NOPS << " Pack nops " << PACK_NOPS << ENDL();
+    // DPRINT << "Unpack nops " << UNPACK_NOPS << " Math nops " << MATH_NOPS << " Pack nops " << PACK_NOPS << ENDL();
 
     DPRINT << "Untilize out " << (uint32_t)untilize_out << ENDL();
 

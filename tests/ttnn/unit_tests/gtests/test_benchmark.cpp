@@ -106,10 +106,11 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
                                             test_id++;
                                             continue;
                                         }
-                                        if (test_id % 10 == 0) {
-                                            std::cout << "Test = " << test_id << std::endl;
-                                        }
-                                        system("/home/software/syseng/bh/tt-smi -r 0");
+
+                                        std::cout << "Test = " << test_id << std::endl;
+
+                                        // Resetting within c code hangs the system.
+                                        // system("/home/software/syseng/bh/tt-smi -r 0");
                                         std::vector<std::tuple<DataType, MathFidelity, int, int, int, bool, bool>>
                                             configs;
                                         configs.push_back(std::make_tuple(
@@ -137,8 +138,9 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
                                             bool in0_sharded = std::get<5>(config);
                                             bool out_sharded = std::get<6>(config);
 
-                                            tt::log_info(
-                                                "Running test with dtype: {}, math_fidelity: {}", dtype, math_fidelity);
+                                            // tt::log_info(
+                                            //     "Running test with dtype: {}, math_fidelity: {}", dtype,
+                                            //     math_fidelity);
 
                                             const std::vector<int64_t> in0_shape = {1, 1, m, k};
                                             const std::vector<int64_t> in1_shape = {1, 1, k, n};
@@ -149,15 +151,11 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
                                             const int out_block_w = per_core_N;
                                             const auto [out_subblock_h, out_subblock_w] =
                                                 get_subblock_sizes(out_block_h, out_block_w, out_sharded);
-
-                                            tt::log_info(
-                                                "M*K*N = {}*{}*{} out_subblock_h: {}, out_subblock_w: {}",
-                                                m,
-                                                k,
-                                                n,
-                                                out_subblock_h,
-                                                out_subblock_w);
-
+                                            /*
+                                                                tt::log_info(
+                                                                    "M*K*N = {}*{}*{} out_subblock_h: {},
+                                               out_subblock_w: {}", m, k, n, out_subblock_h, out_subblock_w);
+                                            */
                                             std::string in0_storage_type = in0_sharded ? "L1" : "DRAM";
                                             std::string in1_storage_type = "DRAM";
                                             std::string out_storage_type = out_sharded ? "L1" : "DRAM";
@@ -249,10 +247,10 @@ TEST_P(Matmul2DHostPerfTestFixture, Matmul2DHostPerfTest) {
                                                 /* bias */ std::nullopt,
                                                 /* parameters */ matmul_params);
                                             output_tensor.deallocate();
-
                                             // Deallocate input tensors
                                             in0_t.deallocate();
                                             in1_t.deallocate();
+                                            device->synchronize();
                                         }
 
                                         test_id++;
