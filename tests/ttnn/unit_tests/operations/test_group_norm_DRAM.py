@@ -56,6 +56,8 @@ def manual_group_norm(input_tensor, num_groups, eps=1e-2):
         # (20, 256, 240, 424, 32, 40, 8, 8), # Mochi VAE variant 3 (sharded, so T=1/8th the full tensor)
         # (21, 128, 480, 848, 32, 135, 4, 8), # Mochi VAE variant 4 (sharded, so T=1/8th the full tensor)
         # (20, 128, 480, 848, 32, 135, 4, 8), # Mochi VAE variant 4 (sharded, so T=1/8th the full tensor)
+        # (1,640,128,128,32,2,4,8),#Stable Diffusion XL Variant 1
+        # (1,960,128,128,32,2,2,8),#Stable Diffusion XL Variant 2
     ],
 )
 def test_group_norm_DRAM(device, N, C, H, W, num_groups, num_out_blocks, cores_y, cores_x):
