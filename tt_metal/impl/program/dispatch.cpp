@@ -214,7 +214,6 @@ uint32_t finalize_kernel_bins(
     uint32_t max_offset = 0;
     for (auto& kg : kernel_groups) {
         uint32_t offset = base_offset;
-
         for (int class_id = 0; class_id < DISPATCH_CLASS_MAX; class_id++) {
             auto& optional_id = kg->kernel_ids[class_id];
             if (optional_id) {
@@ -336,6 +335,7 @@ void finalize_program_offsets(T& workload, IDevice* device) {
         }
     };
 
+    std::cout << "Core type = " << hal.get_programmable_core_type_count() << std::endl;
     for (uint32_t index = 0; index < hal.get_programmable_core_type_count(); index++) {
         HalProgrammableCoreType programmable_core_type = hal.get_programmable_core_type(index);
         offset = finalize_rt_args(
@@ -365,6 +365,11 @@ void finalize_program_offsets(T& workload, IDevice* device) {
             offset,
             kernel_text_offset,
             kernel_text_size);
+
+        if (index == 0) {
+            std::cout << "Kernel_text_offset " << kernel_text_offset << " kernel_text_size " << kernel_text_size
+                      << std::endl;
+        }
 
         TT_ASSERT(offset == tt::align(offset, hal.get_alignment(HalMemType::L1)));
 
