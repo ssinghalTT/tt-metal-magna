@@ -18,6 +18,10 @@
 #include "tt_metal/impl/dispatch/dispatch_query_manager.hpp"
 #include "tt_metal/jit_build/build_env_manager.hpp"
 
+#include <iostream> 
+
+#define PRINT 1 
+
 namespace tt::tt_metal {
 namespace program_dispatch {
 
@@ -211,6 +215,11 @@ uint32_t finalize_kernel_bins(
     uint32_t& kernel_text_size) {
     uint32_t l1_alignment = hal.get_alignment(HalMemType::L1);
 
+#ifdef PRINT
+    std::cout << "finalize_kernel_bins" << std::endl;
+    std::cout << "base_offset " << base_offset << std::endl;
+#endif
+
     uint32_t max_offset = 0;
     for (auto& kg : kernel_groups) {
         uint32_t offset = base_offset;
@@ -230,12 +239,26 @@ uint32_t finalize_kernel_bins(
                         kg->kernel_bin_sizes[0] = binary_packed_size;
                         kg->kernel_text_offsets[0] = offset;
                         kg->launch_msg.kernel_config.kernel_text_offset[0] = offset;
+
+#ifdef PRINT
+               	        std::cout << "Dispatch_class_tensix_DM0" << std::endl;
+               	        std::cout << "binary_packed_size " << binary_packed_size << std::endl;
+	          	std::cout << "offset " << offset << std::endl;
+#endif
+
                         offset += binary_packed_size;
                         offset = tt::align(offset, l1_alignment);
                     } else if (class_id == DISPATCH_CLASS_TENSIX_DM1) {
                         kg->kernel_bin_sizes[1] = binary_packed_size;
                         kg->kernel_text_offsets[1] = offset;
                         kg->launch_msg.kernel_config.kernel_text_offset[1] = offset;
+
+#ifdef PRINT
+               	        std::cout << "Dispatch_class_tensix_DM1" << std::endl;
+               	        std::cout << "binary_packed_size " << binary_packed_size << std::endl;
+	          	std::cout << "offset " << offset << std::endl;
+#endif
+
                         offset += binary_packed_size;
                         offset = tt::align(offset, l1_alignment);
 
@@ -250,6 +273,13 @@ uint32_t finalize_kernel_bins(
                             kg->kernel_bin_sizes[2 + proc_type_index] = binary_packed_size;
                             kg->kernel_text_offsets[2 + proc_type_index] = offset;
                             kg->launch_msg.kernel_config.kernel_text_offset[2 + proc_type_index] = offset;
+			    
+#ifdef PRINT
+			    std::cout << "proc_type_index " << proc_type_index << std::endl;
+			    std::cout << "binary_packed_size " << binary_packed_size << std::endl;
+			    std::cout << "offset " << offset << std::endl;
+#endif
+
                             offset += binary_packed_size;
                             offset = tt::align(offset, l1_alignment);
                         }
@@ -263,6 +293,12 @@ uint32_t finalize_kernel_bins(
                         HalProgrammableCoreType::IDLE_ETH) {
                         kg->kernel_text_offsets[class_id] = offset;
                         kg->launch_msg.kernel_config.kernel_text_offset[class_id] = offset;
+
+#ifdef PRINT
+		        std::cout << "Idle ETH " << std::endl;
+		        std::cout << "offset " << offset << std::endl;
+#endif
+
                         offset += binary_packed_size;
                         offset = tt::align(offset, l1_alignment);
                     } else {
@@ -277,6 +313,12 @@ uint32_t finalize_kernel_bins(
     }
     kernel_text_offset = base_offset;
     kernel_text_size = max_offset - base_offset;
+    
+#ifdef PRINT
+    std::cout << "kernel_text_size " << kernel_text_size << std::endl;
+    std::cout << "max_offset " << max_offset << std::endl;
+#endif
+
     return max_offset;
 }
 

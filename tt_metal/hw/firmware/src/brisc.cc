@@ -27,6 +27,7 @@
 
 #include "debug/watcher_common.h"
 #include "debug/waypoint.h"
+#include "debug/pause.h"
 #include "debug/dprint.h"
 #include "debug/stack_usage.h"
 // clang-format on
@@ -475,11 +476,18 @@ int main() {
                 mailboxes->slave_sync.dm1 = RUN_SYNC_MSG_LOAD;
             }
 #endif
+	    PAUSE();
             // Copies from L1 to IRAM on chips where NCRISC has IRAM
             uint32_t kernel_config_base = firmware_config_init(mailboxes, ProgrammableCoreType::TENSIX, DISPATCH_CLASS_TENSIX_DM0);
+
+            DPRINT << "KCFG BASE " << kernel_config_base << ENDL();
+
             int ncrisc_index = static_cast<std::underlying_type<TensixProcessorTypes>::type>(TensixProcessorTypes::DM1);
             uint32_t ncrisc_kernel_src_address =
                 kernel_config_base + launch_msg_address->kernel_config.kernel_text_offset[ncrisc_index];
+
+            //DPRINT << "NCRISC BASE " << ncrisc_kernel_src_address << ENDL();
+
             l1_to_ncrisc_iram_copy(ncrisc_kernel_src_address >> 4,
                 launch_msg_address->kernel_config.ncrisc_kernel_size16,
                 ncrisc_kernel_start_offset16);
