@@ -2357,6 +2357,10 @@ operation::ProgramWithCallbacks groupnorm_multi_core(
                         program, reader_mcast_sender_kernels_id_group_2, core, mcast_sender_args);
                     reader_sender_kernel_ids.push_back(reader_mcast_sender_kernels_id_group_2);
                 }
+                else {
+                    tt::tt_metal::SetRuntimeArgs(
+                        program, reader_mcast_sender_kernels_id_group_2, core, mcast_sender_args);
+                }
             } else {  // mcast receiver
                 log_debug(tt::LogOp, "mcast receiver receive from coord: {} {}", group.front().x, group.front().y);
 
