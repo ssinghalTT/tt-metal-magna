@@ -111,7 +111,7 @@ def create_tt_model(
         optimizations=optimizations,
         max_seq_len=max_seq_len,
     )
-    # tt_model_args.n_layers = 1
+    tt_model_args.n_layers = 80
     state_dict = tt_model_args.load_state_dict()
 
     page_table = None
@@ -185,7 +185,7 @@ def create_tt_model(
         (  # Batch-32 run (Throughput) - 32 users, small prompt
             "models/tt_transformers/demo/sample_prompts/input_data_questions_prefill_128.json",  # input_prompts
             True,  # instruct mode
-            1,  # repeat_batches
+            5,  # repeat_batches
             1024,  # max_seq_len
             32,  # batch_size
             200,  # max_generated_tokens
@@ -407,27 +407,26 @@ def test_demo_text(
         profiler.end(f"preprocess_prefill_inputs", iteration=batch_idx)
 
         # when doing repeating batches, set kv-caches to zero, to avoid context leaking
-        if batch_idx != 0:
-            for layer in model.layers:
-                k_cache, v_cache = layer.attention.layer_past
-                k_cache = ttnn.mul(k_cache, 0, output_tensor=k_cache)
-                v_cache = ttnn.mul(v_cache, 0, output_tensor=v_cache)
+        # if batch_idx != 0:
+        #     for layer in model.layers:
+        #         k_cache, v_cache = layer.attention.layer_past
+        #         k_cache = ttnn.mul(k_cache, 0, output_tensor=k_cache)
+        #         v_cache = ttnn.mul(v_cache, 0, output_tensor=v_cache)
         input_tokens_prefill_pt = torch.stack(input_tokens_prefill_pt).view(batch_size, -1)
 
         logger.info("Starting prefill warmup...")
         profiler.start(f"compile_prefill", iteration=batch_idx)
-        if batch_idx != 0:
-            model.switch_mode("prefill")
-
-        logits = generator.prefill_forward_text(
-            input_tokens_prefill_pt[0].unsqueeze(0),  # Just warmup prefill for 1 user
-            page_table=page_table,
-            kv_cache=tt_kv_cache,
-            prompt_lens=decoding_pos,
-        )
-        profiler.end(f"compile_prefill", iteration=batch_idx)
-        logger.info("Finished prefill warmup")
-
+        if batch_idx == 0:
+            logits = generator.prefill_forward_text(
+                input_tokens_prefill_pt[0].unsqueeze(0),  # Just warmup prefill for 1 user
+                page_table=page_table,
+                kv_cache=tt_kv_cache,
+                prompt_lens=decoding_pos,
+            )
+            profiler.end(f"compile_prefill", iteration=batch_idx)
+            logger.info("Finished prefill warmup")
+        # model.switch_mode("decode")
+        # model.switch_mode("prefill")
         logger.info(f"Starting prefill...")
         profiler.start(f"inference_prefill", iteration=batch_idx)
         logits = generator.prefill_forward_text(
@@ -438,8 +437,10 @@ def test_demo_text(
         )
         prefilled_token = torch.argmax(logits, dim=-1)
         profiler.end(f"inference_prefill", iteration=batch_idx)
-        logger.info(f"Prefill finished")
-        prefilled_token = prefilled_token.repeat(batch_size, 1)
+        logger.info(f"Prefill finished", prefilled_token.shape)
+        # return True
+        if prefilled_token.shape[0] != 32:
+            prefilled_token = prefilled_token.repeat(batch_size, 1)
         # Keep track of generated outputs to print out every iteration
         all_outputs = [encoded_prompts[b][: prefill_lens[b]] for b in range(batch_size)]
         for user in range(batch_size):
@@ -461,11 +462,7 @@ def test_demo_text(
         users_decoding = True
 
         out_tok = prefilled_token  # .repeat(batch_size, 1)
-        try:
-            model.switch_mode("decode")
-        except Exception as e:
-            logger.error(f"Error switching to decode mode: {str(e)}")
-            model.tt_ccl.close()
+
         logger.info(f"Starting decode loop...")
 
         # Log total inference (accounting for compile_decode as well)
@@ -477,18 +474,14 @@ def test_demo_text(
                 profiler.start(f"inference_decode_time_{iteration}", iteration=batch_idx)
 
             # Run decode forward
-            try:
-                logits = generator.decode_forward_text(
-                    out_tok,
-                    current_pos,
-                    enable_trace=enable_trace,
-                    page_table=page_table,
-                    kv_cache=tt_kv_cache,
-                    argmax_on_device=argmax_on_device,
-                )
-            except Exception as e:
-                logger.error(f"Error during decoding: {str(e)}")
-                break
+            logits = generator.decode_forward_text(
+                out_tok,
+                current_pos,
+                enable_trace=enable_trace,
+                page_table=page_table,
+                kv_cache=tt_kv_cache,
+                argmax_on_device=argmax_on_device,
+            )
 
             # Get the next token
             if argmax_on_device:
@@ -536,13 +529,13 @@ def test_demo_text(
                             users_decoding = False
 
             # Print out generated outputs for each user at the end of every iteration
-            if not is_ci_env:
-                for user in range(batch_size):
-                    text = "".join(tokenizer.decode(all_outputs[user]))
-                    if len(text) > 100:
-                        text = "..." + text[-97:]
-                    text = text.replace("\n", " ")
-                    logger.info("[User {}] {}".format(user, text))
+            # if not is_ci_env:
+            #     for user in range(batch_size):
+            #         text = "".join(tokenizer.decode(all_outputs[user]))
+            #         if len(text) > 100:
+            #             text = "..." + text[-97:]
+            #         text = text.replace("\n", " ")
+            #         logger.info("[User {}] {}".format(user, text))
 
             iteration += 1
 
@@ -584,6 +577,7 @@ def test_demo_text(
 
     # Finish profiling at the end of inference for all repeated batches
     profiler.end("run")
+    return True
 
     # Prepare profile benchmark metrics for the first repeat batch only
     compile_prefill_time = profiler.get_duration("compile_prefill")

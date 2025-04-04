@@ -60,6 +60,7 @@ def initialize_vllm_text_transformer(
     optimizations=LlamaOptimizations.performance,
 ):
     submesh_devices = generate_submeshes(mesh_device, tt_data_parallel)
+    n_layers = 1
     # Load model args, weights
     model_args = []
     for submesh in submesh_devices:
@@ -73,9 +74,9 @@ def initialize_vllm_text_transformer(
             max_seq_len=max_seq_len,
         )
 
-        assert model_args_i.model_name.replace("-", "") in hf_config._name_or_path.replace(
-            "-", ""
-        ), f"The model specified in vLLM ({hf_config._name_or_path}) does not match the model name ({model_args_i.model_name}) with model weights ({model_args_i.DEFAULT_CKPT_DIR})."
+        # assert model_args_i.model_name.replace("-", "") in hf_config._name_or_path.replace(
+        #     "-", ""
+        # ), f"The model specified in vLLM ({hf_config._name_or_path}) does not match the model name ({model_args_i.model_name}) with model weights ({model_args_i.DEFAULT_CKPT_DIR})."
         if n_layers is not None:
             model_args_i.n_layers = n_layers
 

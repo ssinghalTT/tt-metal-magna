@@ -49,17 +49,20 @@ class Generator:
             self.model = self.model[0]
 
     def prefill_forward_text(self, tokens: torch.Tensor, page_table=None, kv_cache=None, prompt_lens=None):
-        if hasattr(self, "trace_id"):
-            ttnn.release_trace(self.mesh_device, self.trace_id)
-            del self.trace_id
+        # if hasattr(self, "trace_id"):
+        #     ttnn.release_trace(self.mesh_device, self.trace_id)
+        #     del self.trace_id
 
-        if hasattr(self, "trace_id_text"):
-            ttnn.release_trace(self.mesh_device, self.trace_id_text)
-            del self.trace_id_text
+        # if hasattr(self, "trace_id_text"):
+        #     ttnn.release_trace(self.mesh_device, self.trace_id_text)
+        #     del self.trace_id_text
         if self.model.is_prefill_setup is False:
             self.model.switch_mode("prefill")
         kv_cache = kv_cache[0]
         batch, batch_seq_len = tokens.shape
+        if batch == 1:
+            tokens = tokens.repeat(32, 1)
+            batch, batch_seq_len = tokens.shape
         output_logits = torch.zeros(batch, 1, self.model_args.vocab_size)
         prompt_lens = prompt_lens if prompt_lens is not None else torch.tensor([batch_seq_len] * batch)
 
@@ -80,21 +83,19 @@ class Generator:
             )
             if page_table is not None:
                 page_table_user = self._get_prefill_user_page_table(page_table, kv_cache, seq_len)
-            try:
-                logits = self.prefill_forward_single_user_text(
-                    prefill_ids,
-                    page_table=page_table_user if page_table is not None else None,
-                    user_id=user_id,
-                    last_token_idx=last_token_idx,
-                    kv_cache=kv_cache,
-                )
-            except Exception as e:
-                logger.error(f"Error prefilling user {user_id}: {e}")
+            print("prefill ids", prefill_ids.shape)
+            logits = self.prefill_forward_single_user_text(
+                prefill_ids,
+                page_table=page_table_user if page_table is not None else None,
+                user_id=user_id,
+                last_token_idx=last_token_idx,
+                kv_cache=kv_cache,
+            )
 
         for user_id in range(batch):
             # Since we give unpadded_seq_len, only the tile containing the last token is returned
             output_logits[user_id] = logits
-
+        # print("output logits", output_logits)
         logger.info(f"Finished prefill for all users up to {batch_seq_len} tokens, Starting decode...")
 
         return output_logits
@@ -194,6 +195,8 @@ class Generator:
         read_from_device=True,
         argmax_on_device=False,
     ):
+        # tokens[:, :] = tokens[0, :]
+        print("decode tokens", tokens.shape)
         if self.model.is_decode_setup is False:
             self.model.switch_mode("decode")
         kv_cache = kv_cache[0]
@@ -204,11 +207,12 @@ class Generator:
             "kv_cache": kv_cache,
             "argmax_on_device": argmax_on_device,
         }
+        print("starting,", tokens.shape)
         if enable_trace:
             tt_logits = self._easy_trace_text(**decode_kwargs)
         else:
             tt_logits = self._decode_forward_no_trace_text(**decode_kwargs)
-
+        print("tt_logits", tt_logits.shape)
         if read_from_device:
             return self.read_decode_output(tt_logits, tokens.shape[0], argmax_on_device)
         else:
@@ -229,6 +233,7 @@ class Generator:
         tt_tokens, tt_current_pos, tt_rot_mats, tt_page_table = self.model.prepare_inputs_decode(
             tokens, current_pos, page_table
         )
+        print("tt_tokens", tt_tokens.shape)
         tt_logits = self.model.ttnn_decode_forward(
             tt_tokens,
             tt_current_pos,

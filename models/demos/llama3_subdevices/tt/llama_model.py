@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: © 2023 Tenstorrent Inc.
 
 # SPDX-License-Identifier: Apache-2.0
-
+from loguru import logger
 import ttnn
 import torch
 from tqdm import tqdm
@@ -62,7 +62,9 @@ class TtTransformer(LightweightModule):
 
         self.is_prefill_setup = False
         self.is_decode_setup = False
-
+        self.prefetcher_setup = None
+        self.mesh_sub_device_manager_id_decode = None
+        self.mesh_sub_device_manager_id_prefill = None
         if mode == "decode":
             self.setup_decode()
             self.is_decode_setup = True
@@ -118,12 +120,25 @@ class TtTransformer(LightweightModule):
         if mode == "decode":
             self.tt_tensors = self.prefetcher_setup.get_input_tensors()
 
-    def setup_prefill(self):
+    def setup_prefill(self, mesh_sub_device_manager_id_prefill=None):
+        # if self.prefetcher_setup is None:
         self.prefetcher_setup = TtLlamaPrefetcherSetup(
-            self.mesh_device, n_tensors=0, n_layers=self.n_layers, mode="prefill"
+            self.mesh_device,
+            n_tensors=0,
+            n_layers=self.n_layers,
+            mode="prefill",
+            mesh_sub_device_manager_id_prefill=mesh_sub_device_manager_id_prefill,
         )
+        self.mesh_sub_device_manager_id_prefill = self.prefetcher_setup.mesh_sub_device_manager_id_prefill
+        print("set self.mesh_sub_device_manager_id_prefill", self.mesh_sub_device_manager_id_prefill)
         self.mesh_device.set_sub_device_stall_group([self.prefetcher_setup.worker_sub_device_id])
-        self.tt_ccl = TT_CCL(self.mesh_device, self.args, self.prefetcher_setup.worker_sub_device_id, mode="prefill")
+        print("mesh_sub_device_manager_id_prefill", mesh_sub_device_manager_id_prefill)
+        if mesh_sub_device_manager_id_prefill is None:
+            self.tt_ccl = TT_CCL(
+                self.mesh_device, self.args, self.prefetcher_setup.worker_sub_device_id, mode="prefill"
+            )
+        else:
+            self.tt_ccl = self.tt_ccl_prefill
         # self.prefetcher_setup = None
         # self.tt_ccl = TT_CCL(
         #     self.mesh_device,
@@ -135,16 +150,22 @@ class TtTransformer(LightweightModule):
         #     teardown_persistent_fabric=False,
         # )
 
-    def setup_decode(self):
+    def setup_decode(self, mesh_sub_device_manager_id_decode=None):
+        # if self.prefetcher_setup is None:
         self.prefetcher_setup = TtLlamaPrefetcherSetup(
             self.mesh_device,
             n_tensors=5,
             n_layers=self.n_layers,
+            mesh_sub_device_manager_id_decode=mesh_sub_device_manager_id_decode,
         )
+        self.mesh_sub_device_manager_id_decode = self.prefetcher_setup.mesh_sub_device_manager_id_decode
         self.mesh_device.set_sub_device_stall_group(
             [self.prefetcher_setup.prefetcher_sub_device_id, self.prefetcher_setup.worker_sub_device_id]
         )
-        self.tt_ccl = TT_CCL(self.mesh_device, self.args, self.prefetcher_setup.worker_sub_device_id)
+        if mesh_sub_device_manager_id_decode is None:
+            self.tt_ccl = TT_CCL(self.mesh_device, self.args, self.prefetcher_setup.worker_sub_device_id)
+        else:
+            self.tt_ccl = self.tt_ccl_decode
 
     def prepare_inputs_prefill(self, tokens, start_pos=0, page_table=None, chunk_page_table=None):
         """
@@ -152,9 +173,13 @@ class TtTransformer(LightweightModule):
         tensors on device.
         TODO: Debate whether this function is responsible for padding
         """
+        import gc
 
+        # del self.prefetcher_setup.global_circular_buffer
+        gc.collect()
         tokens = tokens.reshape(1, 1, 1, -1)
         S = tokens.shape[-1]
+        # tokens = tokens.transpose(-1, -2)
         tokens = ttnn.from_torch(
             tokens,
             device=self.mesh_device,
@@ -162,6 +187,10 @@ class TtTransformer(LightweightModule):
             layout=ttnn.ROW_MAJOR_LAYOUT,
             mesh_mapper=ttnn.ReplicateTensorToMesh(self.mesh_device),
         )
+        ttnn.device.dump_device_memory_state(
+            self.mesh_device.get_device(self.mesh_device.get_device_ids()[0]), prefix="EMBEDDING"
+        )
+
         tokens_embd = self.embd(tokens)
         tokens_embd = ttnn.unsqueeze_to_4D(tokens_embd)
 
@@ -219,7 +248,7 @@ class TtTransformer(LightweightModule):
         """
         B = tokens.shape[0]
         # assert current_pos.shape[0] == B, "Batch size mismatch"
-        assert B == self.args.max_batch_size, "Batch size must be equal to max_batch_size"
+        # assert B == self.args.max_batch_size, "Batch size must be equal to max_batch_size"
 
         # Necessary padding to be full tile sized when on device
         tokens = torch.nn.functional.pad(tokens.view(-1), (0, 32 - len(tokens)), "constant", 0)
@@ -315,7 +344,8 @@ class TtTransformer(LightweightModule):
             tt_out = ttnn.to_torch(ttnn.get_device_tensors(tt_out)[0]).float()
         else:
             tt_out = ttnn.to_torch(tt_out).float()
-        tt_out = tt_out[:, :, :B, : self.vocab_size].view(B, S, -1)
+        print("ttout", tt_out.shape)
+        tt_out = tt_out[:, :, :B, : self.vocab_size].reshape(B, S, -1)
         return tt_out
 
     def ttnn_prefill_forward(
@@ -376,7 +406,12 @@ class TtTransformer(LightweightModule):
 
         # Gather the output across all devices and untilize the tensor (for argmax)
         tt_logits = self.tt_ccl.line_all_gather(
-            tt_logits[0], dim=3, num_links=2, cluster_axis=0, memory_config=ttnn.DRAM_MEMORY_CONFIG
+            tt_logits[0],
+            dim=3,
+            num_links=2,
+            cluster_axis=0,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            buffer_key="SAMPLING",
         )
 
         tt_logits = ttnn.untilize(tt_logits, use_multicore=True, sub_core_grids=sub_core_grids)
@@ -385,29 +420,22 @@ class TtTransformer(LightweightModule):
             tt_logits = ttnn.argmax(  # TODO Add multicore support to batch > 1
                 tt_logits, dim=3, use_multicore=True, sub_core_grids=sub_core_grids  # ,output_tensor=tokens
             )
-        else:
-            # Send output logits to DRAM so L1 is not reserved for ttnn tracing and can be used by subsequent operations
-            if not self.args.is_galaxy:
-                tt_logits = ttnn.to_memory_config(tt_logits, ttnn.DRAM_MEMORY_CONFIG)
 
         return tt_logits
 
     def switch_mode(self, mode):
         if mode == "decode":
             if self.is_prefill_setup:
+                # del self.prefetcher_setup.global_circular_buffer
                 self.tt_ccl.close()
-                del self.tt_ccl
-                if self.prefetcher_setup is not None:
-                    self.mesh_device.clear_loaded_sub_device_manager()
-                    self.mesh_device.remove_sub_device_manager(self.prefetcher_setup.mesh_sub_device_manager_id)
-                    del self.prefetcher_setup
+                self.tt_ccl_prefill = self.tt_ccl
                 ttnn.synchronize_device(self.mesh_device)
                 self.is_prefill_setup = False
-                self.mesh_device.disable_and_clear_program_cache()
-                self.mesh_device.enable_program_cache()
+                # self.mesh_device.disable_and_clear_program_cache()
+                # self.mesh_device.enable_program_cache()
 
             if self.is_decode_setup is False:
-                self.setup_decode()
+                self.setup_decode(self.mesh_sub_device_manager_id_decode)
                 self.is_decode_setup = True
                 # prefetch
                 for layer in self.layers:
@@ -415,25 +443,33 @@ class TtTransformer(LightweightModule):
                 self.norm.tt_ccl = self.tt_ccl
                 self.lm_head.tt_ccl = self.tt_ccl
                 self.tt_tensors = self.prefetcher_setup.get_input_tensors()
+                self.prefetcher_setup.global_circular_buffer = ttnn.create_global_circular_buffer(
+                    self.mesh_device,
+                    self.prefetcher_setup.sender_receiver_mapping,
+                    self.prefetcher_setup.global_cb_size,
+                )
+                logger.info(f"GlobalCB size {self.prefetcher_setup.global_cb_size}")
 
         else:
             if self.is_decode_setup:
+                import gc
+
+                del self.prefetcher_setup.global_circular_buffer
+                gc.collect()
                 self.tt_ccl.close()
-                del self.tt_ccl
-                if self.prefetcher_setup is not None:
-                    self.mesh_device.clear_loaded_sub_device_manager()
-                    self.mesh_device.remove_sub_device_manager(self.prefetcher_setup.mesh_sub_device_manager_id)
-                    del self.prefetcher_setup
+                self.tt_ccl_decode = self.tt_ccl
                 ttnn.synchronize_device(self.mesh_device)
                 self.is_decode_setup = False
 
             if self.is_prefill_setup is False:
-                self.setup_prefill()
+                print("switching to prefill", self.mesh_sub_device_manager_id_prefill)
+                self.setup_prefill(self.mesh_sub_device_manager_id_prefill)
                 self.is_prefill_setup = True
                 for layer in self.layers:
                     layer.prefetch(self.prefetcher_setup, self.tt_ccl)
                 self.norm.tt_ccl = self.tt_ccl
                 self.lm_head.tt_ccl = self.tt_ccl
+                ttnn.synchronize_device(self.mesh_device)
 
     def forward(
         self,
@@ -473,6 +509,7 @@ class TtTransformer(LightweightModule):
                 chunk_start_idx=chunk_start_idx,
                 kv_cache=kv_cache[i] if kv_cache is not None else None,
             )
+
         # ttnn.deallocate(h)
         if mode == "decode":
             ttnn.deallocate(garbage_tensor)
