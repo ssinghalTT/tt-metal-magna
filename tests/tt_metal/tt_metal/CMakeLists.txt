@@ -7,6 +7,7 @@ target_link_libraries(
 )
 
 set(TT_METAL_TESTS_SRCS
+    test_int_representation.cpp
     test_bmm.cpp
     test_add_two_ints.cpp
     # test_compile_args.cpp         <- not tested in run_tt_metal.py
@@ -108,6 +109,7 @@ target_sources(
             test_kernels/dataflow/unit_tests/command_queue/pcie_write_16b.cpp
             test_kernels/dataflow/unit_tests/command_queue/random_program.cpp
             test_kernels/misc/add_two_ints.cpp
+            test_kernels/misc/int_representation.cpp
             test_kernels/misc/brisc_print.cpp
             test_kernels/misc/circular_buffer/cb_non_blocking_master_test_kernel.cpp
             test_kernels/misc/circular_buffer/cb_non_blocking_slave_test_kernel.cpp
