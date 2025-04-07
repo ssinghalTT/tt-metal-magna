@@ -12,7 +12,7 @@ def nearest_16(x):
     return math.ceil(x / 16) * 16
 
 
-def determine_num_cores_for_upsample(nhw: int, width: int, max_cores=64) -> int:
+def determine_num_cores_for_upsample(nhw: int, width: int, max_cores=110) -> int:
     gcd_nhw_width = math.gcd(nhw, width)
     cores = nhw // gcd_nhw_width
     if cores > max_cores:
@@ -23,7 +23,7 @@ def determine_num_cores_for_upsample(nhw: int, width: int, max_cores=64) -> int:
     return cores
 
 
-def get_core_grid_from_num_cores(num_cores: int, grid_rows: int = 8, grid_cols: int = 8):
+def get_core_grid_from_num_cores(num_cores: int, grid_rows: int = 11, grid_cols: int = 10):
     rows = num_cores // grid_cols
     assert rows <= grid_rows, "Not enough cores for specified core grid"
     ranges = []
@@ -72,7 +72,7 @@ def preprocess_unet_input_tensor(input_tensor, min_channels=16):
     return ttnn.reshape(nhwc, [1, 1, nhwc.shape[0] * nhwc.shape[1] * nhwc.shape[2], nhwc.shape[-1]])
 
 
-def concatenate(activation, residual, dim=-1, groups=4, final_block=False):
+def concatenate(activation, residual, dim=-1, groups=6, final_block=False):
     """
     Concatenate along the final dimension. The `final_block` flag is used for
     the final upblock where L1 memory pressure is highest.
@@ -204,7 +204,7 @@ class UNetConv2D:
             "stride": self.stride,
             "padding": self.padding,
             "dilation": [1, 1],
-            "groups": 4,
+            "groups": 6,
             "device": self.device,
             "conv_config": self.conv_config,
         }
@@ -330,7 +330,7 @@ class UNetUpblock:
         else:
             x = ttnn.interleaved_to_sharded(x, shardspec)
 
-        upsampled = ttnn.upsample(x, (2, 2), memory_config=x.memory_config())
+        upsampled = ttnn.upsample(x, (2, 2))
         ttnn.deallocate(x)
         return ttnn.reshape(
             upsampled,
@@ -499,10 +499,10 @@ class UNet:
             activation_dtype=ttnn.bfloat16,
         )
 
-        INPUT_TENSOR_SHAPE = [1, 16, 1056, 160]
+        INPUT_TENSOR_SHAPE = [1, 24, 1056, 160]
         self.input_sharded_memory_config = ttnn.create_sharded_memory_config(
             INPUT_TENSOR_SHAPE,
-            ttnn.CoreGrid(x=8, y=6),
+            ttnn.CoreGrid(x=11, y=8),
             ttnn.ShardStrategy.HEIGHT,
         )
 
