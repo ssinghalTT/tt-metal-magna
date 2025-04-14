@@ -13,6 +13,7 @@
 // clang-format on
 
 void kernel_main() {
+    DPRINT << "Waiting for data" << ENDL();
     auto data_pointer = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(0x80000);
     while (data_pointer[0] == 0);
     DPRINT << "Data received 0x" << HEX() << *data_pointer << ENDL();

@@ -70,6 +70,9 @@ void kernel_main() {
     uint32_t num_packets = get_arg_val<uint32_t>(rt_args_idx++);
     uint32_t rx_noc_encoding = get_arg_val<uint32_t>(rt_args_idx++);
     uint32_t time_seed = get_arg_val<uint32_t>(rt_args_idx++);
+    uint32_t unicast_hops = get_arg_val<uint32_t>(rt_args_idx++);
+
+    DPRINT << "source_l1_buffer_address 0x" << HEX() << 0x80000 << ENDL();
 
     uint64_t noc_dest_addr = get_noc_addr_helper(rx_noc_encoding, 0x80000);
 
@@ -80,18 +83,19 @@ void kernel_main() {
     packet_header->to_chip_unicast(1);
     packet_header->to_noc_unicast_write(tt::tt_fabric::NocUnicastCommandHeader{noc_dest_addr}, 4);
 
-    auto data_pointer = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(0x80000 + sizeof(PACKET_HEADER_TYPE));
+    auto data_pointer = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(0x80000);
 
-    for (uint32_t i = 0; i < 64; ++i) {
-        data_pointer[i] = 0xdeadbeef;
-    }
+    // for (uint32_t i = 0; i < sizeof(uint32_t) / 16; ++i) {
+    //     data_pointer[i] = 0xdeadbeef;
+    // }
 
     fwd_fabric_connection.wait_for_empty_write_slot();
     // Set data
-    fwd_fabric_connection.send_payload_without_header_non_blocking_from_address(
-        (uint32_t)data_pointer, sizeof(uint32_t) * 64);
+    fwd_fabric_connection.send_payload_without_header_non_blocking_from_address((uint32_t)data_pointer, 16);
     // Set header
     fwd_fabric_connection.send_payload_blocking_from_address((uint32_t)packet_header, sizeof(PACKET_HEADER_TYPE));
+
+    fwd_fabric_connection.close();
 
     noc_async_write_barrier();
 }
