@@ -1,15 +1,20 @@
-// SPDX-FileCopyrightText: © 2023 Tenstorrent Inc.
+// SPDX-FileCopyrightText: © 2025 Tenstorrent Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 
 #pragma once
 
 #include "core_config.h"
+#include "fabric_host_interface.h"
 #include "risc_attribs.h"
 #include "dataflow_api.h"
-#include "debug/dprint.h"
-#include "debug/ring_buffer.h"
 #include "cq_helpers.hpp"
+#include "tt_metal/fabric/hw/inc/tt_fabric_api.h"
+
+// Fabric and Client interface ring buffer indices
+// The ring buffer size must be a power of 2
+static uint32_t fabric_header_rb_index = 0;
+constexpr uint32_t k_WrapBoundary = 31;  // Fabric atomic inc
 
 // The command queue read interface controls reads from the issue region, host owns the issue region write interface
 // Commands and data to send to device are pushed into the issue region
@@ -121,7 +126,33 @@ enum CQNocSend {
     CQ_NOC_SEND = 1,
 };
 
-constexpr bool use_fabric(uint64_t fabric_router_xy) { return fabric_router_xy != 0; }
+// Returns a client interface for the current Fabric mode
+// If it's a pull interface, it will be safe to use.
+#ifdef FVC_MODE_PULL
+constexpr uint32_t client_interface_size = tt::tt_fabric::PULL_CLIENT_INTERFACE_SIZE;
+template <uint32_t interface_rb_base, uint32_t interface_rb_entries, uint32_t interface_size>
+inline volatile tt::tt_fabric::fabric_pull_client_interface_t* get_fabric_interface() {
+#else
+constexpr uint32_t client_interface_size = tt::tt_fabric::PUSH_CLIENT_INTERFACE_SIZE;
+template <uint32_t interface_rb_base, uint32_t interface_rb_entries, uint32_t interface_size>
+inline volatile tt::tt_fabric::fabric_push_client_interface_t* get_fabric_interface() {
+#endif
+    static_assert(((interface_rb_entries) & ((interface_rb_entries)-1)) == 0);
+    constexpr uint32_t rb_mask = interface_rb_entries - 1;
+
+    static uint32_t fabric_client_interface_rb_index = 0;
+
+    uint32_t addr = interface_rb_base + ((fabric_client_interface_rb_index & rb_mask) * interface_size);
+    fabric_client_interface_rb_index = fabric_client_interface_rb_index + 1;
+
+#ifdef FVC_MODE_PULL
+    auto pull_interface = reinterpret_cast<volatile tt::tt_fabric::fabric_pull_client_interface_t*>(addr);
+    tt::tt_fabric::fabric_wait_for_pull_request_flushed(pull_interface);
+    return pull_interface;
+#else
+    return reinterpret_cast<volatile tt::tt_fabric::fabric_push_client_interface_t*>(addr);
+#endif
+}
 
 template <
     enum CQNocFlags flags,
@@ -275,6 +306,10 @@ FORCE_INLINE void cq_noc_inline_dw_write_init_state(uint64_t dst_addr, uint32_t 
     cq_noc_inline_dw_write_with_state<flags, CQ_NOC_wait, CQ_NOC_send>(dst_addr, val, be);
 }
 
+FORCE_INLINE void wait_for_niu_mst_non_posted_wr_req_sent(uint32_t& block_noc_writes_to_clear) {
+    while (!wrap_ge(NOC_STATUS_READ_REG(noc_index, NIU_MST_NONPOSTED_WR_REQ_SENT), block_noc_writes_to_clear));
+}
+
 template <uint32_t sem_id>
 FORCE_INLINE void cb_wait_all_pages(uint32_t n) {
     volatile tt_l1_ptr uint32_t* sem_addr =
@@ -352,7 +387,7 @@ FORCE_INLINE void cb_block_release_pages(uint32_t& block_noc_writes_to_clear) {
     if (prev_block) {
         WAYPOINT("CBRW");
         uint32_t sem_addr = get_semaphore<fd_core_type>(sem_id);
-        while (!wrap_ge(NOC_STATUS_READ_REG(noc_index, NIU_MST_NONPOSTED_WR_REQ_SENT), block_noc_writes_to_clear));
+        wait_for_niu_mst_non_posted_wr_req_sent(block_noc_writes_to_clear);
         noc_semaphore_inc(get_noc_addr_helper(noc_xy, sem_addr), cb_pages_per_block, noc_idx);
         WAYPOINT("CBRD");
     } else {
@@ -372,6 +407,116 @@ template <uint8_t noc_idx, uint32_t noc_xy, uint32_t sem_id, uint32_t cb_pages_p
 FORCE_INLINE void move_rd_to_next_block_and_release_pages(uint32_t& block_noc_writes_to_clear, uint32_t& rd_block_idx) {
     cb_block_release_pages<noc_idx, noc_xy, sem_id, cb_pages_per_block>(block_noc_writes_to_clear);
     move_rd_to_next_block<cb_blocks>(rd_block_idx);
+}
+
+template <
+    uint32_t mesh_id,
+    uint32_t dev_id,
+    uint32_t routing,
+    uint8_t noc_idx,
+    uint32_t noc_xy,
+    uint32_t sem_id,
+    typename T>
+FORCE_INLINE void cb_release_pages_remote(T client_interface, uint32_t n) {
+    tt::tt_fabric::fabric_atomic_inc(
+        client_interface,
+        routing,
+        (uint32_t)&client_interface->header_buffer[0],
+        mesh_id,
+        dev_id,
+        get_noc_addr_helper(noc_xy, get_semaphore<fd_core_type>(sem_id)),
+        n,
+        k_WrapBoundary);
+#ifdef FVC_MODE_PULL
+    // Ensure the atomic inc has been flushed to the destination
+    tt::tt_fabric::fabric_wait_for_pull_request_flushed(client_interface);
+#endif
+}
+
+template <
+    uint16_t mesh_id,
+    uint16_t dev_id,
+    uint32_t routing,
+    uint8_t noc_idx,
+    uint32_t noc_xy,
+    uint32_t sem_id,
+    uint32_t cb_pages_per_block,
+    typename T>
+FORCE_INLINE void cb_block_release_pages_remote(T client_interface, uint32_t& block_noc_writes_to_clear) {
+    static bool prev_block = false;
+    if (prev_block) {
+        WAYPOINT("CBRW");
+        wait_for_niu_mst_non_posted_wr_req_sent(block_noc_writes_to_clear);
+        cb_release_pages_remote<mesh_id, dev_id, routing, noc_idx, noc_xy, sem_id>(
+            client_interface, cb_pages_per_block);
+        WAYPOINT("CBRD");
+    } else {
+        prev_block = true;
+    }
+    block_noc_writes_to_clear = noc_nonposted_writes_num_issued[noc_index];
+}
+
+template <
+    uint16_t mesh_id,
+    uint16_t dev_id,
+    uint32_t routing,
+    uint8_t noc_idx,
+    uint32_t noc_xy,
+    uint32_t sem_id,
+    uint32_t cb_pages_per_block,
+    uint32_t cb_blocks,
+    typename T>
+FORCE_INLINE void move_rd_to_next_block_and_release_pages_remote(
+    T client_interface, uint32_t& block_noc_writes_to_clear, uint32_t& rd_block_idx) {
+    cb_block_release_pages_remote<mesh_id, dev_id, routing, noc_idx, noc_xy, sem_id, cb_pages_per_block>(
+        client_interface, block_noc_writes_to_clear);
+    move_rd_to_next_block<cb_blocks>(rd_block_idx);
+}
+
+template <
+    uint32_t mesh_id,
+    uint32_t dev_id,
+    uint32_t routing,
+    uint32_t cb_base,
+    uint32_t cb_blocks,
+    uint32_t cb_log_page_size,
+    uint32_t local_cb_sem,
+    uint8_t upstream_noc_idx,
+    uint32_t upstream_noc_xy,
+    uint32_t upstream_cb_sem,
+    uint32_t cb_pages_per_block,
+    typename T>
+FORCE_INLINE uint32_t get_cb_page_and_release_pages_remote(
+    T client_interface,
+    uint32_t& cmd_ptr,
+    uint32_t& cb_fence,
+    uint32_t& block_noc_writes_to_clear,
+    uint32_t block_next_start_addr[],
+    uint32_t& rd_block_idx,
+    uint32_t& local_count) {
+    // Strided past the data that has arrived, get the next page
+    if (cb_fence == block_next_start_addr[rd_block_idx]) {
+        if (rd_block_idx == cb_blocks - 1) {
+            cmd_ptr = cb_base;
+            cb_fence = cb_base;
+        }
+        move_rd_to_next_block_and_release_pages_remote<
+            mesh_id,
+            dev_id,
+            routing,
+            upstream_noc_idx,
+            upstream_noc_xy,
+            upstream_cb_sem,
+            cb_pages_per_block,
+            cb_blocks>(client_interface, block_noc_writes_to_clear, rd_block_idx);
+    }
+
+    // Wait for dispatcher to supply a page
+    uint32_t n_pages =
+        cb_acquire_pages<local_cb_sem, cb_log_page_size>(cb_fence, block_next_start_addr, rd_block_idx, local_count);
+    cb_fence += n_pages << cb_log_page_size;
+
+    return n_pages;
 }
 
 template <

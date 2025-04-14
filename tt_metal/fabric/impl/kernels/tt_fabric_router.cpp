@@ -220,18 +220,18 @@ void kernel_main() {
         if ((loop_count & SWITCH_THRESHOLD) == SWITCH_THRESHOLD) {
             internal_::risc_context_switch();
 
-            if (*(volatile uint32_t*)FABRIC_ROUTER_SYNC_SEM == 0) {
-                // terminate signal from host sw.
-                if constexpr (is_master) {
-                    if (!terminated_slave_routers) {
-                        notify_slave_routers(router_mask, master_router_chan, FABRIC_ROUTER_SYNC_SEM, 0);
-                        terminated_slave_routers = true;
-                    }
-                }
-                if (loop_count >= 0x1000) {
-                    break;
-                }
-            }
+            // if (*(volatile uint32_t*)FABRIC_ROUTER_SYNC_SEM == 0) {
+            //     // terminate signal from host sw.
+            //     if constexpr (is_master) {
+            //         if (!terminated_slave_routers) {
+            //             notify_slave_routers(router_mask, master_router_chan, FABRIC_ROUTER_SYNC_SEM, 0);
+            //             terminated_slave_routers = true;
+            //         }
+            //     }
+            //     if (loop_count >= 0x1000) {
+            //         break;
+            //     }
+            // }
             if (launch_msg->kernel_config.exit_erisc_kernel) {
                 return;
             }
