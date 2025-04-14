@@ -60,8 +60,6 @@ inline void send_packet(
     connection.send_payload_blocking_from_address((uint32_t)packet_header, sizeof(tt::tt_fabric::PacketHeader));
 }
 
-inline void teardown_connection(tt::tt_fabric::WorkerToFabricEdmSender& connection) { connection.close(); }
-
 void kernel_main() {
     using namespace tt::tt_fabric;
 
@@ -73,104 +71,27 @@ void kernel_main() {
     uint32_t rx_noc_encoding = get_arg_val<uint32_t>(rt_args_idx++);
     uint32_t time_seed = get_arg_val<uint32_t>(rt_args_idx++);
 
-    uint64_t noc_dest_addr = get_noc_addr_helper(rx_noc_encoding, target_address);
+    uint64_t noc_dest_addr = get_noc_addr_helper(rx_noc_encoding, 0x80000);
 
-    tt::tt_fabric::WorkerToFabricEdmSender fwd_fabric_connection;
-    tt::tt_fabric::WorkerToFabricEdmSender bwd_fabric_connection;
+    auto fwd_fabric_connection =
+        tt::tt_fabric::WorkerToFabricEdmSender::build_from_args<ProgrammableCoreType::TENSIX>(rt_args_idx);
 
-    volatile tt_l1_ptr PACKET_HEADER_TYPE* fwd_packet_header;
-    volatile tt_l1_ptr PACKET_HEADER_TYPE* bwd_packet_header;
+    auto packet_header = reinterpret_cast<volatile tt_l1_ptr PACKET_HEADER_TYPE*>(packet_header_buffer_address);
+    packet_header->to_chip_unicast(1);
+    packet_header->to_noc_unicast_write(tt::tt_fabric::NocUnicastCommandHeader{noc_dest_addr}, 4);
 
-    if constexpr (mcast_mode) {
-        uint32_t mcast_fwd_hops = get_arg_val<uint32_t>(rt_args_idx++);
-        uint32_t mcast_bwd_hops = get_arg_val<uint32_t>(rt_args_idx++);
+    auto data_pointer = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(0x80000 + sizeof(PACKET_HEADER_TYPE));
 
-        fwd_fabric_connection =
-            tt::tt_fabric::WorkerToFabricEdmSender::build_from_args<ProgrammableCoreType::TENSIX>(rt_args_idx);
-        bwd_fabric_connection =
-            tt::tt_fabric::WorkerToFabricEdmSender::build_from_args<ProgrammableCoreType::TENSIX>(rt_args_idx);
-
-        fwd_packet_header = reinterpret_cast<volatile tt_l1_ptr PACKET_HEADER_TYPE*>(packet_header_buffer_address);
-        bwd_packet_header = reinterpret_cast<volatile tt_l1_ptr PACKET_HEADER_TYPE*>(
-            packet_header_buffer_address + sizeof(PACKET_HEADER_TYPE));
-
-        setup_connection_and_headers(
-            fwd_fabric_connection, fwd_packet_header, mcast_fwd_hops, noc_dest_addr, packet_payload_size_bytes);
-
-        setup_connection_and_headers(
-            bwd_fabric_connection, bwd_packet_header, mcast_bwd_hops, noc_dest_addr, packet_payload_size_bytes);
-
-    } else {
-        uint32_t unicast_hops = get_arg_val<uint32_t>(rt_args_idx++);
-
-        fwd_fabric_connection =
-            tt::tt_fabric::WorkerToFabricEdmSender::build_from_args<ProgrammableCoreType::TENSIX>(rt_args_idx);
-
-        fwd_packet_header = reinterpret_cast<volatile tt_l1_ptr PACKET_HEADER_TYPE*>(packet_header_buffer_address);
-
-        setup_connection_and_headers(
-            fwd_fabric_connection, fwd_packet_header, unicast_hops, noc_dest_addr, packet_payload_size_bytes);
+    for (uint32_t i = 0; i < 64; ++i) {
+        data_pointer[i] = 0xdeadbeef;
     }
 
-    zero_l1_buf(test_results, test_results_size_bytes);
-    test_results[TT_FABRIC_STATUS_INDEX] = TT_FABRIC_STATUS_STARTED;
-
-    uint64_t start_timestamp = get_timestamp();
-
-    // loop over for num packets
-    for (uint32_t i = 0; i < num_packets; i++) {
-#ifndef BENCHMARK_MODE
-        time_seed = prng_next(time_seed);
-#endif
-        if constexpr (mcast_mode) {
-            // fwd packet
-            send_packet(
-                fwd_packet_header,
-                noc_dest_addr,
-                source_l1_buffer_address,
-                packet_payload_size_bytes,
-                time_seed,
-                fwd_fabric_connection);
-
-            // bwd packet
-            send_packet(
-                bwd_packet_header,
-                noc_dest_addr,
-                source_l1_buffer_address,
-                packet_payload_size_bytes,
-                time_seed,
-                bwd_fabric_connection);
-        } else {
-            send_packet(
-                fwd_packet_header,
-                noc_dest_addr,
-                source_l1_buffer_address,
-                packet_payload_size_bytes,
-                time_seed,
-                fwd_fabric_connection);
-        }
-#ifndef BENCHMARK_MODE
-        noc_dest_addr += packet_payload_size_bytes;
-#endif
-    }
-
-    uint64_t cycles_elapsed = get_timestamp() - start_timestamp;
-
-    if constexpr (mcast_mode) {
-        teardown_connection(fwd_fabric_connection);
-        teardown_connection(bwd_fabric_connection);
-    } else {
-        teardown_connection(fwd_fabric_connection);
-    }
+    fwd_fabric_connection.wait_for_empty_write_slot();
+    // Set data
+    fwd_fabric_connection.send_payload_without_header_non_blocking_from_address(
+        (uint32_t)data_pointer, sizeof(uint32_t) * 64);
+    // Set header
+    fwd_fabric_connection.send_payload_blocking_from_address((uint32_t)packet_header, sizeof(PACKET_HEADER_TYPE));
 
     noc_async_write_barrier();
-
-    uint64_t bytes_sent = packet_payload_size_bytes * num_packets;
-
-    // write out results
-    test_results[TT_FABRIC_STATUS_INDEX] = TT_FABRIC_STATUS_PASS;
-    test_results[TT_FABRIC_CYCLES_INDEX] = (uint32_t)cycles_elapsed;
-    test_results[TT_FABRIC_CYCLES_INDEX + 1] = cycles_elapsed >> 32;
-    test_results[TT_FABRIC_WORD_CNT_INDEX] = (uint32_t)bytes_sent;
-    test_results[TT_FABRIC_WORD_CNT_INDEX + 1] = bytes_sent >> 32;
 }
