@@ -5,7 +5,6 @@
 #include "fd_kernel.hpp"
 
 #include <host_api.hpp>
-#include <utility>
 #include <variant>
 
 #include "data_types.hpp"
@@ -19,7 +18,6 @@
 #include "eth_router.hpp"
 #include "eth_tunneler.hpp"
 #include "fabric_types.hpp"
-#include "hal.hpp"
 #include "hal_types.hpp"
 #include "kernel_types.hpp"
 #include "mux.hpp"
@@ -117,7 +115,7 @@ FDKernel* FDKernel::Generate(
     }
 }
 
-void FDKernel::configure_kernel_variant(
+tt::tt_metal::KernelHandle FDKernel::configure_kernel_variant(
     const string& path,
     const std::vector<uint32_t>& compile_args,
     std::map<string, string> defines_in,
@@ -141,8 +139,14 @@ void FDKernel::configure_kernel_variant(
     if (tt::llrt::RunTimeOptions::get_instance().watcher_dispatch_disabled()) {
         defines["FORCE_WATCHER_OFF"] = "1";
     }
-    if (tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_config() == FabricConfig::FABRIC_2D) {
-        defines["FVC_MODE_PULL"] = "1";
+    switch (tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_config()) {
+        case FabricConfig::FABRIC_2D: defines["FVC_MODE_PULL"] = "1"; break;
+        case FabricConfig::FABRIC_2D_PUSH: defines["FD_FABRIC_MODE_2D_PUSH"] = "1"; break;
+        case FabricConfig::FABRIC_1D_RING: break;
+        case FabricConfig::FABRIC_1D: defines["FD_FABRIC_MODE_1D"] = "1"; break;
+        case FabricConfig::CUSTOM:
+        case FabricConfig::DISABLED: break;
+        default: TT_FATAL(false, "Fabric config not supported");
     }
     if (!DPrintServerReadsDispatchCores(device_->id())) {
         defines["FORCE_DPRINT_OFF"] = "1";
@@ -150,7 +154,7 @@ void FDKernel::configure_kernel_variant(
     defines.insert(defines_in.begin(), defines_in.end());
 
     if (GetCoreType() == CoreType::WORKER) {
-        tt::tt_metal::CreateKernel(
+        return tt::tt_metal::CreateKernel(
             *program_,
             path,
             logical_core_,
@@ -162,7 +166,7 @@ void FDKernel::configure_kernel_variant(
                 .defines = defines,
                 .opt_level = opt_level});
     } else {
-        tt::tt_metal::CreateKernel(
+        return tt::tt_metal::CreateKernel(
             *program_,
             path,
             logical_core_,
@@ -173,4 +177,11 @@ void FDKernel::configure_kernel_variant(
                 .defines = defines,
                 .opt_level = opt_level});
     }
+}
+
+void FDKernel::create_edm_connection_sems(FDKernelEdmConnectionAttributes& attributes) {
+    attributes.sender_worker_flow_control_sem =
+        tt::tt_metal::CreateSemaphore(*program_, logical_core_, 0, GetCoreType());
+    attributes.worker_buffer_index_sem = tt::tt_metal::CreateSemaphore(*program_, logical_core_, 0, GetCoreType());
+    attributes.worker_teardown_sem = tt::tt_metal::CreateSemaphore(*program_, logical_core_, 0, GetCoreType());
 }

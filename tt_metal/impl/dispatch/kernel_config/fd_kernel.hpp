@@ -12,6 +12,8 @@
 
 #include "assert.hpp"
 #include "core_coord.hpp"
+#include "erisc_datamover_builder.hpp"
+#include "kernel_types.hpp"
 #include "mesh_graph.hpp"
 #include "system_memory_manager.hpp"
 #include "impl/context/metal_context.hpp"
@@ -129,7 +131,16 @@ public:
     void AddProgram(tt::tt_metal::Program* program) { program_ = program; }
 
 protected:
-    void configure_kernel_variant(
+    struct FDKernelEdmConnectionAttributes {
+        tt::tt_fabric::SenderWorkerAdapterSpec edm_connection;
+        size_t sender_worker_flow_control_sem;
+        size_t worker_teardown_sem;
+        size_t worker_buffer_index_sem;
+    };
+
+    void create_edm_connection_sems(FDKernelEdmConnectionAttributes& attributes);
+
+    [[maybe_unused]] tt::tt_metal::KernelHandle configure_kernel_variant(
         const string& path,
         const std::vector<uint32_t>& compile_args,
         std::map<string, string> defines_in,

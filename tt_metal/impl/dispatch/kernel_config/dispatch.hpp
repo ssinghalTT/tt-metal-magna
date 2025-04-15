@@ -137,4 +137,5 @@ public:
 private:
     dispatch_static_config_t static_config_;
     dispatch_dependent_config_t dependent_config_;
+    FDKernelEdmConnectionAttributes edm_attributes_;
 };

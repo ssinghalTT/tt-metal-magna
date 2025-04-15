@@ -14,7 +14,7 @@ using namespace tt::tt_metal;
 
 int main() {
     // Initialize Program and Device
-    tt::tt_metal::detail::InitializeFabricConfig(FabricConfig::FABRIC_2D);
+    tt::tt_metal::detail::InitializeFabricConfig(FabricConfig::FABRIC_1D);
 
     constexpr CoreCoord core = {0, 0};
     int device_id = 1;

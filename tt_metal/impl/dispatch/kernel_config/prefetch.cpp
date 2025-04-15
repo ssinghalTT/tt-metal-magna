@@ -21,9 +21,14 @@
 #include "dispatch_core_common.hpp"
 #include "dispatch_mem_map.hpp"
 #include "dispatch_s.hpp"
+#include "erisc_datamover_builder.hpp"
 #include "eth_router.hpp"
+#include "fabric/fabric_host_utils.hpp"
+#include "fabric_types.hpp"
 #include "hal.hpp"
 #include "hal_types.hpp"
+#include "kernel_types.hpp"
+#include "program.hpp"
 #include "rtoptions.hpp"
 #include "impl/context/metal_context.hpp"
 #include <umd/device/tt_core_coordinates.h>
@@ -144,6 +149,16 @@ void PrefetchKernel::GenerateStaticConfigs() {
         static_config_.my_dispatch_s_cb_sem_id = 0;
         static_config_.dispatch_s_buffer_size = 0;
         static_config_.dispatch_s_cb_log_page_size = 0;
+
+        // Populate additional semahores needed for relaying on EDM
+        if (tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_config() == FabricConfig::FABRIC_1D) {
+            this->edm_attributes_.sender_worker_flow_control_sem =
+                tt::tt_metal::CreateSemaphore(*program_, logical_core_, 0, GetCoreType());
+            this->edm_attributes_.worker_buffer_index_sem =
+                tt::tt_metal::CreateSemaphore(*program_, logical_core_, 0, GetCoreType());
+            this->edm_attributes_.worker_teardown_sem =
+                tt::tt_metal::CreateSemaphore(*program_, logical_core_, 0, GetCoreType());
+        }
     } else if (static_config_.is_d_variant.value()) {
         static_config_.my_downstream_cb_sem_id = tt::tt_metal::CreateSemaphore(
             *program_, logical_core_, my_dispatch_constants.dispatch_buffer_pages(), GetCoreType());
@@ -395,7 +410,19 @@ void PrefetchKernel::CreateKernel() {
         static_config_.is_d_variant.value(),
         static_config_.is_h_variant.value(),
     };
-    TT_ASSERT(compile_args.size() == 36);
+    // These values may be zero if edm_attributes are not set
+    tt::tt_fabric::append_worker_to_fabric_edm_sender_rt_args(
+        this->edm_attributes_.edm_connection,
+        this->edm_attributes_.sender_worker_flow_control_sem,
+        this->edm_attributes_.worker_teardown_sem,
+        this->edm_attributes_.worker_buffer_index_sem,
+        compile_args);
+    constexpr uint32_t k_expected_compile_args_size = 48;
+    TT_ASSERT(
+        compile_args.size() == k_expected_compile_args_size,
+        "Expected {} compile args got {}",
+        k_expected_compile_args_size,
+        compile_args.size());
     auto my_virtual_core = device_->virtual_core_from_logical_core(logical_core_, GetCoreType());
     auto upstream_virtual_core =
         device_->virtual_core_from_logical_core(dependent_config_.upstream_logical_core.value(), GetCoreType());
@@ -423,9 +450,10 @@ void PrefetchKernel::CreateKernel() {
         {"DOWNSTREAM_SLAVE_NOC_X", std::to_string(downstream_s_virtual_noc_coords.x)},
         {"DOWNSTREAM_SLAVE_NOC_Y", std::to_string(downstream_s_virtual_noc_coords.y)},
     };
+
     // Compile at Os on IERISC to fit in code region.
     auto optimization_level = (GetCoreType() == CoreType::WORKER) ? KernelBuildOptLevel::O2 : KernelBuildOptLevel::Os;
-    configure_kernel_variant(
+    KernelHandle kernel = configure_kernel_variant(
         dispatch_kernel_file_names[PREFETCH],
         compile_args,
         defines,
@@ -493,4 +521,31 @@ void PrefetchKernel::UpdateArgsForFabric(
         my_dispatch_constants.get_device_command_queue_addr(CommandQueueDeviceAddrType::FABRIC_INTERFACE);
     static_config_.header_rb_addr =
         my_dispatch_constants.get_device_command_queue_addr(CommandQueueDeviceAddrType::FABRIC_HEADER_RB);
+
+    // 1D Fabric Specific
+    if (tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_config() == FabricConfig::FABRIC_1D) {
+        const auto edm_config = tt::tt_fabric::get_1d_fabric_config();
+        CoreCoord edm_eth_core = tt::tt_metal::MetalContext::instance().get_cluster().get_virtual_eth_core_from_channel(
+            this->device_id_, outbound_eth_chan);
+
+        this->edm_attributes_.sender_worker_flow_control_sem =
+            tt::tt_metal::CreateSemaphore(*program_, logical_core_, 0, GetCoreType());
+        this->edm_attributes_.worker_buffer_index_sem =
+            tt::tt_metal::CreateSemaphore(*program_, logical_core_, 0, GetCoreType());
+        this->edm_attributes_.worker_teardown_sem =
+            tt::tt_metal::CreateSemaphore(*program_, logical_core_, 0, GetCoreType());
+
+        edm_attributes_.edm_connection = tt::tt_fabric::SenderWorkerAdapterSpec{
+            edm_eth_core.x,
+            edm_eth_core.y,
+            edm_config.sender_channels_base_address[0],
+            edm_config.sender_channels_num_buffers[0],
+            edm_config.sender_channels_local_flow_control_semaphore_address[0],
+            edm_config.sender_channels_connection_semaphore_address[0],
+            edm_config.sender_channels_worker_conn_info_base_address[0],
+            edm_config.channel_buffer_size_bytes,
+            edm_config.sender_channels_buffer_index_semaphore_address[0],
+            true,
+        };
+    }
 }

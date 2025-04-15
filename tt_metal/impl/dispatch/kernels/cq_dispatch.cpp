@@ -372,18 +372,14 @@ void relay_to_next_cb(
                     ASSERT(cb_fence == dispatch_cb_end);
                     if (orphan_size != 0) {
                         if constexpr (fabric_router_noc_xy) {
-                            tt::tt_fabric::fabric_async_write<ClientDataMode::RAW_DATA>(
+                            cb_write_remote<downstream_mesh_id, downstream_dev_id, fabric_router_noc_xy>(
                                 get_fabric_interface<
                                     client_interface_rb,
                                     client_interface_rb_entries,
                                     client_interface_size>(),
-                                fabric_router_noc_xy,
                                 data_ptr,
-                                downstream_mesh_id,
-                                downstream_dev_id,
                                 get_noc_addr_helper(downstream_noc_xy, downstream_cb_data_ptr),
-                                orphan_size + tt::tt_fabric::PACKET_HEADER_SIZE_BYTES,
-                                0);
+                                orphan_size);
                         } else {
                             cq_noc_async_write_with_state<CQ_NOC_SnDL>(data_ptr, downstream_cb_data_ptr, orphan_size);
                             noc_nonposted_writes_num_issued[noc_index]++;
@@ -420,15 +416,12 @@ void relay_to_next_cb(
 
         // Write last chunk
         if constexpr (fabric_router_noc_xy) {
-            tt::tt_fabric::fabric_async_write_atomic_inc<ClientDataMode::RAW_DATA>(
+            cb_write_remote_fused_atomic_inc<downstream_mesh_id, downstream_dev_id, fabric_router_noc_xy>(
                 get_fabric_interface<client_interface_rb, client_interface_rb_entries, client_interface_size>(),
-                fabric_router_noc_xy,
                 data_ptr,
-                downstream_mesh_id,
-                downstream_dev_id,
                 get_noc_addr_helper(downstream_noc_xy, downstream_cb_data_ptr),
                 get_noc_addr_helper(downstream_noc_xy, get_semaphore<fd_core_type>(downstream_cb_sem_id)),
-                xfer_size + tt::tt_fabric::PACKET_HEADER_SIZE_BYTES,
+                xfer_size,
                 1);
         } else {
             cq_noc_async_write_with_state<CQ_NOC_SnDL>(data_ptr, downstream_cb_data_ptr, xfer_size);

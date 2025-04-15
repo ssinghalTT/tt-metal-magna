@@ -13,7 +13,6 @@
 
 // Fabric and Client interface ring buffer indices
 // The ring buffer size must be a power of 2
-static uint32_t fabric_header_rb_index = 0;
 constexpr uint32_t k_WrapBoundary = 31;  // Fabric atomic inc
 
 // The command queue read interface controls reads from the issue region, host owns the issue region write interface
@@ -125,34 +124,6 @@ enum CQNocSend {
     CQ_NOC_send = 0,
     CQ_NOC_SEND = 1,
 };
-
-// Returns a client interface for the current Fabric mode
-// If it's a pull interface, it will be safe to use.
-#ifdef FVC_MODE_PULL
-constexpr uint32_t client_interface_size = tt::tt_fabric::PULL_CLIENT_INTERFACE_SIZE;
-template <uint32_t interface_rb_base, uint32_t interface_rb_entries, uint32_t interface_size>
-inline volatile tt::tt_fabric::fabric_pull_client_interface_t* get_fabric_interface() {
-#else
-constexpr uint32_t client_interface_size = tt::tt_fabric::PUSH_CLIENT_INTERFACE_SIZE;
-template <uint32_t interface_rb_base, uint32_t interface_rb_entries, uint32_t interface_size>
-inline volatile tt::tt_fabric::fabric_push_client_interface_t* get_fabric_interface() {
-#endif
-    static_assert(((interface_rb_entries) & ((interface_rb_entries)-1)) == 0);
-    constexpr uint32_t rb_mask = interface_rb_entries - 1;
-
-    static uint32_t fabric_client_interface_rb_index = 0;
-
-    uint32_t addr = interface_rb_base + ((fabric_client_interface_rb_index & rb_mask) * interface_size);
-    fabric_client_interface_rb_index = fabric_client_interface_rb_index + 1;
-
-#ifdef FVC_MODE_PULL
-    auto pull_interface = reinterpret_cast<volatile tt::tt_fabric::fabric_pull_client_interface_t*>(addr);
-    tt::tt_fabric::fabric_wait_for_pull_request_flushed(pull_interface);
-    return pull_interface;
-#else
-    return reinterpret_cast<volatile tt::tt_fabric::fabric_push_client_interface_t*>(addr);
-#endif
-}
 
 template <
     enum CQNocFlags flags,
@@ -304,6 +275,111 @@ FORCE_INLINE void cq_noc_inline_dw_write_init_state(uint64_t dst_addr, uint32_t 
     NOC_CMD_BUF_WRITE_REG(noc_index, NCRISC_WR_REG_CMD_BUF, NOC_CTRL, noc_cmd_field);
 
     cq_noc_inline_dw_write_with_state<flags, CQ_NOC_wait, CQ_NOC_send>(dst_addr, val, be);
+}
+
+// Returns a client interface for the current Fabric mode
+// If it's a pull interface, it will be safe to use.
+#ifdef FVC_MODE_PULL
+constexpr uint32_t client_interface_size = tt::tt_fabric::PULL_CLIENT_INTERFACE_SIZE;
+template <uint32_t interface_rb_base, uint32_t interface_rb_entries, uint32_t interface_size>
+inline volatile tt::tt_fabric::fabric_pull_client_interface_t* get_fabric_interface() {
+#else
+constexpr uint32_t client_interface_size = tt::tt_fabric::PUSH_CLIENT_INTERFACE_SIZE;
+template <uint32_t interface_rb_base, uint32_t interface_rb_entries, uint32_t interface_size>
+inline volatile tt::tt_fabric::fabric_push_client_interface_t* get_fabric_interface() {
+#endif
+    static_assert(((interface_rb_entries) & ((interface_rb_entries)-1)) == 0);
+    constexpr uint32_t rb_mask = interface_rb_entries - 1;
+
+    static uint32_t fabric_client_interface_rb_index = 0;
+
+    uint32_t addr = interface_rb_base + ((fabric_client_interface_rb_index & rb_mask) * interface_size);
+    fabric_client_interface_rb_index = fabric_client_interface_rb_index + 1;
+
+#ifdef FVC_MODE_PULL
+    auto pull_interface = reinterpret_cast<volatile tt::tt_fabric::fabric_pull_client_interface_t*>(addr);
+    tt::tt_fabric::fabric_wait_for_pull_request_flushed(pull_interface);
+    return pull_interface;
+#else
+    return reinterpret_cast<volatile tt::tt_fabric::fabric_push_client_interface_t*>(addr);
+#endif
+}
+
+// Boilerplate code
+#if defined(FD_FABRIC_MODE_1D)
+#define FABRIC_1D_CONNECTION_OPEN_SCOPE(connection, compile_args_start_idx)                                     \
+    bool is_persistent_fabric = get_compile_time_arg_val(compile_args_start_idx);                               \
+    const WorkerXY edm_worker_xy = WorkerXY::from_uint32(get_compile_time_arg_val(compile_args_start_idx + 1)); \
+    const auto edm_buffer_base_addr = get_compile_time_arg_val(compile_args_start_idx + 2);                     \
+    const uint8_t num_buffers_per_channel = get_compile_time_arg_val(compile_args_start_idx + 3);               \
+    const size_t edm_l1_sem_id = get_compile_time_arg_val(compile_args_start_idx + 4);                          \
+    const auto edm_connection_handshake_l1_addr = get_compile_time_arg_val(compile_args_start_idx + 5);         \
+    const auto edm_worker_location_info_addr = get_compile_time_arg_val(compile_args_start_idx + 6);            \
+    const uint16_t buffer_size_bytes = get_compile_time_arg_val(compile_args_start_idx + 7);                    \
+    const auto edm_buffer_index_addr = get_compile_time_arg_val(compile_args_start_idx + 8);                    \
+    auto writer_send_sem_addr = reinterpret_cast<volatile uint32_t* const>(                                     \
+        get_semaphore<fd_core_type>(get_compile_time_arg_val(compile_args_start_idx + 9)));                     \
+    auto worker_teardown_sem_addr = reinterpret_cast<volatile uint32_t* const>(                                 \
+        get_semaphore<fd_core_type>(get_compile_time_arg_val(compile_args_start_idx + 10)));                    \
+    const auto worker_buffer_index_semaphore_addr =                                                             \
+        get_semaphore<fd_core_type>(get_compile_time_arg_val(compile_args_start_idx + 11));                     \
+    tt::tt_fabric::WorkerToFabricEdmSender connection = tt::tt_fabric::WorkerToFabricEdmSender{                 \
+        is_persistent_fabric,                                                                                   \
+        (uint8_t)edm_worker_xy.x,                                                                               \
+        (uint8_t)edm_worker_xy.y,                                                                               \
+        edm_buffer_base_addr,                                                                                   \
+        num_buffers_per_channel,                                                                                \
+        edm_l1_sem_id,                                                                                          \
+        edm_connection_handshake_l1_addr,                                                                       \
+        edm_worker_location_info_addr,                                                                          \
+        buffer_size_bytes,                                                                                      \
+        edm_buffer_index_addr,                                                                                  \
+        writer_send_sem_addr,                                                                                   \
+        worker_teardown_sem_addr,                                                                               \
+        worker_buffer_index_semaphore_addr,                                                                     \
+        write_reg_cmd_buf,                                                                                      \
+        write_at_cmd_buf};                                                                                      \
+    connection.open();                                                                                          \
+    DPRINT << "FABRIC CONNECTION OPENED" << ENDL();
+#else
+#define FABRIC_1D_CONNECTION_OPEN_SCOPE(connection, compile_args_start_idx)
+#endif
+
+#if defined(FD_FABRIC_MODE_1D)
+#define FABRIC_1D_CONNECTION_CLOSE_SCOPE(connection) \
+    connection.close();                              \
+    DPRINT << "FABRIC CONNECTION CLOSED" << ENDL();
+#else
+#define FABRIC_1D_CONNECTION_CLOSE_SCOPE(connection)
+#endif
+
+template <uint32_t mesh_id, uint32_t dev_id, uint32_t routing, typename T>
+FORCE_INLINE void cb_write_remote(
+    T client_interface, uint32_t data_ptr, uint64_t dst_addr, uint32_t length, uint32_t header_id = 0) {
+    tt::tt_fabric::fabric_async_write<ClientDataMode::RAW_DATA>(
+        client_interface,
+        routing,
+        data_ptr,
+        mesh_id,
+        dev_id,
+        dst_addr,
+        length + tt::tt_fabric::PACKET_HEADER_SIZE_BYTES,
+        header_id);
+}
+
+template <uint32_t mesh_id, uint32_t dev_id, uint32_t routing, typename T>
+FORCE_INLINE void cb_write_remote_fused_atomic_inc(
+    T client_interface, uint32_t data_ptr, uint64_t dst_addr, uint64_t atomic_inc_addr, uint32_t length, uint32_t n) {
+    tt::tt_fabric::fabric_async_write_atomic_inc<ClientDataMode::RAW_DATA>(
+        client_interface,
+        routing,
+        data_ptr,
+        mesh_id,
+        dev_id,
+        dst_addr,
+        atomic_inc_addr,
+        length + tt::tt_fabric::PACKET_HEADER_SIZE_BYTES,
+        n);
 }
 
 FORCE_INLINE void wait_for_niu_mst_non_posted_wr_req_sent(uint32_t& block_noc_writes_to_clear) {

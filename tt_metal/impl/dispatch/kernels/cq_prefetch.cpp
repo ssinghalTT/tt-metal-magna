@@ -9,9 +9,13 @@
 //    double buffered ScratchBuf for out of band data (e.g., from DRAM)
 //  - syncs w/ dispatcher via 2 semaphores, page_ready, page_done
 
+#include "compile_time_args.h"
+#include "dataflow_api.h"
+#include "fabric_edm_packet_header.hpp"
 #include "tt_metal/impl/dispatch/kernels/cq_commands.hpp"
 #include "tt_metal/impl/dispatch/kernels/cq_common.hpp"
 #include "tt_metal/fabric/hw/inc/tt_fabric_api.h"
+#include "tt_metal/fabric/hw/inc/edm_fabric/edm_fabric_worker_adapters.hpp"
 #include "debug/dprint.h"
 #include "noc/noc_parameters.h"  // PCIE_ALIGNMENT
 
@@ -1258,7 +1262,12 @@ bool process_cmd(
     return done;
 }
 
+#if defined(FD_FABRIC_MODE_1D)
+static uint32_t process_relay_inline_all(
+    uint32_t data_ptr, uint32_t fence, bool is_exec_buf, tt::tt_fabric::WorkerToFabricEdmSender& connection) {
+#else
 static uint32_t process_relay_inline_all(uint32_t data_ptr, uint32_t fence, bool is_exec_buf) {
+#endif
     // This function is only valid for prefetch_h relay to prefetch_d
     ASSERT(is_h_variant && !is_d_variant);
     uint32_t length = fence - data_ptr;
@@ -1288,15 +1297,11 @@ static uint32_t process_relay_inline_all(uint32_t data_ptr, uint32_t fence, bool
     uint32_t downstream_pages_left = (downstream_cb_end - downstream_data_ptr) >> downstream_cb_log_page_size;
     if (downstream_pages_left >= npages) {
         if constexpr (fabric_router_noc_xy) {
-            tt::tt_fabric::fabric_async_write<ClientDataMode::RAW_DATA>(
+            cb_write_remote<downstream_mesh_id, downstream_dev_id, fabric_router_noc_xy>(
                 get_fabric_interface<client_interface_rb, client_interface_rb_entries, client_interface_size>(),
-                fabric_router_noc_xy,
                 data_ptr,
-                downstream_mesh_id,
-                downstream_dev_id,
                 get_noc_addr_helper(downstream_noc_xy, downstream_data_ptr),
-                length + tt::tt_fabric::PACKET_HEADER_SIZE_BYTES,
-                0);
+                length);
         } else {
             noc_async_write(data_ptr, get_noc_addr_helper(downstream_noc_xy, downstream_data_ptr), length);
         }
@@ -1306,15 +1311,11 @@ static uint32_t process_relay_inline_all(uint32_t data_ptr, uint32_t fence, bool
         uint32_t available = downstream_pages_left * downstream_cb_page_size;
         if (available > 0) {
             if constexpr (fabric_router_noc_xy) {
-                tt::tt_fabric::fabric_async_write<ClientDataMode::RAW_DATA>(
+                cb_write_remote<downstream_mesh_id, downstream_dev_id, fabric_router_noc_xy>(
                     get_fabric_interface<client_interface_rb, client_interface_rb_entries, client_interface_size>(),
-                    fabric_router_noc_xy,
                     data_ptr,
-                    downstream_mesh_id,
-                    downstream_dev_id,
                     get_noc_addr_helper(downstream_noc_xy, downstream_data_ptr),
-                    available + tt::tt_fabric::PACKET_HEADER_SIZE_BYTES,
-                    0);
+                    available);
             } else {
                 noc_async_write(data_ptr, get_noc_addr_helper(downstream_noc_xy, downstream_data_ptr), available);
             }
@@ -1323,15 +1324,11 @@ static uint32_t process_relay_inline_all(uint32_t data_ptr, uint32_t fence, bool
         }
 
         if constexpr (fabric_router_noc_xy) {
-            tt::tt_fabric::fabric_async_write<ClientDataMode::RAW_DATA>(
+            cb_write_remote<downstream_mesh_id, downstream_dev_id, fabric_router_noc_xy>(
                 get_fabric_interface<client_interface_rb, client_interface_rb_entries, client_interface_size>(),
-                fabric_router_noc_xy,
                 data_ptr,
-                downstream_mesh_id,
-                downstream_dev_id,
                 get_noc_addr_helper(downstream_noc_xy, downstream_cb_base),
-                length + tt::tt_fabric::PACKET_HEADER_SIZE_BYTES,
-                0);
+                length);
         } else {
             noc_async_write(data_ptr,get_noc_addr_helper(downstream_noc_xy, downstream_cb_base), length);
         }
@@ -1393,6 +1390,7 @@ inline uint32_t relay_cb_get_cmds(uint32_t& fence, uint32_t& data_ptr) {
 }
 
 void kernel_main_h() {
+    FABRIC_1D_CONNECTION_OPEN_SCOPE(fwd_fabric_connection, 36)
     uint32_t cmd_ptr = cmddat_q_base;
     uint32_t fence = cmddat_q_base;
     bool done = false;
@@ -1407,7 +1405,11 @@ void kernel_main_h() {
         uint32_t cmd_id = cmd->base.cmd_id;
         // Infer that an exec_buf command is to be executed based on the stall state.
         bool is_exec_buf = (stall_state == STALLED);
+#if defined(FD_FABRIC_MODE_1D)
+        cmd_ptr = process_relay_inline_all(cmd_ptr, fence, is_exec_buf, fwd_fabric_connection);
+#else
         cmd_ptr = process_relay_inline_all(cmd_ptr, fence, is_exec_buf);
+#endif
 
         // Note: one fetch_q entry can contain multiple commands
         // The code below assumes these commands arrive individually, packing them would require parsing all cmds
@@ -1416,6 +1418,8 @@ void kernel_main_h() {
             done = true;
         }
     }
+
+    FABRIC_1D_CONNECTION_CLOSE_SCOPE(fwd_fabric_connection)
 }
 
 void kernel_main_d() {
@@ -1517,13 +1521,16 @@ void kernel_main() {
         DPRINT << "prefetcher_" << is_h_variant << is_d_variant << ": fabric init upstream/downstream mesh/dev id "
                << upstream_mesh_id << " " << upstream_dev_id << " " << downstream_mesh_id << " " << downstream_dev_id
                << " fabric_router_noc_xy = " << HEX() << fabric_router_noc_xy << DEC() << ENDL();
+#if !defined(FD_FABRIC_MODE_1D)
         for (uint32_t i = 0; i < client_interface_rb_entries; ++i) {
             tt::tt_fabric::fabric_endpoint_init(
                 get_fabric_interface<client_interface_rb, client_interface_rb_entries, client_interface_size>(),
                 0 /*unused*/);
         }
+#endif
     }
-    DPRINT << "prefetcher_" << is_h_variant << is_d_variant << ": start" << ENDL();
+    DPRINT << "prefetcher_" << is_h_variant << is_d_variant << ": start " << HEX() << get_arg_val<uint32_t>(0)
+           << ENDL();
 
     if (is_h_variant and is_d_variant) {
         kernel_main_hd();

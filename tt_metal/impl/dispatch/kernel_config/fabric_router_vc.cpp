@@ -10,7 +10,9 @@
 #include "dispatch/kernel_config/fd_kernel.hpp"
 #include "dispatch/kernel_config/prefetch.hpp"
 #include "fabric_router_vc.hpp"
+#include "fabric_host_interface.h"
 #include "impl/context/metal_context.hpp"
+#include "mesh_graph.hpp"
 
 namespace tt::tt_metal {
 
@@ -60,30 +62,45 @@ void FabricRouterVC::GenerateDependentConfigs() {
             src_chip_id);
         const auto& [routing_plane_rev, fabric_router_rev] = routers_rev.front();
 
-        bool valid_path{false};
+        // Intelligently get outbound ethernet channels based on the direction of known
+        // configurations
+        bool valid_path = false;
+        tt::tt_fabric::chan_id_t ds_chan_id;
+        tt::tt_fabric::chan_id_t us_chan_id;
         if (auto prefetch_us = dynamic_cast<PrefetchKernel*>(us_kernel);
             auto prefetch_ds = dynamic_cast<PrefetchKernel*>(ds_kernel)) {
+            // Prefetch downstreamgoes towards device (E)
+            const auto& ds_chans = control_plane->get_active_fabric_eth_channels_in_direction(
+                src_mesh_id, src_chip_id, tt::tt_fabric::RoutingDirection::E);
+            TT_ASSERT(!ds_chans.empty(), "No downstream channels for prefetch");
+            const auto& us_chans = control_plane->get_active_fabric_eth_channels_in_direction(
+                dst_mesh_id, dst_chip_id, tt::tt_fabric::RoutingDirection::W);
+            TT_ASSERT(!us_chans.empty(), "No upstream channels for prefetch");
             valid_path = true;
+            ds_chan_id = *ds_chans.begin();
+            us_chan_id = *us_chans.begin();
         }
 
         if (auto dispatch_us = dynamic_cast<DispatchKernel*>(us_kernel);
             auto dispatch_ds = dynamic_cast<DispatchKernel*>(ds_kernel)) {
+            // Dispatch downstream goes towards host (W)
+            const auto& ds_chans = control_plane->get_active_fabric_eth_channels_in_direction(
+                src_mesh_id, src_chip_id, tt::tt_fabric::RoutingDirection::W);
+            TT_ASSERT(!ds_chans.empty(), "No downstream channels for dispatch");
+            const auto& us_chans = control_plane->get_active_fabric_eth_channels_in_direction(
+                dst_mesh_id, dst_chip_id, tt::tt_fabric::RoutingDirection::E);
+            TT_ASSERT(!us_chans.empty(), "No upstream channels for dispatch");
             valid_path = true;
+            ds_chan_id = *ds_chans.begin();
+            us_chan_id = *us_chans.begin();
         }
 
         TT_FATAL(valid_path, "FabricRouterVC is not implemented for this path");
 
-        // Get outbound ethernet channels
-        auto us_outbound_eth_channels = cluster.get_fabric_ethernet_channels(src_chip_id);
-        auto ds_outbound_eth_channels = cluster.get_fabric_ethernet_channels(dst_chip_id);
-        TT_FATAL(!us_outbound_eth_channels.empty(), "No outbound ethernet channels for upstream kernel");
-        TT_FATAL(!ds_outbound_eth_channels.empty(), "No outbound ethernet channels for downstream kernel");
-
         // Downstream path. src -> dst
-        us_kernel->UpdateArgsForFabric(
-            fabric_router, *us_outbound_eth_channels.begin(), src_mesh_id, src_chip_id, dst_mesh_id, dst_chip_id);
+        us_kernel->UpdateArgsForFabric(fabric_router, us_chan_id, src_mesh_id, src_chip_id, dst_mesh_id, dst_chip_id);
         ds_kernel->UpdateArgsForFabric(
-            fabric_router_rev, *ds_outbound_eth_channels.begin(), src_mesh_id, src_chip_id, dst_mesh_id, dst_chip_id);
+            fabric_router_rev, ds_chan_id, src_mesh_id, src_chip_id, dst_mesh_id, dst_chip_id);
     }
 }
 

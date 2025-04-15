@@ -8,6 +8,7 @@
 #include <optional>
 
 #include "core_coord.hpp"
+#include "erisc_datamover_builder.hpp"
 #include "impl/context/metal_context.hpp"
 #include "fd_kernel.hpp"
 #include "mesh_graph.hpp"
@@ -120,4 +121,5 @@ public:
 private:
     prefetch_static_config_t static_config_;
     prefetch_dependent_config_t dependent_config_;
+    FDKernelEdmConnectionAttributes edm_attributes_;
 };
