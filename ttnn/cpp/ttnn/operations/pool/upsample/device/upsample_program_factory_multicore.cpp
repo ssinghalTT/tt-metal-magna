@@ -133,6 +133,7 @@ operation::ProgramWithCallbacks upsample_multi_core(
     // NOTE: input is assumed to have channels last format: {N, H, W, C}, {N, 1, H * W, C}, {1, 1, N * H * W, C}
     // NOTE: Bfp8_b/TILE is not yet supported
 
+    tt::log_info("INPUT SHAPE {} {}", input.get_logical_shape(), input.memory_config().shard_spec);
     uint32_t input_stick_nbytes = input.get_padded_shape()[-1] * input.element_size();
     uint32_t output_stick_nbytes = output.get_padded_shape()[-1] * output.element_size();
     TT_FATAL(input_stick_nbytes == output_stick_nbytes, "Input and output sticks should have same size");
@@ -242,6 +243,7 @@ operation::ProgramWithCallbacks upsample_multi_core(
 
     // Kernels
 
+    tt::log_info("all cores = {}", all_cores);
     std::vector<uint32_t> writer_compile_time_args = {
         in_cb_id,
         out_cb_id,
