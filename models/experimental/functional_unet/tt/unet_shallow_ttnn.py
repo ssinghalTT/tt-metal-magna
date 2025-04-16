@@ -166,7 +166,7 @@ class UNetConv2D:
             enable_subblock_padding=False,
             activation=activation,
             output_layout=output_layout,
-            reshard_if_not_optimal=reshard_if_not_optimal,
+            reshard_if_not_optimal=reshard_if_not_optimal if override_core_grid == None else None,
             reallocate_halo_output=reallocate_halo_output,
         )
 
@@ -284,6 +284,74 @@ class UNetDownblock:
         return x, residual
 
 
+class UNetUpsample:
+    def __init__(
+        self,
+        device,
+        batch,
+        input_height,
+        input_width,
+        channels,
+        mesh_mapper=None,
+    ):
+        self.device = device
+        self.batch = batch
+        self.input_height = input_height
+        self.input_width = input_width
+
+        self.channels = 256
+        self.scale = (2, 2)
+
+        weight = torch.ones(
+            (self.channels, self.channels // self.channels, self.scale[0], self.scale[1]), dtype=torch.float32
+        )
+
+        self.weight = ttnn.from_torch(weight, dtype=ttnn.float32, mesh_mapper=mesh_mapper)
+
+        self.conv_config = ttnn.Conv2dConfig(
+            dtype=ttnn.bfloat16,
+            weights_dtype=ttnn.bfloat16,
+            shard_layout=ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+            deallocate_activation=False,
+            enable_act_double_buffer=False,
+            enable_split_reader=False,
+            enable_subblock_padding=False,
+            activation="",
+            reshard_if_not_optimal=False,
+        )
+        self.compute_config = ttnn.init_device_compute_kernel_config(
+            device.arch(),
+            math_fidelity=ttnn.MathFidelity.LoFi,
+            fp32_dest_acc_en=False,
+            packer_l1_acc=False,
+        )
+
+    def __call__(self, x):
+        breakpoint()
+        [output_tensor, [_, _], [self.weight, _]] = ttnn.conv_transpose2d(
+            input_tensor=x,
+            weight_tensor=self.weight,
+            bias_tensor=None,
+            batch_size=self.batch,
+            in_channels=self.channels,
+            out_channels=self.channels,
+            input_height=self.input_height,
+            input_width=self.input_width,
+            device=self.device,
+            kernel_size=self.scale,
+            stride=self.scale,
+            padding=(0, 0),
+            output_padding=(0, 0),
+            dilation=(1, 1),
+            conv_config=self.conv_config,
+            compute_config=self.compute_config,
+            groups=self.channels,
+            return_output_dim=True,
+            return_weights_and_bias=True,
+        )
+        return output_tensor
+
+
 class UNetUpblock:
     def __init__(
         self,
@@ -302,6 +370,10 @@ class UNetUpblock:
         self.final_block = final_block
         self.device = device
 
+        self.batch_size = conv1.batch_size
+        self.input_height = conv1.input_height
+        self.input_width = conv1.input_width
+
         self.conv1 = UNetConv2D(
             conv1,
             bn1,
@@ -314,9 +386,13 @@ class UNetUpblock:
         self.conv2 = UNetConv2D(conv2, bn2, device, mesh_mapper=mesh_mapper)
         self.conv3 = UNetConv2D(conv3, bn3, device, mesh_mapper=mesh_mapper)
 
-        self.batch_size = conv1.batch_size
-        self.input_height = conv1.input_height
-        self.input_width = conv1.input_width
+        self.upsample_conv = UNetUpsample(
+            device=device,
+            batch=self.batch_size,
+            input_height=self.input_height // 2,
+            input_width=self.input_width // 2,
+            channels=self.conv1.in_channels,
+        )
 
     def upsample(self, x):
         # Need to reshape into (B, H, W, C) to get correct output from ttnn.upsample
@@ -340,13 +416,16 @@ class UNetUpblock:
             [1, 1, self.batch_size * self.input_height * self.input_width, upsampled.shape[-1]],
         )
 
+    def upsample2(self, x):
+        return self.upsample_conv(x)
+
     def __call__(self, x, residual):
         x_rm = ttnn.to_layout(x, layout=ttnn.ROW_MAJOR_LAYOUT)
         ttnn.deallocate(x)
         residual_rm = ttnn.to_layout(residual, layout=ttnn.ROW_MAJOR_LAYOUT)
         ttnn.deallocate(residual)
 
-        x_upsampled = self.upsample(x_rm)
+        x_upsampled = self.upsample2(x_rm)
         ttnn.deallocate(x_rm)
 
         if not residual_rm.is_sharded():
