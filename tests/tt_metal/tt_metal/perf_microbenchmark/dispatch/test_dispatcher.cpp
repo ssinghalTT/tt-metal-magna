@@ -605,9 +605,12 @@ int main(int argc, char** argv) {
             0,
             0,
             0,
-            0,     // unused for single device - used to "virtualize" the number of eth cores across devices
-            0,     // unused for single device - used to "virtualize" the number of eth cores across devices
-            0,     // unused for single device - used to "virtualize" the number of eth cores across devices
+            0,  // unused for single device - used to "virtualize" the number of eth cores across devices
+            0,  // unused for single device - used to "virtualize" the number of eth cores across devices
+            0,  // unused for single device - used to "virtualize" the number of eth cores across devices
+            MetalContext::instance()
+                .dispatch_mem_map(CoreType::WORKER)
+                .get_device_command_queue_addr(CommandQueueDeviceAddrType::NOC_SHARING_ATOMIC),
             true,  // is_dram_variant
             true,  // is_host_variant
         };

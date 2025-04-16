@@ -2363,6 +2363,9 @@ void configure_for_single_chip(
         0,  // unused for single device - used to "virtualize" the number of eth cores across devices
         0,  // unused for single device - used to "virtualize" the number of eth cores across devices
         0,  // unused for single device - used to "virtualize" the number of eth cores across devices
+        MetalContext::instance()
+            .dispatch_mem_map(DISPATCH_CORE_TYPE)
+            .get_device_command_queue_addr(CommandQueueDeviceAddrType::NOC_SHARING_ATOMIC),
     };
 
     CoreCoord phys_upstream_from_dispatch_core = split_prefetcher_g ? phys_prefetch_d_core : phys_prefetch_core_g;
