@@ -38,6 +38,9 @@ class ShardTensor2dMesh(TensorToMesh):
         super().__init__(mesh_device)
         self.dims = dims
         self.cluster_shape = cluster_shape
+        mesh_device_rows, mesh_device_cols = mesh_device.shape
+        if cluster_shape[0] * cluster_shape[1] != mesh_device_rows * mesh_device_cols:
+            raise ValueError("ShardTensor2dMesh: Device mesh shape does not match the provided mesh shape.")
 
     def map(self, tensor: torch.tensor):
         # Returns list of tensors to map to row-major ordering of chips in cluster
