@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2025 Tenstorrent Inc.
+// SPDX-FileCopyrightText: 2025 Tenstorrent Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -6,8 +6,49 @@
 
 #include <cstdint>
 #include <cstring>  // for std::memcpy
+#include <variant>  // Added include
+#include <limits>
+#include <algorithm>
 
 struct alignas(uint64_t) KernelProfilerNocEventMetadata {
+    enum class NocType : unsigned char { UNDEF = 0, NOC_0 = 1, NOC_1 = 2 };
+    using NocVirtualChannel = int8_t;
+    static constexpr uint32_t PAYLOAD_CHUNK_SIZE = 32;
+
+    // New struct for local NOC events
+    struct LocalNocEvent {
+        int8_t dst_x;
+        int8_t dst_y;
+        int8_t mcast_end_dst_x;
+        int8_t mcast_end_dst_y;
+        NocType noc_type : 4;
+        NocVirtualChannel noc_vc : 4;
+        uint8_t payload_chunks;
+
+        void setNumBytes(uint32_t num_bytes) {
+            uint32_t bytes_rounded_up = (num_bytes + PAYLOAD_CHUNK_SIZE - 1) / PAYLOAD_CHUNK_SIZE;
+            payload_chunks = std::min(uint32_t(std::numeric_limits<uint8_t>::max()), bytes_rounded_up);
+        }
+        uint32_t getNumBytes() const { return payload_chunks * PAYLOAD_CHUNK_SIZE; }
+    };
+
+    // Existing struct for fabric NOC events
+    struct FabricNoCEvent {
+        int8_t dst_x;
+        int8_t dst_y;
+        int8_t mcast_end_dst_x;
+        int8_t mcast_end_dst_y;
+        int8_t routing_fields;
+        int8_t noc_send_type;
+    };
+
+    // Union to hold either local or fabric event data
+    union EventData {
+        LocalNocEvent local_event;
+        FabricNoCEvent fabric_event;
+    } data;
+
+    // --- Type enum (tag) --- Must be defined before use in constructor
     enum class NocEventType : unsigned char {
         UNDEF = 0,
         READ,
@@ -41,28 +82,27 @@ struct alignas(uint64_t) KernelProfilerNocEventMetadata {
         SEMAPHORE_WAIT,
         SEMAPHORE_SET,
 
+        FABRIC_NOC_EVENT,
+
         UNSUPPORTED
     };
-    enum class NocType : unsigned char { UNDEF = 0, NOC_0 = 1, NOC_1 = 2 };
-    using NocVirtualChannel = int8_t;
-    static constexpr int8_t INVALID_COORD_VAL = -1;
+    NocEventType noc_xfer_type;
 
-    KernelProfilerNocEventMetadata() = default;
+    KernelProfilerNocEventMetadata() : data{.local_event = {}}, noc_xfer_type(NocEventType::UNDEF) {}
 
-    // used during deserialization
+    // for deserialization on host side
     explicit KernelProfilerNocEventMetadata(const uint64_t raw_data) {
         std::memcpy(this, &raw_data, sizeof(KernelProfilerNocEventMetadata));
     }
 
-    // these can be compressed to bit-fields if needed, but byte orientated has less overhead
-    int8_t dst_x = INVALID_COORD_VAL;
-    int8_t dst_y = INVALID_COORD_VAL;
-    int8_t mcast_end_dst_x = INVALID_COORD_VAL;
-    int8_t mcast_end_dst_y = INVALID_COORD_VAL;
-    NocEventType noc_xfer_type;
-    NocType noc_type : 4;
-    NocVirtualChannel noc_vc : 4;
-    uint16_t num_bytes;
+    // Getter to return the correct variant based on the tag
+    std::variant<LocalNocEvent, FabricNoCEvent> getContents() const {
+        if (noc_xfer_type == NocEventType::FABRIC_NOC_EVENT) {
+            return data.fabric_event;
+        } else {
+            return data.local_event;
+        }
+    }
 
     uint64_t asU64() const {
         uint64_t ret;

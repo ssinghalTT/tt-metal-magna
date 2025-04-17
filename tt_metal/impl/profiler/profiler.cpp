@@ -513,38 +513,43 @@ void DeviceProfiler::logNocTracePacketDataToJson(
         }
 
     } else if (packet_type == kernel_profiler::TS_DATA) {
-        KernelProfilerNocEventMetadata ev_md(data);
+        using EMD = KernelProfilerNocEventMetadata;
+        EMD ev_md(data);
+        std::variant<EMD::LocalNocEvent, EMD::FabricNoCEvent> ev_md_contents = ev_md.getContents();
+        TT_ASSERT(std::holds_alternative<EMD::LocalNocEvent>(ev_md_contents));
+        auto& local_noc_event = std::get<EMD::LocalNocEvent>(ev_md_contents);
 
         nlohmann::ordered_json data = {
             {"run_id", run_id},
             {"run_host_id", run_host_id},
             {"op_name", opname},
             {"proc", risc_name},
-            {"noc", magic_enum::enum_name(ev_md.noc_type)},
-            {"vc", int(ev_md.noc_vc)},
+            {"noc", magic_enum::enum_name(local_noc_event.noc_type)},
+            {"vc", int(local_noc_event.noc_vc)},
             {"sx", core_x},
             {"sy", core_y},
-            {"num_bytes", uint32_t(ev_md.num_bytes)},
+            {"num_bytes", local_noc_event.getNumBytes()},
             {"type", magic_enum::enum_name(ev_md.noc_xfer_type)},
             {"timestamp", timestamp},
         };
 
         // handle dst coordinates correctly for different NocEventType
-        if (ev_md.dst_x == -1 || ev_md.dst_y == -1 ||
-            ev_md.noc_xfer_type == KernelProfilerNocEventMetadata::NocEventType::READ_WITH_STATE ||
-            ev_md.noc_xfer_type == KernelProfilerNocEventMetadata::NocEventType::WRITE_WITH_STATE) {
+        if (local_noc_event.dst_x == -1 || local_noc_event.dst_y == -1 ||
+            ev_md.noc_xfer_type == EMD::NocEventType::READ_WITH_STATE ||
+            ev_md.noc_xfer_type == EMD::NocEventType::WRITE_WITH_STATE) {
             // DO NOT emit destination coord; it isn't meaningful
 
-        } else if (ev_md.noc_xfer_type == KernelProfilerNocEventMetadata::NocEventType::WRITE_MULTICAST) {
-            auto phys_start_coord = getPhysicalAddressFromVirtual(device_id, {ev_md.dst_x, ev_md.dst_y});
+        } else if (ev_md.noc_xfer_type == EMD::NocEventType::WRITE_MULTICAST) {
+            auto phys_start_coord =
+                getPhysicalAddressFromVirtual(device_id, {local_noc_event.dst_x, local_noc_event.dst_y});
             data["mcast_start_x"] = phys_start_coord.x;
             data["mcast_start_y"] = phys_start_coord.y;
-            auto phys_end_coord =
-                getPhysicalAddressFromVirtual(device_id, {ev_md.mcast_end_dst_x, ev_md.mcast_end_dst_y});
+            auto phys_end_coord = getPhysicalAddressFromVirtual(
+                device_id, {local_noc_event.mcast_end_dst_x, local_noc_event.mcast_end_dst_y});
             data["mcast_end_x"] = phys_end_coord.x;
             data["mcast_end_y"] = phys_end_coord.y;
         } else {
-            auto phys_coord = getPhysicalAddressFromVirtual(device_id, {ev_md.dst_x, ev_md.dst_y});
+            auto phys_coord = getPhysicalAddressFromVirtual(device_id, {local_noc_event.dst_x, local_noc_event.dst_y});
             data["dx"] = phys_coord.x;
             data["dy"] = phys_coord.y;
         }

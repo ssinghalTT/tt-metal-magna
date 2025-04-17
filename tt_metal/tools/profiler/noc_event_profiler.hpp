@@ -61,12 +61,14 @@ FORCE_INLINE void recordNocEvent(
     int8_t vc = -1,
     uint8_t noc = noc_index) {
     KernelProfilerNocEventMetadata ev_md;
-    ev_md.dst_x = dst_x;
-    ev_md.dst_y = dst_y;
     ev_md.noc_xfer_type = noc_event_type;
-    ev_md.num_bytes = std::min(std::numeric_limits<std::uint32_t>::max(), num_bytes);
-    ev_md.noc_vc = vc;
-    ev_md.noc_type =
+
+    auto& local_noc_event = ev_md.data.local_event;
+    local_noc_event.dst_x = dst_x;
+    local_noc_event.dst_y = dst_y;
+    local_noc_event.setNumBytes(num_bytes);
+    local_noc_event.noc_vc = vc;
+    local_noc_event.noc_type =
         (noc == 1) ? KernelProfilerNocEventMetadata::NocType::NOC_1 : KernelProfilerNocEventMetadata::NocType::NOC_0;
 
     kernel_profiler::flush_to_dram_if_full<kernel_profiler::DoingDispatch::DISPATCH>();
@@ -84,16 +86,16 @@ FORCE_INLINE void recordMulticastNocEvent(
     int8_t vc = -1,
     uint8_t noc = noc_index) {
     KernelProfilerNocEventMetadata ev_md;
-    ev_md.dst_x = mcast_dst_start_x;
-    ev_md.dst_y = mcast_dst_start_y;
-    ev_md.mcast_end_dst_x = mcast_dst_end_x;
-    ev_md.mcast_end_dst_y = mcast_dst_end_y;
-
     ev_md.noc_xfer_type = noc_event_type;
-    ev_md.num_bytes = std::min(std::numeric_limits<std::uint32_t>::max(), num_bytes);
 
-    ev_md.noc_vc = vc;
-    ev_md.noc_type =
+    auto& local_noc_event = ev_md.data.local_event;
+    local_noc_event.dst_x = mcast_dst_start_x;
+    local_noc_event.dst_y = mcast_dst_start_y;
+    local_noc_event.mcast_end_dst_x = mcast_dst_end_x;
+    local_noc_event.mcast_end_dst_y = mcast_dst_end_y;
+    local_noc_event.setNumBytes(num_bytes);
+    local_noc_event.noc_vc = vc;
+    local_noc_event.noc_type =
         (noc == 1) ? KernelProfilerNocEventMetadata::NocType::NOC_1 : KernelProfilerNocEventMetadata::NocType::NOC_0;
 
     kernel_profiler::flush_to_dram_if_full<kernel_profiler::DoingDispatch::DISPATCH>();
@@ -143,11 +145,16 @@ void recordNocEventWithAddr(
         noc_event_profiler::recordNocEvent(event_type);                    \
     }
 
+#define RECORD_FABRIC_HEADER(_fabric_header_ptr) \
+    {                                            \
+    }
+
 #else
 
 // null macros when noc tracing is disabled
 #define RECORD_NOC_EVENT_WITH_ADDR(type, noc_addr, num_bytes, vc)
 #define RECORD_NOC_EVENT_WITH_ID(type, noc_id, num_bytes, vc)
 #define RECORD_NOC_EVENT(type)
+#define RECORD_FABRIC_HEADER(fabric_header_ptr)
 
 #endif
