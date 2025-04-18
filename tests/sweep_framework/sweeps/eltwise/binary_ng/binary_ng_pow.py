@@ -11,6 +11,7 @@ from tests.tt_eager.python_api_testing.sweep_tests.generation_funcs import gen_f
 
 from tests.ttnn.utils_for_testing import check_with_pcc, start_measuring_time, stop_measuring_time
 from models.utility_functions import torch_random
+from tests.sweep_framework.sweep_utils.utils import return_dtype, return_mem_config
 
 
 # Parameters provided to the test vector generator are defined here.
@@ -76,83 +77,6 @@ parameters = {
         ],
     },
 }
-
-
-def return_dtype(dtype):
-    if dtype == "ttnn.bfloat16":
-        return ttnn.bfloat16
-    elif dtype == "ttnn.float32":
-        return ttnn.float32
-    elif dtype == "ttnn.bfloat8_b":
-        return ttnn.bfloat8_b
-    elif dtype == "ttnn.bfloat4_b":
-        return ttnn.bfloat4_b
-    elif dtype == "ttnn.int32":
-        return ttnn.int32
-    elif dtype == "none":
-        return None
-
-
-def return_mem_config(mem_config_string):
-    if mem_config_string == "l1_interleaved":
-        return ttnn.L1_MEMORY_CONFIG
-    elif mem_config_string == "dram_interleaved":
-        return ttnn.DRAM_MEMORY_CONFIG
-    elif mem_config_string == "l1_height_sharded_rm":
-        return ttnn.create_sharded_memory_config(
-            shape=(512 // 8, 512),
-            # shape=(1024 // 8, 1024),
-            core_grid=ttnn.CoreGrid(y=2, x=4),
-            strategy=ttnn.ShardStrategy.HEIGHT,
-            orientation=ttnn.ShardOrientation.ROW_MAJOR,
-            use_height_and_width_as_shard_shape=True,
-        )
-    elif mem_config_string == "l1_height_sharded_cm":
-        return ttnn.create_sharded_memory_config(
-            shape=(512, 512 // 8),
-            # shape=(1024, 1024 // 8),
-            core_grid=ttnn.CoreGrid(y=2, x=4),
-            strategy=ttnn.ShardStrategy.HEIGHT,
-            orientation=ttnn.ShardOrientation.COL_MAJOR,
-            use_height_and_width_as_shard_shape=True,
-        )
-    elif mem_config_string == "l1_width_sharded_rm":
-        return ttnn.create_sharded_memory_config(
-            shape=(512, 512 // 8),
-            # shape=(1024, 1024 // 8),
-            core_grid=ttnn.CoreGrid(y=2, x=4),
-            strategy=ttnn.ShardStrategy.WIDTH,
-            orientation=ttnn.ShardOrientation.ROW_MAJOR,
-            use_height_and_width_as_shard_shape=True,
-        )
-    elif mem_config_string == "l1_width_sharded_cm":
-        return ttnn.create_sharded_memory_config(
-            shape=(512 // 8, 512),
-            # shape=(1024 // 8, 1024),
-            core_grid=ttnn.CoreGrid(y=2, x=4),
-            strategy=ttnn.ShardStrategy.WIDTH,
-            orientation=ttnn.ShardOrientation.COL_MAJOR,
-            use_height_and_width_as_shard_shape=True,
-        )
-    elif mem_config_string == "l1_block_sharded_rm":
-        return ttnn.create_sharded_memory_config(
-            shape=(512 // 2, 512 // 4),
-            # shape=(1024 // 2, 1024 // 4),
-            core_grid=ttnn.CoreGrid(y=2, x=4),
-            strategy=ttnn.ShardStrategy.BLOCK,
-            orientation=ttnn.ShardOrientation.ROW_MAJOR,
-            use_height_and_width_as_shard_shape=True,
-        )
-    elif mem_config_string == "l1_block_sharded_cm":
-        return ttnn.create_sharded_memory_config(
-            shape=(512 // 2, 512 // 4),
-            # shape=(1024 // 2, 1024 // 4),
-            core_grid=ttnn.CoreGrid(y=2, x=4),
-            strategy=ttnn.ShardStrategy.BLOCK,
-            orientation=ttnn.ShardOrientation.COL_MAJOR,
-            use_height_and_width_as_shard_shape=True,
-        )
-    raise ("Input mem_config_string is not valid!")
 
 
 # This is the run instructions for the test, defined by the developer.

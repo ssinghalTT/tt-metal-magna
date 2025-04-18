@@ -11,83 +11,7 @@ from tests.tt_eager.python_api_testing.sweep_tests.generation_funcs import gen_f
 
 from tests.ttnn.utils_for_testing import check_with_pcc, start_measuring_time, stop_measuring_time
 from models.utility_functions import torch_random
-
-
-def return_dtype(dtype):
-    if dtype == "ttnn.bfloat16":
-        return ttnn.bfloat16
-    elif dtype == "ttnn.float32":
-        return ttnn.float32
-    elif dtype == "ttnn.bfloat8_b":
-        return ttnn.bfloat8_b
-    elif dtype == "ttnn.bfloat4_b":
-        return ttnn.bfloat4_b
-    elif dtype == "ttnn.int32":
-        return ttnn.int32
-    elif dtype == "none":
-        return None
-
-
-def return_mem_config(mem_config_string):
-    if mem_config_string == "l1_interleaved":
-        return ttnn.L1_MEMORY_CONFIG
-    elif mem_config_string == "dram_interleaved":
-        return ttnn.DRAM_MEMORY_CONFIG
-    elif mem_config_string == "l1_height_sharded_rm":
-        return ttnn.create_sharded_memory_config(
-            shape=(512 // 8, 512),
-            # shape=(1024 // 8, 1024),
-            core_grid=ttnn.CoreGrid(y=2, x=4),
-            strategy=ttnn.ShardStrategy.HEIGHT,
-            orientation=ttnn.ShardOrientation.ROW_MAJOR,
-            use_height_and_width_as_shard_shape=True,
-        )
-    elif mem_config_string == "l1_height_sharded_cm":
-        return ttnn.create_sharded_memory_config(
-            shape=(512, 512 // 8),
-            # shape=(1024, 1024 // 8),
-            core_grid=ttnn.CoreGrid(y=2, x=4),
-            strategy=ttnn.ShardStrategy.HEIGHT,
-            orientation=ttnn.ShardOrientation.COL_MAJOR,
-            use_height_and_width_as_shard_shape=True,
-        )
-    elif mem_config_string == "l1_width_sharded_rm":
-        return ttnn.create_sharded_memory_config(
-            shape=(512, 512 // 8),
-            # shape=(1024, 1024 // 8),
-            core_grid=ttnn.CoreGrid(y=2, x=4),
-            strategy=ttnn.ShardStrategy.WIDTH,
-            orientation=ttnn.ShardOrientation.ROW_MAJOR,
-            use_height_and_width_as_shard_shape=True,
-        )
-    elif mem_config_string == "l1_width_sharded_cm":
-        return ttnn.create_sharded_memory_config(
-            shape=(512 // 8, 512),
-            # shape=(1024 // 8, 1024),
-            core_grid=ttnn.CoreGrid(y=2, x=4),
-            strategy=ttnn.ShardStrategy.WIDTH,
-            orientation=ttnn.ShardOrientation.COL_MAJOR,
-            use_height_and_width_as_shard_shape=True,
-        )
-    elif mem_config_string == "l1_block_sharded_rm":
-        return ttnn.create_sharded_memory_config(
-            shape=(512 // 2, 512 // 4),
-            # shape=(1024 // 2, 1024 // 4),
-            core_grid=ttnn.CoreGrid(y=2, x=4),
-            strategy=ttnn.ShardStrategy.BLOCK,
-            orientation=ttnn.ShardOrientation.ROW_MAJOR,
-            use_height_and_width_as_shard_shape=True,
-        )
-    elif mem_config_string == "l1_block_sharded_cm":
-        return ttnn.create_sharded_memory_config(
-            shape=(512 // 2, 512 // 4),
-            # shape=(1024 // 2, 1024 // 4),
-            core_grid=ttnn.CoreGrid(y=2, x=4),
-            strategy=ttnn.ShardStrategy.BLOCK,
-            orientation=ttnn.ShardOrientation.COL_MAJOR,
-            use_height_and_width_as_shard_shape=True,
-        )
-    raise ("Input mem_config_string is not valid!")
+from tests.sweep_framework.sweep_utils.utils import return_dtype, return_mem_config
 
 
 # Parameters provided to the test vector generator are defined here.
@@ -95,29 +19,10 @@ def return_mem_config(mem_config_string):
 # Each suite has a key name (in this case "suite_1") which will associate the test vectors to this specific suite of inputs.
 # Developers can create their own generator functions and pass them to the parameters as inputs.
 parameters = {
-    "tt_test_13": {
+    "tt_test_14": {
         "binary_op": [
             {"tt_op": "add", "a_high": 1000, "b_high": 900, "a_low": -1000, "b_low": -900},
-            # {"tt_op" :"sub"},
-            # {"tt_op" :"rsub"},
-            # {"tt_op" :"mul"},
-            # {"tt_op" :"div"},
-            # {"tt_op" :"gte"},
-            # {"tt_op" :"gt"},
-            # {"tt_op" :"lte"},
-            # {"tt_op" :"lt"},
-            # {"tt_op" :"eq"},
-            # {"tt_op" :"ne"},
-            # {"tt_op" :"logical_and"},
-            # {"tt_op" :"logical_or"},
-            # {"tt_op" :"logical_xor"},
-            # {"tt_op" :"ldexp"},
-            # {"tt_op" :"logaddexp"},
-            # {"tt_op" :"logaddexp2"},
-            # {"tt_op" :"squared_difference"},
-            # {"tt_op" :"bias_gelu"},
         ],
-        # "input_shape": [{"self": [1, 1, 1024, 1024], "other": [1, 1, 1024, 1024]}],
         "input_shape": [{"self": [1, 1, 512, 512], "other": [1, 1, 512, 512]}],  # for float32 and int32 dtypes
         "input_dtype": [
             {"input_a_dtype": "ttnn.bfloat16", "input_b_dtype": "ttnn.bfloat16"},
@@ -261,7 +166,7 @@ def run(
 # Each suite has a key name (in this case "suite_1") which will associate the test vectors to this specific suite of inputs.
 # Developers can create their own generator functions and pass them to the parameters as inputs.
 parameters = {
-    "t1_bcast_04": {
+    "t1_bcast_05": {
         "binary_op": [
             {"tt_op": "add", "a_high": 1000, "b_high": 900, "a_low": -1000, "b_low": -900},
         ],
