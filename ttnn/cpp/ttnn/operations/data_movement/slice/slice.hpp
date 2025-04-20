@@ -92,7 +92,6 @@ struct SliceOperation {
         const std::optional<MemoryConfig>& memory_config_arg = std::nullopt,
         const std::optional<Tensor>& optional_output_tensor = std::nullopt,
         const std::optional<float>& pad_value = std::nullopt);
-        const std::optional<Tensor>& optional_output_tensor = std::nullopt);
 
     template <typename T>
     static ttnn::Tensor invoke(
