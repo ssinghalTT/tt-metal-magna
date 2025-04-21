@@ -1093,7 +1093,7 @@ def test_slice_tensor(input_shape, dim, start, end, step, layout, device):
     ttnn_start_tensor = ttnn.from_torch(torch_start_tensor)
     ttnn_end_tensor = ttnn.from_torch(torch_end_tensor)
 
-    ttnn_tensor = ttnn.from_torch(torch_input, layout=layout, dtype=ttnn.bfloat16)
+    ttnn_tensor = ttnn.from_torch(torch_input, layout=layout, dtype=ttnn.bfloat16, device=device)
 
     ttnn_output = ttnn.slice(ttnn_tensor, ttnn_start_tensor, ttnn_end_tensor)
 
