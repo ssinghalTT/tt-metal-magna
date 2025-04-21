@@ -34,6 +34,7 @@
 #include <umd/device/tt_core_coordinates.h>
 #include <umd/device/types/arch.h>
 #include <umd/device/types/xy_pair.h>
+#include "fabric_edm_packet_header.hpp"
 
 namespace tt {
 
@@ -516,45 +517,57 @@ void DeviceProfiler::logNocTracePacketDataToJson(
         using EMD = KernelProfilerNocEventMetadata;
         EMD ev_md(data);
         std::variant<EMD::LocalNocEvent, EMD::FabricNoCEvent> ev_md_contents = ev_md.getContents();
-        TT_ASSERT(std::holds_alternative<EMD::LocalNocEvent>(ev_md_contents));
-        auto& local_noc_event = std::get<EMD::LocalNocEvent>(ev_md_contents);
+        if (std::holds_alternative<EMD::LocalNocEvent>(ev_md_contents)) {
+            auto local_noc_event = std::get<EMD::LocalNocEvent>(ev_md_contents);
 
-        nlohmann::ordered_json data = {
-            {"run_id", run_id},
-            {"run_host_id", run_host_id},
-            {"op_name", opname},
-            {"proc", risc_name},
-            {"noc", magic_enum::enum_name(local_noc_event.noc_type)},
-            {"vc", int(local_noc_event.noc_vc)},
-            {"sx", core_x},
-            {"sy", core_y},
-            {"num_bytes", local_noc_event.getNumBytes()},
-            {"type", magic_enum::enum_name(ev_md.noc_xfer_type)},
-            {"timestamp", timestamp},
-        };
+            nlohmann::ordered_json data = {
+                {"run_id", run_id},
+                {"run_host_id", run_host_id},
+                {"op_name", opname},
+                {"proc", risc_name},
+                {"noc", magic_enum::enum_name(local_noc_event.noc_type)},
+                {"vc", int(local_noc_event.noc_vc)},
+                {"sx", core_x},
+                {"sy", core_y},
+                {"num_bytes", local_noc_event.getNumBytes()},
+                {"type", magic_enum::enum_name(ev_md.noc_xfer_type)},
+                {"timestamp", timestamp},
+            };
 
-        // handle dst coordinates correctly for different NocEventType
-        if (local_noc_event.dst_x == -1 || local_noc_event.dst_y == -1 ||
-            ev_md.noc_xfer_type == EMD::NocEventType::READ_WITH_STATE ||
-            ev_md.noc_xfer_type == EMD::NocEventType::WRITE_WITH_STATE) {
-            // DO NOT emit destination coord; it isn't meaningful
+            // handle dst coordinates correctly for different NocEventType
+            if (local_noc_event.dst_x == -1 || local_noc_event.dst_y == -1 ||
+                ev_md.noc_xfer_type == EMD::NocEventType::READ_WITH_STATE ||
+                ev_md.noc_xfer_type == EMD::NocEventType::WRITE_WITH_STATE) {
+                // DO NOT emit destination coord; it isn't meaningful
 
-        } else if (ev_md.noc_xfer_type == EMD::NocEventType::WRITE_MULTICAST) {
-            auto phys_start_coord =
-                getPhysicalAddressFromVirtual(device_id, {local_noc_event.dst_x, local_noc_event.dst_y});
-            data["mcast_start_x"] = phys_start_coord.x;
-            data["mcast_start_y"] = phys_start_coord.y;
-            auto phys_end_coord = getPhysicalAddressFromVirtual(
-                device_id, {local_noc_event.mcast_end_dst_x, local_noc_event.mcast_end_dst_y});
-            data["mcast_end_x"] = phys_end_coord.x;
-            data["mcast_end_y"] = phys_end_coord.y;
+            } else if (ev_md.noc_xfer_type == EMD::NocEventType::WRITE_MULTICAST) {
+                auto phys_start_coord =
+                    getPhysicalAddressFromVirtual(device_id, {local_noc_event.dst_x, local_noc_event.dst_y});
+                data["mcast_start_x"] = phys_start_coord.x;
+                data["mcast_start_y"] = phys_start_coord.y;
+                auto phys_end_coord = getPhysicalAddressFromVirtual(
+                    device_id, {local_noc_event.mcast_end_dst_x, local_noc_event.mcast_end_dst_y});
+                data["mcast_end_x"] = phys_end_coord.x;
+                data["mcast_end_y"] = phys_end_coord.y;
+            } else {
+                auto phys_coord =
+                    getPhysicalAddressFromVirtual(device_id, {local_noc_event.dst_x, local_noc_event.dst_y});
+                data["dx"] = phys_coord.x;
+                data["dy"] = phys_coord.y;
+            }
+
+            noc_trace_json_log.push_back(std::move(data));
         } else {
-            auto phys_coord = getPhysicalAddressFromVirtual(device_id, {local_noc_event.dst_x, local_noc_event.dst_y});
-            data["dx"] = phys_coord.x;
-            data["dy"] = phys_coord.y;
+            auto fabric_noc_event = std::get<EMD::FabricNoCEvent>(ev_md_contents);
+            auto phys_coord =
+                getPhysicalAddressFromVirtual(device_id, {fabric_noc_event.dst_x, fabric_noc_event.dst_y});
+            // log_info(
+            //     "Fabric: event_type={}, routing_hops={}, dst_x={}, dst_y={}",
+            //     magic_enum::enum_name(ev_md.noc_xfer_type),
+            //     static_cast<uint32_t>(fabric_noc_event.routing_hops),
+            //     phys_coord.x,
+            //     phys_coord.y);
         }
-
-        noc_trace_json_log.push_back(std::move(data));
     }
 }
 
@@ -642,15 +655,20 @@ void DeviceProfiler::serializeJsonNocTraces(
 CoreCoord DeviceProfiler::getPhysicalAddressFromVirtual(chip_id_t device_id, const CoreCoord& c) const {
     bool coord_is_translated = c.x >= MetalContext::instance().hal().get_virtual_worker_start_x() &&
                                c.y >= MetalContext::instance().hal().get_virtual_worker_start_y();
-    if (device_architecture == tt::ARCH::WORMHOLE_B0 && coord_is_translated) {
-        const metal_SocDescriptor& soc_desc =
-            tt::tt_metal::MetalContext::instance().get_cluster().get_soc_desc(device_id);
-        // disable linting here; slicing is __intended__
-        // NOLINTBEGIN
-        return soc_desc.translate_coord_to(c, CoordSystem::TRANSLATED, CoordSystem::PHYSICAL);
-        // NOLINTEND
-    } else {
-        // tt:ARCH::BLACKHOLE currently doesn't have any translated coordinate adjustment
+    try {
+        if (device_architecture == tt::ARCH::WORMHOLE_B0 && coord_is_translated) {
+            const metal_SocDescriptor& soc_desc =
+                tt::tt_metal::MetalContext::instance().get_cluster().get_soc_desc(device_id);
+            // disable linting here; slicing is __intended__
+            // NOLINTBEGIN
+            return soc_desc.translate_coord_to(c, CoordSystem::TRANSLATED, CoordSystem::PHYSICAL);
+            // NOLINTEND
+        } else {
+            // tt:ARCH::BLACKHOLE currently doesn't have any translated coordinate adjustment
+            return c;
+        }
+    } catch (const std::exception& e) {
+        log_error("Failed to translate virtual coordinate {},{} to physical", c.x, c.y);
         return c;
     }
 }

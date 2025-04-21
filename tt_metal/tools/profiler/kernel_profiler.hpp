@@ -503,6 +503,5 @@ inline __attribute__((always_inline)) void recordEvent(uint16_t event_id) {
 #define RECORD_NOC_EVENT_WITH_ADDR(type, noc_addr, num_bytes, vc)
 #define RECORD_NOC_EVENT_WITH_ID(type, noc_id, num_bytes, vc)
 #define RECORD_NOC_EVENT(type)
-#define RECORD_FABRIC_HEADER(fabric_header_ptr)
 
 #endif

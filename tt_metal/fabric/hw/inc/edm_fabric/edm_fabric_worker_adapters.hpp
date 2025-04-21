@@ -6,6 +6,7 @@
 
 #include "dataflow_api.h"
 
+#include "tools/profiler/fabric_event_profile_utils.hpp"
 #include "tt_metal/hw/inc/ethernet/dataflow_api.h"
 #include "edm_fabric_utils.hpp"
 #include "fabric_edm_packet_header_validate.hpp"
@@ -411,6 +412,8 @@ private:
     FORCE_INLINE void send_packet_header_and_notify_fabric(uint32_t source_address) {
         uint64_t buffer_address = this->compute_dest_buffer_slot_noc_addr();
 
+        RECORD_FABRIC_HEADER(reinterpret_cast<LowLatencyPacketHeader*>(source_address));
+
         send_chunk_from_address<blocking_mode>(source_address, 1, sizeof(PACKET_HEADER_TYPE), buffer_address);
         post_send_payload_increment_pointers();
     }
@@ -427,6 +430,8 @@ private:
     FORCE_INLINE void send_payload_from_address_impl(uint32_t source_address, size_t size_bytes) {
         uint64_t buffer_address = this->compute_dest_buffer_slot_noc_addr();
 
+        RECORD_FABRIC_HEADER(reinterpret_cast<LowLatencyPacketHeader*>(source_address));
+
         ASSERT(size_bytes <= this->buffer_size_bytes);
         ASSERT(tt::tt_fabric::is_valid(
             *const_cast<PACKET_HEADER_TYPE*>(reinterpret_cast<volatile PACKET_HEADER_TYPE*>(source_address))));
@@ -437,6 +442,9 @@ private:
     FORCE_INLINE void send_payload_from_address_with_trid_impl(
         uint32_t source_address, size_t size_bytes, uint8_t trid) {
         ASSERT(size_bytes <= this->buffer_size_bytes);
+
+        RECORD_FABRIC_HEADER(reinterpret_cast<LowLatencyPacketHeader*>(source_address));
+
         ASSERT(tt::tt_fabric::is_valid(
             *const_cast<PACKET_HEADER_TYPE*>(reinterpret_cast<volatile PACKET_HEADER_TYPE*>(source_address))));
         if constexpr (USER_DEFINED_NUM_BUFFER_SLOTS) {

@@ -166,6 +166,9 @@ struct PacketHeaderBase {
         return get_payload_size_excluding_header() + sizeof(Derived);
     }
 
+    const NocCommandFields& get_command_fields() const { return this->command_fields; }
+    NocSendType get_noc_send_type() const { return this->noc_send_type; }
+
     // Setters for noc_send_type, routing_fields, and command_fields
     inline void set_noc_send_type(NocSendType& type) { this->noc_send_type = type; }
     inline void set_command_fields(NocCommandFields& fields) { this->command_fields = fields; }

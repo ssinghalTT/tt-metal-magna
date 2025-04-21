@@ -38,8 +38,7 @@ struct alignas(uint64_t) KernelProfilerNocEventMetadata {
         int8_t dst_y;
         int8_t mcast_end_dst_x;
         int8_t mcast_end_dst_y;
-        int8_t routing_fields;
-        int8_t noc_send_type;
+        int8_t routing_hops;
     };
 
     // Union to hold either local or fabric event data
@@ -51,40 +50,46 @@ struct alignas(uint64_t) KernelProfilerNocEventMetadata {
     // --- Type enum (tag) --- Must be defined before use in constructor
     enum class NocEventType : unsigned char {
         UNDEF = 0,
-        READ,
-        READ_SET_STATE,
-        READ_SET_TRID,
-        READ_WITH_STATE,
-        READ_WITH_STATE_AND_TRID,
-        READ_BARRIER_START,
-        READ_BARRIER_END,
-        READ_BARRIER_WITH_TRID,
-        READ_DRAM_SHARDED_SET_STATE,
-        READ_DRAM_SHARDED_WITH_STATE,
+        READ = 1,
+        READ_SET_STATE = 2,
+        READ_SET_TRID = 3,
+        READ_WITH_STATE = 4,
+        READ_WITH_STATE_AND_TRID = 5,
+        READ_BARRIER_START = 6,
+        READ_BARRIER_END = 7,
+        READ_BARRIER_WITH_TRID = 8,
+        READ_DRAM_SHARDED_SET_STATE = 9,
+        READ_DRAM_SHARDED_WITH_STATE = 10,
 
-        WRITE_,
-        WRITE_WITH_TRID,
-        WRITE_INLINE,
-        WRITE_MULTICAST,
-        WRITE_SET_STATE,
-        WRITE_WITH_STATE,
-        WRITE_WITH_TRID_SET_STATE,
-        WRITE_WITH_TRID_WITH_STATE,
-        WRITE_BARRIER_START,
-        WRITE_BARRIER_END,
-        WRITE_BARRIER_WITH_TRID,
-        WRITE_FLUSH,
+        WRITE_ = 11,
+        WRITE_WITH_TRID = 12,
+        WRITE_INLINE = 13,
+        WRITE_MULTICAST = 14,
+        WRITE_SET_STATE = 15,
+        WRITE_WITH_STATE = 16,
+        WRITE_WITH_TRID_SET_STATE = 17,
+        WRITE_WITH_TRID_WITH_STATE = 18,
+        WRITE_BARRIER_START = 19,
+        WRITE_BARRIER_END = 20,
+        WRITE_BARRIER_WITH_TRID = 21,
+        WRITE_FLUSH = 22,
 
-        FULL_BARRIER,
+        FULL_BARRIER = 23,
 
-        ATOMIC_BARRIER,
-        SEMAPHORE_INC,
-        SEMAPHORE_WAIT,
-        SEMAPHORE_SET,
+        ATOMIC_BARRIER = 24,
+        SEMAPHORE_INC = 25,
+        SEMAPHORE_WAIT = 26,
+        SEMAPHORE_SET = 27,
 
-        FABRIC_NOC_EVENT,
+        // NOTE: fabric events should be contiguous to allow quick range check!
+        FABRIC_UNICAST_WRITE = 28,
+        FABRIC_UNICAST_INLINE_WRITE = 29,
+        FABRIC_MULTICAST_WRITE = 30,
+        FABRIC_UNICAST_ATOMIC_INC = 31,
+        FABRIC_FUSED_UNICAST_ATOMIC_INC = 32,
+        FABRIC_MULTICAST_ATOMIC_INC = 33,
 
-        UNSUPPORTED
+        UNSUPPORTED = 34
     };
     NocEventType noc_xfer_type;
 
@@ -95,9 +100,14 @@ struct alignas(uint64_t) KernelProfilerNocEventMetadata {
         std::memcpy(this, &raw_data, sizeof(KernelProfilerNocEventMetadata));
     }
 
+    bool isFabricEventType() const {
+        return noc_xfer_type >= NocEventType::FABRIC_UNICAST_WRITE &&
+               noc_xfer_type <= NocEventType::FABRIC_MULTICAST_ATOMIC_INC;
+    }
+
     // Getter to return the correct variant based on the tag
     std::variant<LocalNocEvent, FabricNoCEvent> getContents() const {
-        if (noc_xfer_type == NocEventType::FABRIC_NOC_EVENT) {
+        if (isFabricEventType()) {
             return data.fabric_event;
         } else {
             return data.local_event;
