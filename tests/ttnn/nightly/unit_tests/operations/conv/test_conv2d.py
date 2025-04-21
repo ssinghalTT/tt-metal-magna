@@ -1963,6 +1963,108 @@ def test_unet_conv_groups_4_6_wh(
 )
 @pytest.mark.parametrize(
     "groups",
+    [4],
+)
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
+@pytest.mark.parametrize(
+    "output_channels, input_channels, input_height, input_width, filter_height, filter_width, stride_h, stride_w, pad_h, pad_w, shard_layout, config_override, use_shallow_conv_variant, in_place, input_layout",
+    (
+        # (16, 4, 1056, 160, 3, 3, 1, 1, 1, 1, BS, {"act_block_w_div": 1}, True, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (16, 16, 1056, 160, 3, 3, 1, 1, 1, 1, BS, {"act_block_w_div": 1}, True, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (16, 16, 528, 80, 3, 3, 1, 1, 1, 1, BS, {"act_block_w_div": 1}, True, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (32, 16, 264, 40, 3, 3, 1, 1, 1, 1, BS, {"act_block_w_div": 1}, False, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (32, 32, 264, 40, 3, 3, 1, 1, 1, 1, BS, {"act_block_w_div": 1}, False, False, ttnn.ROW_MAJOR_LAYOUT),
+        (32, 32, 132, 20, 3, 3, 1, 1, 1, 1, BS, {"act_block_w_div": 1}, False, False, ttnn.ROW_MAJOR_LAYOUT),
+        (64, 32, 66, 10, 3, 3, 1, 1, 1, 1, BS, {"act_block_w_div": 1}, False, False, ttnn.ROW_MAJOR_LAYOUT),
+        (64, 64, 66, 10, 3, 3, 1, 1, 1, 1, BS, {"act_block_w_div": 1}, False, False, ttnn.ROW_MAJOR_LAYOUT),
+        (32, 96, 132, 20, 3, 3, 1, 1, 1, 1, BS, {"act_block_w_div": 1}, False, False, ttnn.ROW_MAJOR_LAYOUT),
+        (32, 32, 132, 20, 3, 3, 1, 1, 1, 1, BS, {"act_block_w_div": 1}, False, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (32, 64, 264, 40, 3, 3, 1, 1, 1, 1, BS, {"act_block_w_div": 1}, False, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (32, 32, 264, 40, 3, 3, 1, 1, 1, 1, BS, {"act_block_w_div": 1}, False, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (16, 48, 528, 80, 3, 3, 1, 1, 1, 1, BS, {"act_block_w_div": 1}, True, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (16, 16, 528, 80, 3, 3, 1, 1, 1, 1, BS, {"act_block_w_div": 1}, True, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (16, 32, 1056, 160, 3, 3, 1, 1, 1, 1, BS, {"act_block_w_div": 1}, True, True, ttnn.ROW_MAJOR_LAYOUT),
+        # (16, 32, 1056, 160, 3, 3, 1, 1, 1, 1, BS, {"act_block_w_div": 1}, True, True, ttnn.TILE_LAYOUT),
+        # (1, 16, 1056, 160, 1, 1, 1, 1, 0, 0, BS, {"act_block_w_div": 1}, False, False, ttnn.ROW_MAJOR_LAYOUT),
+    ),
+)
+@pytest.mark.parametrize(
+    "weights_dtype",
+    [ttnn.bfloat8_b],
+)
+@pytest.mark.parametrize(
+    "activations_dtype",
+    [ttnn.bfloat8_b],
+)
+@pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
+@pytest.mark.parametrize("output_layout", [ttnn.TILE_LAYOUT])
+def test_unet_conv_groups_4_bs_wh(
+    device,
+    torch_tensor_map,
+    use_program_cache,
+    math_fidelity,
+    activations_dtype,
+    weights_dtype,
+    batch_size,
+    output_channels,
+    input_channels,
+    input_height,
+    input_width,
+    filter_height,
+    filter_width,
+    stride_h,
+    stride_w,
+    pad_h,
+    pad_w,
+    shard_layout,
+    config_override,
+    use_shallow_conv_variant,
+    input_layout,
+    output_layout,
+    groups,
+    in_place,
+):
+    if (device.compute_with_storage_grid_size().x, device.compute_with_storage_grid_size().y) == (8, 7):
+        pytest.skip("Test is not supported on n300 (8,7) grid")
+    if output_layout == ttnn.ROW_MAJOR_LAYOUT and activations_dtype == ttnn.bfloat8_b:
+        pytest.skip("Row major layout not compatible with bfloat8_b")
+    if output_layout == ttnn.ROW_MAJOR_LAYOUT and input_height >= 1056:
+        pytest.skip("OOM")
+    if input_channels == 32 and input_height == 1056 and groups == 6:
+        pytest.skip("OOM - enable when support for full in-place conv2d")
+    run_conv(
+        device,
+        torch_tensor_map,
+        math_fidelity,
+        activations_dtype,
+        weights_dtype,
+        batch_size,
+        groups * output_channels,
+        groups * input_channels,
+        input_height,
+        input_width,
+        filter_height,
+        filter_width,
+        stride_h,
+        stride_w,
+        (pad_h, pad_w),
+        config_override,
+        shard_layout=shard_layout,
+        use_shallow_conv_variant=use_shallow_conv_variant,
+        transpose_shards=True,  ## use RM (transpose_mcast=False) with 2D on WH
+        input_layout=input_layout,
+        output_layout=output_layout,
+        groups=groups,
+        in_place=in_place,
+    )
+
+
+@pytest.mark.parametrize(
+    "batch_size",
+    [1],
+)
+@pytest.mark.parametrize(
+    "groups",
     [8],
 )
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
