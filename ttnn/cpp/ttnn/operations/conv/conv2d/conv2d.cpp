@@ -413,6 +413,17 @@ Result conv2d_L1(
         mm_conv,
         auto_shard);
 
+    if (input_tensor_post_tm.is_sharded()) {
+        auto shard_layout = conv_config.shard_layout.value();
+        if (shard_layout == TensorMemoryLayout::HEIGHT_SHARDED || shard_layout == TensorMemoryLayout::BLOCK_SHARDED) {
+            auto shard_shape = input_tensor_post_tm.memory_config().shard_spec.value().shape;
+            TT_FATAL(
+                shard_shape[0] % tt::constants::TILE_WIDTH == 0,
+                "Shard width must be divisible by 32 {}",
+                shard_shape[0]);
+        }
+    }
+
     auto [opt_conv_op_parallel_config, opt_conv_op_block_config, conv_out_memory_config] = get_conv_configs(
         conv_config,
         compute_config,
