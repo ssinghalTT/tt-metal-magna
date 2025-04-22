@@ -34,7 +34,10 @@
 #include <umd/device/tt_core_coordinates.h>
 #include <umd/device/types/arch.h>
 #include <umd/device/types/xy_pair.h>
+
 #include "fabric_edm_packet_header.hpp"
+#include "fabric/fabric_host_utils.hpp"
+#include "tt_cluster.hpp"
 
 namespace tt {
 
@@ -520,6 +523,9 @@ void DeviceProfiler::logNocTracePacketDataToJson(
         if (std::holds_alternative<EMD::LocalNocEvent>(ev_md_contents)) {
             auto local_noc_event = std::get<EMD::LocalNocEvent>(ev_md_contents);
 
+            // NOTE: assume here that src and dest device_id are local;
+            // serialization will coalesce and update to correct destination
+            // based on fabric events
             nlohmann::ordered_json data = {
                 {"run_id", run_id},
                 {"run_host_id", run_host_id},
@@ -527,8 +533,10 @@ void DeviceProfiler::logNocTracePacketDataToJson(
                 {"proc", risc_name},
                 {"noc", magic_enum::enum_name(local_noc_event.noc_type)},
                 {"vc", int(local_noc_event.noc_vc)},
+                {"src_device_id", device_id},
                 {"sx", core_x},
                 {"sy", core_y},
+                {"dst_device_id", device_id},
                 {"num_bytes", local_noc_event.getNumBytes()},
                 {"type", magic_enum::enum_name(ev_md.noc_xfer_type)},
                 {"timestamp", timestamp},
@@ -558,15 +566,22 @@ void DeviceProfiler::logNocTracePacketDataToJson(
 
             noc_trace_json_log.push_back(std::move(data));
         } else {
-            auto fabric_noc_event = std::get<EMD::FabricNoCEvent>(ev_md_contents);
+            EMD::FabricNoCEvent fabric_noc_event = std::get<EMD::FabricNoCEvent>(ev_md_contents);
             auto phys_coord =
                 getPhysicalAddressFromVirtual(device_id, {fabric_noc_event.dst_x, fabric_noc_event.dst_y});
-            // log_info(
-            //     "Fabric: event_type={}, routing_hops={}, dst_x={}, dst_y={}",
-            //     magic_enum::enum_name(ev_md.noc_xfer_type),
-            //     static_cast<uint32_t>(fabric_noc_event.routing_hops),
-            //     phys_coord.x,
-            //     phys_coord.y);
+            noc_trace_json_log.push_back(nlohmann::ordered_json{
+                {"run_id", run_id},
+                {"run_host_id", run_host_id},
+                {"op_name", opname},
+                {"proc", risc_name},
+                {"sx", core_x},
+                {"sy", core_y},
+                {"type", magic_enum::enum_name(ev_md.noc_xfer_type)},
+                {"dx", phys_coord.x},
+                {"dy", phys_coord.y},
+                {"routing_hops", fabric_noc_event.routing_hops},
+                {"timestamp", timestamp},
+            });
         }
     }
 }
@@ -580,8 +595,110 @@ void DeviceProfiler::emitCSVHeader(
                  << std::endl;
 }
 
+class FabricRoutingLookup {
+public:
+    using HopCount = int;
+    using EthCoreToChannelMap =
+        std::map<std::tuple<tt::tt_fabric::mesh_id_t, chip_id_t, CoreCoord>, tt::tt_fabric::chan_id_t>;
+    using RoutingHopAndCoreCoordToDestinationMap = std::map<
+        std::tuple<tt::tt_fabric::mesh_id_t, chip_id_t, CoreCoord, HopCount>,
+        std::pair<tt::tt_fabric::mesh_id_t, chip_id_t>>;
+
+    // Constructor takes ownership via move
+    FabricRoutingLookup(EthCoreToChannelMap&& eth_map, RoutingHopAndCoreCoordToDestinationMap&& dest_map) :
+        eth_core_to_channel_lookup_(std::move(eth_map)),
+        routing_hop_and_core_coord_to_destination_(std::move(dest_map)) {}
+
+    // Default constructor for cases where lookup is not built (e.g., non-1D fabric)
+    FabricRoutingLookup() = default;
+
+    // lookup APIs
+    std::optional<tt::tt_fabric::chan_id_t> getEthCoreToChannelLookup(
+        tt::tt_fabric::mesh_id_t mesh_id, chip_id_t chip_id, CoreCoord core_coord) const {
+        auto it = eth_core_to_channel_lookup_.find(std::make_tuple(mesh_id, chip_id, core_coord));
+        if (it != eth_core_to_channel_lookup_.end()) {
+            return it->second;
+        }
+        return std::nullopt;
+    }
+
+    std::optional<std::pair<tt::tt_fabric::mesh_id_t, chip_id_t>> getRoutingHopAndCoreCoordToDestination(
+        tt::tt_fabric::mesh_id_t mesh_id, chip_id_t chip_id, CoreCoord core_coord, HopCount hops) const {
+        log_info(
+            "getRoutingHopAndCoreCoordToDestination: mesh_id={}, chip_id={}, core_coord={}, hops={}",
+            mesh_id,
+            chip_id,
+            core_coord,
+            hops);
+        auto it = routing_hop_and_core_coord_to_destination_.find(std::make_tuple(mesh_id, chip_id, core_coord, hops));
+        if (it != routing_hop_and_core_coord_to_destination_.end()) {
+            return it->second;
+        }
+        return std::nullopt;
+    }
+
+private:
+    EthCoreToChannelMap eth_core_to_channel_lookup_;
+    RoutingHopAndCoreCoordToDestinationMap routing_hop_and_core_coord_to_destination_;
+};
+
+FabricRoutingLookup DeviceProfiler::buildFabricRoutingLookup() const {
+    auto& cluster = tt::tt_metal::MetalContext::instance().get_cluster();
+
+    // establish that we have a 1D fabric, otherwise bail
+    tt::tt_metal::FabricConfig fabric_config = cluster.get_fabric_config();
+    if (!tt::tt_fabric::is_1d_fabric_config(fabric_config)) {
+        log_info("Skipping fabric routing lookup build; topology is not 1D Ring or Linear");
+        // Return default-constructed (empty) lookup object
+        return FabricRoutingLookup{};
+    }
+
+    const tt::tt_fabric::ControlPlane* control_plane = cluster.get_control_plane();
+    TT_ASSERT(control_plane != nullptr);
+
+    // assume their is only one mesh (for now)
+    tt::tt_fabric::mesh_id_t mesh_id = 0;
+
+    auto user_exposed_chip_ids = cluster.user_exposed_chip_ids();
+    std::vector<chip_id_t> sorted_user_exposed_chip_ids(user_exposed_chip_ids.begin(), user_exposed_chip_ids.end());
+    std::sort(sorted_user_exposed_chip_ids.begin(), sorted_user_exposed_chip_ids.end());
+
+    // Use the type aliases from the locally defined class
+    FabricRoutingLookup::EthCoreToChannelMap eth_core_to_channel_lookup;
+    FabricRoutingLookup::RoutingHopAndCoreCoordToDestinationMap routing_hop_and_core_coord_to_destination;
+
+    for (chip_id_t chip_id_src : sorted_user_exposed_chip_ids) {
+        for (chip_id_t chip_id_dst : sorted_user_exposed_chip_ids) {
+            if (chip_id_src == chip_id_dst) {
+                continue;
+            }
+            auto routers_to_chip = control_plane->get_routers_to_chip(mesh_id, chip_id_src, mesh_id, chip_id_dst);
+            // log_info("src_chip_id: {}, dst_chip_id: {}", chip_id_src, chip_id_dst);
+            for (const auto& [routing_plane_id, coord] : routers_to_chip) {
+                auto valid_eth_chans =
+                    control_plane->get_valid_eth_chans_on_routing_plane(mesh_id, chip_id_src, routing_plane_id);
+                // log_info("    routing plane {} via eth core ({}, {})", routing_plane_id, coord.x, coord.y);
+                for (const auto& chan_id : valid_eth_chans) {
+                    eth_core_to_channel_lookup.emplace(std::make_tuple(mesh_id, chip_id_src, coord), chan_id);
+                    auto route = control_plane->get_fabric_route(mesh_id, chip_id_src, mesh_id, chip_id_dst, chan_id);
+                    FabricRoutingLookup::HopCount hops = route.size();  // Use type alias
+                    routing_hop_and_core_coord_to_destination.emplace(
+                        std::make_tuple(mesh_id, chip_id_src, coord, hops), std::make_pair(mesh_id, chip_id_dst));
+                }
+            }
+        }
+    }
+
+    // Construct and return the lookup object, moving the maps into it
+    return FabricRoutingLookup(
+        std::move(eth_core_to_channel_lookup), std::move(routing_hop_and_core_coord_to_destination));
+}
+
 void DeviceProfiler::serializeJsonNocTraces(
-    const nlohmann::ordered_json& noc_trace_json_log, const std::filesystem::path& output_dir, chip_id_t device_id) {
+    const nlohmann::ordered_json& noc_trace_json_log,
+    const std::filesystem::path& output_dir,
+    chip_id_t device_id,
+    const FabricRoutingLookup& routing_lookup) {
     // create output directory if it does not exist
     std::filesystem::create_directories(output_dir);
     if (!std::filesystem::is_directory(output_dir)) {
@@ -633,8 +750,94 @@ void DeviceProfiler::serializeJsonNocTraces(
         }
     }
 
-    log_info("Writing profiler noc traces to '{}'", output_dir);
+    constexpr tt::tt_fabric::mesh_id_t mesh_id = 0;  // Assuming single mesh
+
+    std::unordered_map<RuntimeID, nlohmann::json::array_t> processed_events_by_opname;
+
     for (auto& [runtime_id, events] : events_by_opname) {
+        nlohmann::json::array_t coalesced_events;
+        for (size_t i = 0; i < events.size(); /* manual increment */) {
+            const auto& current_event = events[i];
+            bool coalesced = false;
+
+            if (current_event.contains("type") && current_event["type"] == "FABRIC_UNICAST_WRITE" &&
+                (i + 1 < events.size())) {
+                const auto& next_event_const = events[i + 1];
+                if (next_event_const.contains("type") && next_event_const["type"] == "WRITE_") {
+                    // Check if timestamps are close enough; otherwise
+                    double ts_diff = next_event_const.value("timestamp", 0.0) - current_event.value("timestamp", 0.0);
+                    if (ts_diff > 1000) {
+                        log_warning(
+                            "Failed to coalesce fabric noc trace events because timestamps are implausibly far apart.");
+                    } else {
+                        try {
+                            // router eth core location is derived from the original noc write event
+                            int phys_eth_x = next_event_const.at("dx").get<int>();
+                            int phys_eth_y = next_event_const.at("dy").get<int>();
+
+                            const metal_SocDescriptor& soc_desc =
+                                tt::tt_metal::MetalContext::instance().get_cluster().get_soc_desc(device_id);
+                            CoreCoord translated_eth_core_coord = soc_desc.translate_coord_to(
+                                {(uint32_t)phys_eth_x, (uint32_t)phys_eth_y},
+                                CoordSystem::PHYSICAL,
+                                CoordSystem::TRANSLATED);
+
+                            int hops = current_event.at("routing_hops").get<int>();
+                            auto dest_info = routing_lookup.getRoutingHopAndCoreCoordToDestination(
+                                mesh_id, device_id, translated_eth_core_coord, hops);
+
+                            if (dest_info.has_value()) {
+                                auto [dest_mesh_id, dest_chip_id] = dest_info.value();
+                                nlohmann::ordered_json modified_write_event = next_event_const;
+                                modified_write_event["dst_device_id"] = dest_chip_id;
+                                modified_write_event["timestamp"] = current_event["timestamp"];
+
+                                // replace original eth core destination with true destination
+                                modified_write_event["dx"] = current_event["dx"];
+                                modified_write_event["dy"] = current_event["dy"];
+
+                                coalesced_events.push_back(std::move(modified_write_event));
+                                coalesced = true;
+                            } else {
+                                log_warning(
+                                    "Fabric routing lookup failed for event in op '{}' at ts {}: src_dev={}, "
+                                    "eth_core=({}, {}), hops={}. Keeping original events.",
+                                    current_event.value("op_name", "N/A"),
+                                    current_event.value("timestamp", 0.0),
+                                    device_id,
+                                    translated_eth_core_coord.x,
+                                    translated_eth_core_coord.y,
+                                    hops);
+                            }
+                        } catch (const nlohmann::json::exception& e) {
+                            log_warning(
+                                "JSON parsing error during event coalescing for event in op '{}' at index {}: {}. "
+                                "Keeping original events.",
+                                current_event.value("op_name", "N/A"),
+                                i,
+                                e.what());
+                        }
+                    }
+                } else {
+                    log_info(
+                        "noc event following fabric event is not a WRITE_, but instead : {}", current_event.dump(2));
+                }
+            }
+
+            if (coalesced) {
+                i += 2;  // Skip both original events
+            } else {
+                // If not coalesced or lookup failed, add the current event
+                coalesced_events.push_back(current_event);
+                i += 1;
+            }
+        }
+        // Store the final coalesced/processed list for this op_name
+        processed_events_by_opname[runtime_id] = std::move(coalesced_events);
+    }
+
+    log_info("Writing profiler noc traces to '{}'", output_dir);
+    for (auto& [runtime_id, events] : processed_events_by_opname) {
         // dump events to a json file inside directory output_dir named after the opname
         std::filesystem::path rpt_path = output_dir;
         std::string op_name = events.front().value("op_name", "UnknownOP");
@@ -643,18 +846,19 @@ void DeviceProfiler::serializeJsonNocTraces(
         } else {
             rpt_path /= fmt::format("noc_trace_dev{}_ID{}.json", device_id, runtime_id);
         }
-        std::ofstream rpt_ofs(rpt_path);
-        if (!rpt_ofs) {
-            log_error("Could not write noc event json trace to '{}'", rpt_path);
-            return;
+        std::ofstream file(rpt_path);
+        if (file.is_open()) {
+            // Write the final processed events for this op
+            file << nlohmann::json(std::move(events)).dump(2);
+        } else {
+            log_error("Could not open file '{}' for writing noc trace.", rpt_path);
         }
-        rpt_ofs << nlohmann::json(std::move(events)).dump(4) << std::endl;
     }
 }
 
 CoreCoord DeviceProfiler::getPhysicalAddressFromVirtual(chip_id_t device_id, const CoreCoord& c) const {
-    bool coord_is_translated = c.x >= MetalContext::instance().hal().get_virtual_worker_start_x() &&
-                               c.y >= MetalContext::instance().hal().get_virtual_worker_start_y();
+    bool coord_is_translated = c.x >= MetalContext::instance().hal().get_virtual_worker_start_x() - 1 &&
+                               c.y >= MetalContext::instance().hal().get_virtual_worker_start_y() - 1;
     try {
         if (device_architecture == tt::ARCH::WORMHOLE_B0 && coord_is_translated) {
             const metal_SocDescriptor& soc_desc =
@@ -759,6 +963,8 @@ void DeviceProfiler::dumpResults(
 
     generateZoneSourceLocationsHashes();
 
+    FabricRoutingLookup routing_lookup = buildFabricRoutingLookup();
+
     if (output_dram_buffer != nullptr) {
         const auto USE_FAST_DISPATCH = std::getenv("TT_METAL_SLOW_DISPATCH_MODE") == nullptr;
         if (USE_FAST_DISPATCH) {
@@ -807,8 +1013,9 @@ void DeviceProfiler::dumpResults(
                 rpt_path = output_dir;
             }
 
-            if (rtoptions.get_profiler_noc_events_enabled()) {
-                serializeJsonNocTraces(noc_trace_json_log, rpt_path, device_id);
+            // serialize noc traces only in normal state, to avoid overwriting individual trace files
+            if (state == ProfilerDumpState::NORMAL && rtoptions.get_profiler_noc_events_enabled()) {
+                serializeJsonNocTraces(noc_trace_json_log, rpt_path, device_id, routing_lookup);
             }
         }
     } else {

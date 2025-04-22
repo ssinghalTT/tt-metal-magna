@@ -52,6 +52,9 @@ namespace tt {
 
 namespace tt_metal {
 
+// defined locally in profiler.cpp
+class FabricRoutingLookup;
+
 struct DisptachMetaData {
     // Dispatch command queue command type
     std::string cmd_type = "";
@@ -103,7 +106,10 @@ private:
 
     // serialize all noc trace data into per-op json trace files
     void serializeJsonNocTraces(
-        const nlohmann::ordered_json& noc_trace_json_log, const std::filesystem::path& output_dir, chip_id_t device_id);
+        const nlohmann::ordered_json& noc_trace_json_log,
+        const std::filesystem::path& output_dir,
+        chip_id_t device_id,
+        const FabricRoutingLookup& routing_lookup);
 
     void emitCSVHeader(
         std::ofstream& log_file_ofs, const tt::ARCH& device_architecture, int device_core_frequency) const;
@@ -162,6 +168,9 @@ private:
         kernel_profiler::PacketTypes packet_type,
         uint64_t source_line,
         const std::string_view source_file);
+
+    // builds tt_fabric routing lookup table
+    FabricRoutingLookup buildFabricRoutingLookup() const;
 
     // Helper function for reading risc profile results
     void readRiscProfilerResults(
