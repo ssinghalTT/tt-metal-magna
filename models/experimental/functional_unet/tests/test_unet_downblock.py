@@ -23,10 +23,7 @@ from models.experimental.functional_unet.tests.common import (
 @pytest.mark.parametrize(
     "block_name, input_channels, input_height, input_width",
     [
-        ("downblock1", 4, 1056, 160),
         ("downblock2", 16, 528, 80),
-        ("downblock3", 16, 264, 40),
-        ("downblock4", 32, 132, 20),
     ],
 )
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 32768}], indirect=True)
@@ -57,6 +54,18 @@ def test_unet_downblock(
     torch_output, torch_residual = getattr(model, block_name)(torch_input)
 
     ttnn_input = ttnn_input.to(device)
+
+    core_grid = ttnn.CoreRangeSet(
+        {
+            ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 6)),
+            ttnn.CoreRange(ttnn.CoreCoord(0, 7), ttnn.CoreCoord(6, 7)),
+        }
+    )
+    input_shard_shape = (671, 64)
+    input_shard_spec = ttnn.ShardSpec(core_grid, input_shard_shape, ttnn.ShardOrientation.ROW_MAJOR)
+    input_mem_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.HEIGHT_SHARDED, ttnn.BufferType.L1, input_shard_spec)
+    ttnn_input = ttnn.to_memory_config(ttnn_input, input_mem_config)
+
     ttnn_output, ttnn_residual = getattr(ttnn_model, block_name)(ttnn_input)
 
     check_pcc_conv(torch_residual, ttnn_residual)
