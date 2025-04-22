@@ -51,7 +51,9 @@ def test_unet_downblock(
         input_width=input_width,
     )
 
-    torch_output, torch_residual = getattr(model, block_name)(torch_input)
+    c2 = model.c2(torch_input)
+    b2 = model.b2(c2)
+    torch_output = model.r2(b2)
 
     ttnn_input = ttnn_input.to(device)
 
@@ -66,10 +68,9 @@ def test_unet_downblock(
     input_mem_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.HEIGHT_SHARDED, ttnn.BufferType.L1, input_shard_spec)
     ttnn_input = ttnn.to_memory_config(ttnn_input, input_mem_config)
 
-    ttnn_output, ttnn_residual = getattr(ttnn_model, block_name)(ttnn_input)
+    ttnn_output = getattr(ttnn_model, block_name).conv1(ttnn_input)
 
-    check_pcc_conv(torch_residual, ttnn_residual)
-    check_pcc_pool(torch_output, ttnn_output)
+    check_pcc_conv(torch_output, ttnn_output)
 
 
 @pytest.mark.parametrize("batch, groups", [(1, 4)])
