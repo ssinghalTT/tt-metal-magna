@@ -17,6 +17,8 @@ struct RotaryEmbeddingParams {
 
     uint32_t sequence_length = 0;
     uint32_t head_dim = 0;
+    // whether or not to transpose num_heads and seq_len dimensions before/after transformation
+    bool adjust_for_hf_style = false;
 };
 
 autograd::TensorPtr rope(const autograd::TensorPtr& input, const RotaryEmbeddingParams& rope_params);

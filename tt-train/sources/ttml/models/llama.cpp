@@ -22,6 +22,7 @@ Llama::Llama(const LlamaConfig& config) {
     float dropout_prob = config.dropout_prob;
     uint32_t num_blocks = config.num_blocks;
     runner_type = config.runner_type;
+    float theta = config.theta;
 
     fmt::print("Llama configuration:\n");
     fmt::print("    Vocab size: {}\n", vocab_size);
@@ -34,6 +35,7 @@ Llama::Llama(const LlamaConfig& config) {
     fmt::print("    Positional embedding type: RoPE\n");
     fmt::print("    Runner type: {}\n", runner_type == RunnerType::Default ? "Default" : "Memory efficient");
     fmt::print("    Weight tying: {}\n", config.weight_tying == WeightTyingType::Enabled ? "Enabled" : "Disabled");
+    fmt::print("    Theta: {}\n", theta);
 
     uint32_t vocab_size_divisible_by_32 = (vocab_size + 31) / 32 * 32;
     if (max_sequence_length % 32 != 0) {
@@ -55,7 +57,10 @@ Llama::Llama(const LlamaConfig& config) {
         tok_emb = std::make_shared<ttml::modules::Embedding>(vocab_size_divisible_by_32, embedding_dim);
     }
 
-    m_rope_params = ops::build_rope_params(max_sequence_length, embedding_dim / num_heads);
+    m_rope_params = ops::build_rope_params(
+        /*sequence_length=*/max_sequence_length,
+        /*head_dim=*/embedding_dim / num_heads,
+        /*theta=*/theta);
     blocks.reserve(num_blocks);
     for (uint32_t block_idx = 0; block_idx < num_blocks; ++block_idx) {
         blocks.push_back(std::make_shared<ttml::modules::LlamaBlock>(
@@ -102,6 +107,7 @@ LlamaConfig read_config(const YAML::Node& config) {
     llama_config.num_blocks = config["num_blocks"].as<uint32_t>();
     llama_config.vocab_size = config["vocab_size"].as<uint32_t>();
     llama_config.max_sequence_length = config["max_sequence_length"].as<uint32_t>();
+    llama_config.theta = config["theta"].as<float>();
     llama_config.runner_type = common::transformer::read_runner_type(config);
     llama_config.weight_tying = common::transformer::read_weight_tying_type(config);
 
@@ -117,6 +123,7 @@ YAML::Node write_config(const LlamaConfig& llama_config) {
     config["num_blocks"] = llama_config.num_blocks;
     config["vocab_size"] = llama_config.vocab_size;
     config["max_sequence_length"] = llama_config.max_sequence_length;
+    config["theta"] = llama_config.theta;
     return config;
 }
 

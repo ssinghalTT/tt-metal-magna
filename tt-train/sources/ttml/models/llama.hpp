@@ -21,6 +21,7 @@ struct LlamaConfig {
     uint32_t num_groups = 3U;
     uint32_t embedding_dim = 384U;  // embedding dimension, must be divisible by num_heads
     float dropout_prob = 0.0F;
+    float theta = 10000.0F;
     uint32_t num_blocks = 6U;
     uint32_t vocab_size = 256U;
     uint32_t max_sequence_length = 256U;
