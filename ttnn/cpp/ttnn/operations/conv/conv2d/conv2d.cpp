@@ -413,13 +413,6 @@ Result conv2d_L1(
         mm_conv,
         auto_shard);
 
-    auto shard_layout = input_tensor_post_tm.memory_config().memory_layout;
-    if (shard_layout == TensorMemoryLayout::HEIGHT_SHARDED || shard_layout == TensorMemoryLayout::BLOCK_SHARDED) {
-        auto shard_shape = input_tensor_post_tm.memory_config().shard_spec.value().shape;
-        TT_FATAL(
-            shard_shape[0] % tt::constants::TILE_WIDTH == 0, "Shard width must be divisible by 32 {}", shard_shape[0]);
-    }
-
     auto [opt_conv_op_parallel_config, opt_conv_op_block_config, conv_out_memory_config] = get_conv_configs(
         conv_config,
         compute_config,
@@ -484,6 +477,8 @@ Result conv2d_L1(
 
     if (!mm_conv) {
         // call halo op
+        uint32_t shard_height = input_tensor_post_tm.memory_config().shard_spec->shape[0];
+        bool snap_to_tile = shard_height % tt::constants::TILE_HEIGHT == 0;
         SlidingWindowConfig sliding_window_config = SlidingWindowConfig{
             .batch_size = batch_size,
             .input_hw = {input_height, input_width},
@@ -493,7 +488,7 @@ Result conv2d_L1(
             .dilation_hw = {dilation[0], dilation[1]},
             .num_cores_nhw = opt_conv_op_parallel_config.num_cores_nhw,
             .core_range_set = input_tensor_post_tm.memory_config().shard_spec.value().grid,
-            .snap_to_tile = true,
+            .snap_to_tile = snap_to_tile,
         };
 
         bool bypass_halo =
