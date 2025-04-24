@@ -30,7 +30,7 @@ struct LlamaConfig {
 };
 
 class Llama : public ttml::autograd::ModuleBase {
-private:
+public:  // FIXME: revert to private when done testing
     RunnerType runner_type = RunnerType::Default;
     std::shared_ptr<ttml::autograd::ModuleBase> tok_emb;
     std::vector<std::shared_ptr<ModuleBase>> blocks;

@@ -76,9 +76,6 @@ void validate_rope_input_and_params(const autograd::TensorPtr& input, const Rota
 autograd::TensorPtr rope(const autograd::TensorPtr& input, const RotaryEmbeddingParams& params) {
     validate_rope_input_and_params(input, params);
     auto input_tensor = input->get_value();
-    if (params.adjust_for_hf_style) {
-        input_tensor = ttnn::transpose(input_tensor, 1, 2);
-    }
     auto input_logical_shape = input_tensor.get_logical_shape();
     auto num_batch = input_logical_shape[0];
     auto num_heads = input_logical_shape[1];
@@ -107,9 +104,6 @@ autograd::TensorPtr rope(const autograd::TensorPtr& input, const RotaryEmbedding
         /*memory_config=*/std::nullopt,
         /*compute_kernel_config=*/core::ComputeKernelConfig::precise());
     auto batched_output = unsquish_batch(out_tensor);
-    if (params.adjust_for_hf_style) {
-        batched_output = ttnn::transpose(batched_output, 1, 2);
-    }
     auto out = autograd::create_tensor(batched_output);
 
     // In the backward pass we rotate by -θ, so we need negated cos and sin
@@ -118,9 +112,6 @@ autograd::TensorPtr rope(const autograd::TensorPtr& input, const RotaryEmbedding
     // up the matmul, and the matrix used is specified by the cos/sin caches.)
     autograd::GradFunction grad_fn = [squish_batch, unsquish_batch, input, params, out]() {
         auto dL_dout = out->get_grad();
-        if (params.adjust_for_hf_style) {
-            dL_dout = ttnn::transpose(dL_dout, 1, 2);
-        }
 
         auto dL_dinput = ttnn::experimental::rotary_embedding_llama(
             squish_batch(dL_dout),
@@ -131,9 +122,6 @@ autograd::TensorPtr rope(const autograd::TensorPtr& input, const RotaryEmbedding
             /*memory_config=*/std::nullopt,
             /*compute_kernel_config=*/core::ComputeKernelConfig::precise());
         auto unsquished = unsquish_batch(dL_dinput);
-        if (params.adjust_for_hf_style) {
-            unsquished = ttnn::transpose(unsquished, 1, 2);
-        }
         input->add_grad(unsquished);
     };
 

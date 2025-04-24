@@ -20,7 +20,7 @@ struct GQAConfig {
 };
 
 class GroupedQueryAttention : public ttml::autograd::ModuleBase {
-private:
+public:
     uint32_t m_embedding_dim{};
     uint32_t m_num_heads{};
     uint32_t m_num_groups{};

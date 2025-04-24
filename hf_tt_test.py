@@ -101,19 +101,55 @@ def do_hf_rope(queries):
     return roped_queries
 
 
-def unpermute_proj(w, n_heads=32):
+def unpermute_proj(w: np.ndarray, n_heads: int = 32) -> np.ndarray:
     """
-    Undo Hugging Face's permute() on q/k projection weights so they work
-    with Meta‑style interleaved RoPE (or Tenstorrent's kernel).
+    Permutes the rows of the weight matrix `w` based on head structure using NumPy.
+    Assuming `w` has `R` rows and `n_heads`, it divides the rows into `n_heads`
+    chunks of size `D = R // n_heads`. Within each chunk, it interleaves the
+    first `D // 2` rows with the second `D // 2` rows.
 
-    w: [dim, dim] or [out_dim, in_dim] weight matrix
-    n_heads: number of heads that produced this weight
-    (use n_kv_heads for k_proj in GQA models)
+    Example: If a chunk has rows [r0, r1, r2, r3] (D=4), the output order for
+    that chunk will be [r0, r2, r1, r3].
+
+    This is intended to convert Hugging Face projection weights (Q/K) to a
+    layout compatible with Meta-style interleaved RoPE application.
+
+    Args:
+        w: Input weight matrix (NumPy array), shape [R, C]. Typically [dim, dim].
+        n_heads: Number of heads corresponding to the rows R.
+
+    Returns:
+        np.ndarray: The permuted weight matrix with the same shape as `w`.
     """
-    dim = w.shape[0]  # Llama weights are square
-    # view -> (n_heads, 2, dim/(n_heads*2), dim)
-    # swap the 2‑axis back to position 2, then reshape flat again
-    return w.view(n_heads, 2, dim // n_heads // 2, dim).transpose(1, 2).reshape(dim, dim)  # (n_heads, dim/… , 2, dim)
+    if type(w) is not np.ndarray:
+        w = w.cpu().numpy()
+    R, C = w.shape  # R = dim (e.g., hidden_size)
+    D = R // n_heads  # D = head_dim
+    assert R % n_heads == 0, "Number of rows R must be divisible by n_heads."
+    assert D % 2 == 0, "Rows per head (D) must be even."
+
+    # Reshape the row dimension R into (n_heads, 2, D // 2).
+    # The dimension of size 2 separates the first half of rows (index 0)
+    # and the second half of rows (index 1) within each D-sized chunk.
+    # Shape becomes: [n_heads, 2, D // 2, C]
+    w_reshaped = w.reshape(n_heads, 2, D // 2, C)
+
+    # Transpose the 'half' dimension (axis 1) and the 'index within half'
+    # dimension (axis 2).
+    # Shape becomes: [n_heads, D // 2, 2, C]
+    # For head `h` and index `i` (0..D//2-1):
+    # - w_transposed[h, i, 0, :] contains original row `h*D + i` (from 1st half)
+    # - w_transposed[h, i, 1, :] contains original row `h*D + D//2 + i` (from 2nd half)
+    w_transposed = w_reshaped.transpose(0, 2, 1, 3)  # Swap axes 1 and 2
+
+    # Reshape back to [R, C] by flattening the first three dimensions (h, i, k).
+    # The new row index `r_new = h*D + i*2 + k`.
+    # - For k=0 (even indices): `r_new = h*D + 2*i`, gets data from original row `h*D + i`.
+    # - For k=1 (odd indices): `r_new = h*D + 2*i + 1`, gets data from original row `h*D + D//2 + i`.
+    # This creates the interleaved order: [row 0, row D/2, row 1, row D/2+1, ...] for each chunk.
+    w_interleaved = w_transposed.reshape(R, C)
+
+    return w_interleaved
 
 
 print("opening device")
@@ -181,14 +217,12 @@ def compare_ropes(seq_len, scale_factor=None, theta=10000.0, num_heads=32, head_
     # assert hf_model.config.rope_scaling == None
 
     def check_proj_permute_path():
-        num_heads = 32
-        head_dim = 64
         x_hidden = torch.randn(1, seq_len, head_dim * num_heads)
         hf_q = torch.einsum("cd,bsc->bsd", hf_q_proj, x_hidden)
         hf_q = hf_q.reshape(1, seq_len, num_heads, head_dim)
         hf_roped = do_hf_rope(hf_q)
         hf_roped_interleaved = interleave_halves(hf_roped)
-        meta_q_proj = unpermute_proj(hf_q_proj, n_heads=32)
+        meta_q_proj = unpermute_proj(hf_q_proj, n_heads=num_heads)
         meta_q = torch.einsum("cd,bsc->bsd", meta_q_proj, x_hidden)
         meta_q = meta_q.reshape(1, seq_len, num_heads, head_dim)
         q_after_actual = do_tt_rope(meta_q)
