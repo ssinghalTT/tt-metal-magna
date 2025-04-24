@@ -1125,12 +1125,48 @@ std::tuple<chip_id_t, CoreCoord> Cluster::get_connected_ethernet_core(std::tuple
     const auto &soc_desc = get_soc_desc(std::get<0>(eth_core));
     ethernet_channel_t eth_chan = soc_desc.logical_eth_core_to_chan_map.at(std::get<1>(eth_core));
     TT_ASSERT(
-        (this->cluster_desc_->ethernet_core_has_active_ethernet_link(std::get<0>(eth_core), eth_chan)),
+        this->is_ethernet_link_up(std::get<0>(eth_core), std::get<1>(eth_core)),
         "Logical eth core {} is not an active eth core on chip {}.",
         std::get<1>(eth_core).str(),
         std::get<0>(eth_core));
+    const auto& ethernet_connections_within_cluster = this->get_ethernet_connections();
+    TT_ASSERT(
+        (ethernet_connections_within_cluster.find(std::get<0>(eth_core)) !=
+         ethernet_connections_within_cluster.end()) and
+            (ethernet_connections_within_cluster.at(std::get<0>(eth_core)).find(eth_chan) !=
+             ethernet_connections_within_cluster.at(std::get<0>(eth_core)).end()),
+        "Chip {} logical eth core {} connects to a remote mmio device",
+        std::get<0>(eth_core),
+        std::get<1>(eth_core).str());
     auto connected_eth_core =
         this->cluster_desc_->get_chip_and_channel_of_remote_ethernet_core(std::get<0>(eth_core), eth_chan);
+    return std::make_tuple(
+        std::get<0>(connected_eth_core),
+        soc_desc.get_eth_core_for_channel(std::get<1>(connected_eth_core), CoordSystem::LOGICAL));
+}
+
+// TODO: unify uint64_t with ChipUID
+std::tuple<uint64_t, CoreCoord> Cluster::get_connected_ethernet_core_to_remote_mmio_device(
+    std::tuple<chip_id_t, CoreCoord> eth_core) const {
+    const auto& soc_desc = get_soc_desc(std::get<0>(eth_core));
+    ethernet_channel_t eth_chan = soc_desc.logical_eth_core_to_chan_map.at(std::get<1>(eth_core));
+    TT_ASSERT(
+        this->is_ethernet_link_up(std::get<0>(eth_core), std::get<1>(eth_core)),
+        "Logical eth core {} is not an active eth core on chip {}.",
+        std::get<1>(eth_core).str(),
+        std::get<0>(eth_core));
+    const auto& ethernet_connections_to_remote_cluster = this->get_ethernet_connections_to_remote_mmio_devices();
+    const auto& local_chip_id = std::get<0>(eth_core);
+    const auto& local_eth_core = std::get<1>(eth_core);
+    TT_ASSERT(
+        (ethernet_connections_to_remote_cluster.find(local_chip_id) != ethernet_connections_to_remote_cluster.end()) and
+            (ethernet_connections_to_remote_cluster.at(local_chip_id).find(eth_chan) !=
+             ethernet_connections_to_remote_cluster.at(local_chip_id).end()),
+        "Chip {} logical eth core {} connects to a local mmio device",
+        local_chip_id,
+        local_eth_core.str());
+
+    const auto& connected_eth_core = ethernet_connections_to_remote_cluster.at(local_chip_id).at(eth_chan);
     return std::make_tuple(
         std::get<0>(connected_eth_core),
         soc_desc.get_eth_core_for_channel(std::get<1>(connected_eth_core), CoordSystem::LOGICAL));
@@ -1294,7 +1330,7 @@ void Cluster::initialize_control_plane() {
         case tt::ClusterType::N150: mesh_graph_descriptor = "n150_mesh_graph_descriptor.yaml"; break;
         case tt::ClusterType::N300: mesh_graph_descriptor = "n300_mesh_graph_descriptor.yaml"; break;
         case tt::ClusterType::T3K: mesh_graph_descriptor = "t3k_mesh_graph_descriptor.yaml"; break;
-        case tt::ClusterType::GALAXY: mesh_graph_descriptor = "quanta_galaxy_mesh_graph_descriptor.yaml"; break;
+        case tt::ClusterType::GALAXY: mesh_graph_descriptor = "dual_galaxy_mesh_graph_descriptor.yaml"; break;
         case tt::ClusterType::TG: mesh_graph_descriptor = "tg_mesh_graph_descriptor.yaml"; break;
         case tt::ClusterType::P100: mesh_graph_descriptor = "p100_mesh_graph_descriptor.yaml"; break;
         case tt::ClusterType::P150: mesh_graph_descriptor = "p150_mesh_graph_descriptor.yaml"; break;

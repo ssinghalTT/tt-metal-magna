@@ -127,6 +127,9 @@ ControlPlane::ControlPlane(const std::string& mesh_graph_desc_file) {
     // Initialize the control plane routers based on mesh graph
     this->initialize_from_mesh_graph_desc_file(mesh_graph_desc_file);
 
+    // Initialize host mappings
+    this->initialize_host_mapping();
+
     // Printing, only enabled with log_debug
     this->print_ethernet_channels();
 }
@@ -361,6 +364,7 @@ void ControlPlane::initialize_from_mesh_graph_desc_file(const std::string& mesh_
             this->get_mesh_physical_chip_ids(mesh_ns_size, mesh_ew_size, nw_chip_physical_id));
     } else if (
         mesh_graph_desc_filename == "quanta_galaxy_mesh_graph_descriptor.yaml" ||
+        mesh_graph_desc_filename == "dual_galaxy_mesh_graph_descriptor.yaml" ||
         mesh_graph_desc_filename == "p100_mesh_graph_descriptor.yaml" ||
         mesh_graph_desc_filename == "p150_mesh_graph_descriptor.yaml" ||
         mesh_graph_desc_filename == "p150_x2_mesh_graph_descriptor.yaml" ||
@@ -386,6 +390,11 @@ void ControlPlane::initialize_from_mesh_graph_desc_file(const std::string& mesh_
     } else {
         TT_THROW("Unsupported mesh graph descriptor file {}", mesh_graph_desc_file);
     }
+}
+
+void ControlPlane::initialize_host_mapping() {
+    // Grab available hosts in the system and map to physical chip ids
+    // ping for all hosts in cluster, grab mapping of all physical chip ids/physical hosts
 }
 
 routing_plane_id_t ControlPlane::get_routing_plane_id(chan_id_t eth_chan_id) const {
@@ -547,7 +556,8 @@ void ControlPlane::configure_routing_tables_for_fabric_ethernet_channels() {
                                                       const CoreCoord& eth_core,
                                                       RoutingDirection direction) {
         auto physical_chip_id = this->logical_mesh_chip_id_to_physical_chip_id_mapping_[mesh_id][chip_id];
-        auto fabric_router_channels_on_chip = tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_ethernet_channels(physical_chip_id);
+        auto fabric_router_channels_on_chip =
+            tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_ethernet_channels(physical_chip_id);
         // TODO: get_fabric_ethernet_channels accounts for down links, but we should manage down links in control plane
         auto chan_id = tt::tt_metal::MetalContext::instance()
                            .get_cluster()

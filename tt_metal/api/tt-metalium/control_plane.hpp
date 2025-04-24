@@ -17,6 +17,7 @@ public:
     explicit ControlPlane(const std::string& mesh_graph_desc_yaml_file);
     ~ControlPlane() = default;
     void initialize_from_mesh_graph_desc_file(const std::string& mesh_graph_desc_file);
+    void initialize_host_mapping();
 
     void write_routing_tables_to_chip(mesh_id_t mesh_id, chip_id_t chip_id) const;
     void write_routing_tables_to_all_chips() const;

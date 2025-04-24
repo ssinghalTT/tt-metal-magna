@@ -158,18 +158,20 @@ void MeshGraph::initialize_from_yaml(const std::string& mesh_graph_desc_file_pat
         .num_eth_ports_per_direction = num_eth_ports_per_direction,
         .num_z_ports = chip["ethernet_ports"]["Z"].IsDefined() ? chip["ethernet_ports"]["Z"].as<std::uint32_t>() : 0};
 
-    std::unordered_map<std::string, std::vector<std::unordered_map<chip_id_t, RouterEdge>>> board_to_mesh_connectivity;
-    std::unordered_map<std::string, std::array<std::uint32_t, 2>> board_to_topology;
+    std::unordered_map<std::string, std::array<std::uint32_t, 2>> board_name_to_topology;
+    std::unordered_map<std::string, FabricType> board_name_to_fabric_type;
     for (const auto& board : yaml["Board"]) {
         std::string board_name = board["name"].as<std::string>();
         TT_FATAL(
-            board_to_mesh_connectivity.find(board_name) == board_to_mesh_connectivity.end(),
+            board_name_to_topology.find(board_name) == board_name_to_topology.end(),
             "MeshGraph: Duplicate board name: {}",
             board_name);
         auto fabric_type =
             magic_enum::enum_cast<FabricType>(board["type"].as<std::string>(), magic_enum::case_insensitive);
         TT_FATAL(
             fabric_type.has_value(), "MeshGraph: Invalid yaml fabric board type: {}", board["type"].as<std::string>());
+
+        board_name_to_fabric_type[board_name] = fabric_type.value();
         TT_FATAL(board["topology"].IsDefined(), "MeshGraph: Expecting yaml board to define topology");
         // Topology
         // e.g. [4, 8]:
@@ -177,20 +179,11 @@ void MeshGraph::initialize_from_yaml(const std::string& mesh_graph_desc_file_pat
         //    chip 0 is NW corner, chip 1 is E of chip 0
         std::uint32_t row_size = board["topology"][1].as<std::uint32_t>();
         std::uint32_t col_size = board["topology"][0].as<std::uint32_t>();
-        std::uint32_t num_chips_in_board = row_size * col_size;
-        board_to_topology[board_name] = {col_size, row_size};
-
-        // Fill in connectivity for Board
-        board_to_mesh_connectivity[board_name].resize(num_chips_in_board);
-        for (std::uint32_t i = 0; i < num_chips_in_board; i++) {
-            board_to_mesh_connectivity[board_name][i] =
-                this->get_valid_connections(i, row_size, num_chips_in_board, fabric_type.value());
-        }
+        board_name_to_topology[board_name] = {col_size, row_size};
     }
     // Loop over Meshes, populate intra mesh
     std::vector<std::unordered_map<port_id_t, chip_id_t, hash_pair>> mesh_edge_ports_to_chip_id;
     for (const auto& mesh : yaml["Mesh"]) {
-        // TODO: handle host mapping and topology
         std::string mesh_board = mesh["board"].as<std::string>();
         mesh_id_t mesh_id = mesh["id"].as<std::uint32_t>();
         if (this->intra_mesh_connectivity_.size() <= mesh_id) {
@@ -198,24 +191,31 @@ void MeshGraph::initialize_from_yaml(const std::string& mesh_graph_desc_file_pat
             this->intra_mesh_connectivity_.resize(mesh_id + 1);
             this->inter_mesh_connectivity_.resize(mesh_id + 1);
             this->mesh_shapes_.resize(mesh_id + 1);
+            this->mesh_host_shapes_.resize(mesh_id + 1);
             mesh_edge_ports_to_chip_id.resize(mesh_id + 1);
         }
         TT_FATAL(
-            board_to_mesh_connectivity.find(mesh_board) != board_to_mesh_connectivity.end(),
+            board_name_to_topology.find(mesh_board) != board_name_to_topology.end(),
             "MeshGraph: Board not found: {}",
             mesh["board"].as<std::string>());
 
-        TT_FATAL(
-            (mesh["topology"][0].as<std::uint32_t>() == 1) and (mesh["topology"][1].as<std::uint32_t>() == 1),
-            "Add support for non 1x1 mesh");
-        // Find board in board_to_mesh_connectivity and populate, need to add support for topology
-        this->intra_mesh_connectivity_[mesh_id] = board_to_mesh_connectivity[mesh["board"].as<std::string>()];
-        this->inter_mesh_connectivity_[mesh_id].resize(this->intra_mesh_connectivity_[mesh_id].size());
-
-        std::uint32_t mesh_ew_size = mesh["topology"][1].as<std::uint32_t>() * board_to_topology[mesh_board][1];
-        std::uint32_t mesh_ns_size = mesh["topology"][0].as<std::uint32_t>() * board_to_topology[mesh_board][0];
+        std::uint32_t mesh_ew_size = mesh["topology"][1].as<std::uint32_t>() * board_name_to_topology[mesh_board][1];
+        std::uint32_t mesh_ns_size = mesh["topology"][0].as<std::uint32_t>() * board_name_to_topology[mesh_board][0];
         std::uint32_t mesh_size = mesh_ew_size * mesh_ns_size;
         this->mesh_shapes_[mesh_id] = {mesh_ns_size, mesh_ew_size};
+
+        // Fill in host mapping for Mesh
+        this->mesh_host_shapes_[mesh_id] =
+            tt_metal::distributed::MeshShape(mesh["host"][1].as<std::uint32_t>(), mesh["host"][0].as<std::uint32_t>());
+
+        // Fill in connectivity for Mesh
+        this->intra_mesh_connectivity_[mesh_id].resize(mesh_size);
+        for (std::uint32_t i = 0; i < mesh_size; i++) {
+            this->intra_mesh_connectivity_[mesh_id][i] =
+                this->get_valid_connections(i, mesh_ew_size, mesh_size, board_name_to_fabric_type[mesh_board]);
+        }
+
+        this->inter_mesh_connectivity_[mesh_id].resize(this->intra_mesh_connectivity_[mesh_id].size());
 
         // Print Mesh
         std::stringstream ss;

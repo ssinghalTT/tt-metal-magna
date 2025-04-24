@@ -44,13 +44,12 @@ public:
 
     void print_routing_tables() const;
 
-private:
     std::unique_ptr<MeshGraph> mesh_graph_;
+
+private:
     // configurable in future architectures
     const uint32_t max_nodes_in_mesh_ = 1024;
     const uint32_t max_num_meshes_ = 1024;
-
-    std::vector<uint32_t> mesh_sizes;
 
     RoutingTable intra_mesh_table_;
     RoutingTable inter_mesh_table_;
