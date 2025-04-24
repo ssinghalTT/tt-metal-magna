@@ -6,13 +6,14 @@ import ttnn
 import torch
 
 from ttnn.model_preprocessing import fold_batch_norm2d_into_conv2d, ParameterDict
+from ttnn.device import is_wormhole_b0
 
 
 def nearest_16(x):
     return math.ceil(x / 16) * 16
 
 
-def determine_num_cores_for_upsample(nhw: int, width: int, max_cores=64) -> int:
+def determine_num_cores_for_upsample(nhw: int, width: int, max_cores=110) -> int:
     gcd_nhw_width = math.gcd(nhw, width)
     cores = nhw // gcd_nhw_width
     if cores > max_cores:
@@ -23,7 +24,7 @@ def determine_num_cores_for_upsample(nhw: int, width: int, max_cores=64) -> int:
     return cores
 
 
-def get_core_grid_from_num_cores(num_cores: int, grid_rows: int = 8, grid_cols: int = 8):
+def get_core_grid_from_num_cores(num_cores: int, grid_rows: int = 11, grid_cols: int = 10):
     rows = num_cores // grid_cols
     assert rows <= grid_rows, "Not enough cores for specified core grid"
     ranges = []
@@ -51,7 +52,7 @@ def is_valid_device_for_unet(device):
     if isinstance(device, ttnn.MeshDevice):
         return all([is_valid_device_for_unet(d) for d in device.get_devices()])
     else:
-        return device.core_grid.x == 8 and device.core_grid.y == 8
+        return device.core_grid.x == 8 and device.core_grid.y == 8 if is_wormhole_b0(device) else True
 
 
 def preprocess_unet_input_tensor(input_tensor, min_channels=16):
@@ -318,7 +319,7 @@ class UNetUpblock:
         else:
             x = ttnn.interleaved_to_sharded(x, shardspec)
 
-        upsampled = ttnn.upsample(x, (2, 2), memory_config=x.memory_config())
+        upsampled = ttnn.upsample(x, (2, 2))  # , memory_config=x.memory_config())
         ttnn.deallocate(x)
         return ttnn.reshape(
             upsampled,
