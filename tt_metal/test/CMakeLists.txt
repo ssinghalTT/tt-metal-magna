@@ -6,6 +6,7 @@ target_link_libraries(
     PRIVATE
         TT::Metalium::Test::Dispatch::Smoke
         TT::Metalium::Test::STL::Smoke
+        TT::SystemHealth::Smoke
 )
 
 install(
