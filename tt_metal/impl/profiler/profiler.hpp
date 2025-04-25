@@ -170,7 +170,7 @@ private:
         const std::string_view source_file);
 
     // builds tt_fabric routing lookup table
-    FabricRoutingLookup buildFabricRoutingLookup() const;
+    FabricRoutingLookup buildFabricRoutingLookup(const IDevice* device) const;
 
     // Helper function for reading risc profile results
     void readRiscProfilerResults(
