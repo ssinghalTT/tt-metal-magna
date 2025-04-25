@@ -2,10 +2,13 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
+from loguru import logger
 import pytest
 from tests.ttnn.nightly.unit_tests.operations.conv.test_conv2d import run_conv, torch_tensor_map, HS, WS, BS
 import ttnn
 import torch
+
+from tests.ttnn.utils_for_testing import check_with_pcc_without_tensor_printout
 
 
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
@@ -179,3 +182,97 @@ def test_conv_dram(
             num_slices=num_slices,
         ),
     )
+
+
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
+def test_conv_sharded_non_tile(device):
+    # conv1 input shape Shape([1, 1, 42240, 64])
+    # conv1 input mem cfg MemoryConfig(memory_layout=TensorMemoryLayout::HEIGHT_SHARDED,buffer_type=BufferType::L1,shard_spec=ShardSpec(
+    # grid={[(x=0,y=0) - (x=7,y=6)], [(x=0,y=7) - (x=6,y=7)]},shape={671, 64},
+    # orientation=ShardOrientation::ROW_MAJOR,mode=ShardMode::PHYSICAL,physical_shard_shape=std::nullopt))
+    # conv1 input layout Layout.ROW_MAJOR
+    # conv1 input dtype DataType.BFLOAT16
+    # batch size: 1
+    # input_height: 528
+    # input_width: 80
+    # in_channels: 64
+    # out_channels: 64
+    # kernel_size: (3, 3)
+    # padding: (1, 1)
+    # stride: (1, 1)
+    # groups: 4
+    batch = 1
+    input_channels = 32
+    output_channels = 32
+    input_height = 33
+    input_width = 10
+    # 528*40 = 21120
+    # 22120 / 632 = 336
+    filter = 3
+    stride = 1
+    padding = 0
+    shard_height = 66  # 671
+    shard_width = 32
+    input_shape = (batch, input_channels, input_height, input_width)
+    weights_shape = (output_channels, input_channels, filter, filter)
+
+    torch.manual_seed(0)
+    torch_input = torch.ones(input_shape, dtype=torch.bfloat16) * 5
+
+    torch_input_nhwc = torch.permute(torch_input, (0, 2, 3, 1))
+
+    input_mem_cfg = ttnn.create_sharded_memory_config(
+        shape=(shard_height, shard_width),
+        core_grid=ttnn.CoreRangeSet(
+            [
+                ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(4, 0)),
+                # ttnn.CoreRange(ttnn.CoreCoord(0, 1), ttnn.CoreCoord(1, 1)),
+            ]
+        ),
+        strategy=ttnn.ShardStrategy.HEIGHT,
+        orientation=ttnn.ShardOrientation.ROW_MAJOR,
+        use_height_and_width_as_shard_shape=True,
+    )
+    # input_mem_cfg = ttnn.DRAM_MEMORY_CONFIG
+    tt_input = ttnn.from_torch(torch_input_nhwc, dtype=ttnn.bfloat16, device=device, memory_config=input_mem_cfg)
+    print(f"tt_input shape: {tt_input.shape}")
+    print(f"tt_input mem cfg: {tt_input.memory_config()}")
+
+    torch_weights = torch.ones(weights_shape, dtype=torch.bfloat16)
+    tt_weights = ttnn.from_torch(torch_weights, dtype=ttnn.bfloat16)
+
+    [tt_out, [oh, ow]] = ttnn.conv2d(
+        input_tensor=tt_input,
+        weight_tensor=tt_weights,
+        in_channels=input_channels,
+        out_channels=output_channels,
+        device=device,
+        kernel_size=(filter, filter),
+        stride=(stride, stride),
+        padding=(padding, padding),
+        batch_size=batch,
+        input_height=input_height,
+        input_width=input_width,
+        return_output_dim=True,
+    )
+
+    torch_output_tensor = ttnn.to_torch(tt_out)
+
+    # torch_output_tensor is in row major layout and NHWC shape
+    # NHWC to NCHW
+    torch_output_tensor = torch_output_tensor.reshape(batch, oh, ow, torch_output_tensor.shape[-1])
+    torch_output_tensor = torch_output_tensor[:, :, :, :output_channels]
+
+    torch_output_tensor = torch.permute(torch_output_tensor, (0, 3, 1, 2))
+
+    torch_out_golden_tensor = torch.nn.functional.conv2d(
+        torch_input, torch_weights, bias=None, stride=stride, padding=padding, groups=1
+    )
+    print(torch_output_tensor)
+    print(torch_out_golden_tensor)
+
+    passing, pcc_msg = check_with_pcc_without_tensor_printout(torch_output_tensor, torch_out_golden_tensor, pcc=0.99)
+    logger.info(f"PCC = {pcc_msg}. Threshold = 0.99")
+    allclose = torch.allclose(torch_output_tensor, torch_out_golden_tensor, atol=1e-1, rtol=1e-1)
+    # assert allclose
+    assert passing
