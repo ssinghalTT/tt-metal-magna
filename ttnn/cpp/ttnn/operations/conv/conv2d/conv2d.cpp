@@ -477,8 +477,6 @@ Result conv2d_L1(
 
     if (!mm_conv) {
         // call halo op
-        uint32_t shard_height = input_tensor_post_tm.memory_config().shard_spec->shape[0];
-        bool snap_to_tile = shard_height % tt::constants::TILE_HEIGHT == 0;
         SlidingWindowConfig sliding_window_config = SlidingWindowConfig{
             .batch_size = batch_size,
             .input_hw = {input_height, input_width},
@@ -488,7 +486,7 @@ Result conv2d_L1(
             .dilation_hw = {dilation[0], dilation[1]},
             .num_cores_nhw = opt_conv_op_parallel_config.num_cores_nhw,
             .core_range_set = input_tensor_post_tm.memory_config().shard_spec.value().grid,
-            .snap_to_tile = snap_to_tile,
+            .snap_to_tile = true,
         };
 
         bool bypass_halo =
@@ -511,7 +509,6 @@ Result conv2d_L1(
                 0,
                 false,
                 parallel_config.shard_orientation == ShardOrientation::COL_MAJOR,
-                0,
                 input_tensor_post_tm.memory_config(),
                 true,
                 conv_config.in_place);

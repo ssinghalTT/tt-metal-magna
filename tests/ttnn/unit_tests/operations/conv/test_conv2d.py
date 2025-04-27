@@ -204,20 +204,20 @@ def test_conv_sharded_non_tile(device):
     batch = 1
     input_channels = 32
     output_channels = 32
-    input_height = 33
-    input_width = 10
+    input_height = 528
+    input_width = 80
     # 528*40 = 21120
     # 22120 / 632 = 336
     filter = 3
     stride = 1
     padding = 0
-    shard_height = 66  # 671
+    shard_height = 671  # 671
     shard_width = 32
     input_shape = (batch, input_channels, input_height, input_width)
     weights_shape = (output_channels, input_channels, filter, filter)
 
     torch.manual_seed(0)
-    torch_input = torch.ones(input_shape, dtype=torch.bfloat16) * 5
+    torch_input = torch.randn(input_shape, dtype=torch.bfloat16)
 
     torch_input_nhwc = torch.permute(torch_input, (0, 2, 3, 1))
 
@@ -225,8 +225,8 @@ def test_conv_sharded_non_tile(device):
         shape=(shard_height, shard_width),
         core_grid=ttnn.CoreRangeSet(
             [
-                ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(4, 0)),
-                # ttnn.CoreRange(ttnn.CoreCoord(0, 1), ttnn.CoreCoord(1, 1)),
+                ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 6)),
+                ttnn.CoreRange(ttnn.CoreCoord(0, 7), ttnn.CoreCoord(6, 7)),
             ]
         ),
         strategy=ttnn.ShardStrategy.HEIGHT,
@@ -238,9 +238,8 @@ def test_conv_sharded_non_tile(device):
     print(f"tt_input shape: {tt_input.shape}")
     print(f"tt_input mem cfg: {tt_input.memory_config()}")
 
-    torch_weights = torch.ones(weights_shape, dtype=torch.bfloat16)
+    torch_weights = torch.randn(weights_shape, dtype=torch.bfloat16)
     tt_weights = ttnn.from_torch(torch_weights, dtype=ttnn.bfloat16)
-
     [tt_out, [oh, ow]] = ttnn.conv2d(
         input_tensor=tt_input,
         weight_tensor=tt_weights,
