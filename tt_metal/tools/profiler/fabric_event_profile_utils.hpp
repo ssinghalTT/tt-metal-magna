@@ -3,6 +3,8 @@
 #include "noc_event_profiler.hpp"
 #include "api/tt-metalium/fabric_edm_packet_header.hpp"
 
+namespace kernel_profiler {
+
 int get_low_latency_routing_hops(uint32_t llrf_value) {
     uint32_t value = llrf_value;
     uint32_t hops = 0;
@@ -18,6 +20,8 @@ int get_routing_hops(uint8_t routing_fields_value) {
 }
 
 void record_fabric_header(const volatile tt::tt_fabric::PacketHeader* fabric_header_ptr) {
+#ifdef PROFILE_NOC_EVENTS
+
 #if defined FABRIC_LOW_LATENCY_MODE and FABRIC_LOW_LATENCY_MODE == 1
     auto fh = reinterpret_cast<const volatile tt::tt_fabric::LowLatencyPacketHeader*>(fabric_header_ptr);
     auto num_hops = get_low_latency_routing_hops(fh->routing_fields.value);
@@ -67,9 +71,12 @@ void record_fabric_header(const volatile tt::tt_fabric::PacketHeader* fabric_hea
             break;
         }
     }
+#endif
 }
+}  // namespace kernel_profiler
 
-#define RECORD_FABRIC_HEADER(_fabric_header_ptr)                                                                 \
-    {                                                                                                            \
-        record_fabric_header(reinterpret_cast<const volatile tt::tt_fabric::PacketHeader*>(_fabric_header_ptr)); \
+#define RECORD_FABRIC_HEADER(_fabric_header_ptr)                                                \
+    {                                                                                           \
+        kernel_profiler::record_fabric_header(                                                  \
+            reinterpret_cast<const volatile tt::tt_fabric::PacketHeader*>(_fabric_header_ptr)); \
     }
