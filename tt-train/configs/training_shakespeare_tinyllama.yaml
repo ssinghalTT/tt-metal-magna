@@ -1,7 +1,7 @@
 training_config:
   project_name: "tt_train_nano_gpt" # not really nanogpt, but want to use the same wandb project name for now
   model_type: "llama"
-  model_path: "/home/ubuntu/tinyllama.msgpack"
+  model_path: "/home/j/load_llama/tinyllama.msgpack"
   seed: 5489
   model_save_interval: 1
   batch_size: 1
@@ -13,7 +13,7 @@ training_config:
   use_kahan_summation: false
   use_clip_grad_norm: true
   clip_grad_norm_max_norm: 1.0
-  tokenizer_path: "/home/ubuntu/worktrees/llama_import/tt-train/data/tinyllama_tokenizer.json"
+  tokenizer_path: "/home/j/worktrees/llama_import/tt-train/data/tinyllama_tokenizer.json"
   tokenizer_type: "bpe"
   transformer_config:
     num_heads: 32

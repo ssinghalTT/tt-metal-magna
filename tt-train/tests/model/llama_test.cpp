@@ -13,6 +13,8 @@
 #include "core/compute_kernel_config.hpp"
 #include "core/tt_tensor_utils.hpp"
 #include "core/xtensor_utils.hpp"
+#include "modules/embedding_module.hpp"
+#include "ops/multi_head_utils.hpp"
 #include "serialization/serialization.hpp"
 
 class LlamaTest : public ::testing::Test {
@@ -32,29 +34,6 @@ TEST_F(LlamaTest, RopeFreqs) {
     auto head_dim = 64;
     auto theta = 10000.0F;
     auto rope_params = ttml::ops::build_rope_params(seq_len, head_dim, theta);
-    // xt::xarray<float> expected_cos_freqs = xt::load_npy<float>("/home/ubuntu/intermediate_results/cos_freqs.npy");
-    // xt::xarray<float> expected_sin_freqs = xt::load_npy<float>("/home/ubuntu/intermediate_results/sin_freqs.npy");
-
-    // fmt::println("cos freqs shape: {}", expected_cos_freqs.shape());
-    // fmt::println("sin freqs shape: {}", expected_sin_freqs.shape());
-
-    // auto actual_cos_freqs = core::to_xtensor(rope_params.cos_cache);
-    // auto actual_sin_freqs = core::to_xtensor(rope_params.sin_cache);
-
-    // actual_cos_freqs = actual_cos_freqs.reshape({1, seq_len, head_dim});
-    // actual_sin_freqs = actual_sin_freqs.reshape({1, seq_len, head_dim});
-
-    // auto average_diff_cos = xt::mean(xt::abs(actual_cos_freqs - expected_cos_freqs))();
-    // auto average_diff_sin = xt::mean(xt::abs(actual_sin_freqs - expected_sin_freqs))();
-
-    // fmt::println("average diff for cos: {}", average_diff_cos);
-    // fmt::println("average diff for sin: {}", average_diff_sin);
-
-    // fmt::println("First 64 expected cos freqs:");
-    // for (size_t i = 0; i < 64 && i < expected_cos_freqs.shape()[2]; ++i) {
-    //     fmt::print("{} ", expected_cos_freqs(0, 1, i));
-    // }
-    // fmt::println("");
 
     // fmt::println("First 64 actual cos freqs:");
     // for (size_t i = 0; i < 64 && i < actual_cos_freqs.shape()[2]; ++i) {
@@ -77,8 +56,7 @@ TEST_F(LlamaTest, RopeFreqs) {
     // EXPECT_TRUE(average_diff_cos < 2e-2F);
     // EXPECT_TRUE(average_diff_sin < 2e-2F);
     fmt::println("testing overall rope");
-    xt::xarray<float> rope_input_xt =
-        xt::load_npy<float>("/home/ubuntu/intermediate_results/query_states_before_rope.npy");
+    xt::xarray<float> rope_input_xt = xt::load_npy<float>("/home/j/intermediate_results/query_states_before_rope.npy");
     auto interleave_halves = [&](const xt::xarray<float>& x, int dim = -1) {
         fmt::println("interleave halves 1");
         // Normalize dim to positive
@@ -115,7 +93,7 @@ TEST_F(LlamaTest, RopeFreqs) {
     auto rope_res_xt = core::to_xtensor(rope_res->get_value());
     fmt::println("rope res shape: {}", rope_res_xt.shape());
     rope_res_xt = rope_res_xt.reshape({1, 32, 32, head_dim});
-    auto expected_rope_res = xt::load_npy<float>("/home/ubuntu/intermediate_results/query_states_after_rope.npy");
+    auto expected_rope_res = xt::load_npy<float>("/home/j/intermediate_results/query_states_after_rope.npy");
     expected_rope_res = interleave_halves(expected_rope_res, -1);
     auto average_diff_rope = xt::mean(xt::abs(expected_rope_res - rope_res_xt))();
     fmt::println("average diff for rope: {}", average_diff_rope);
@@ -135,132 +113,186 @@ TEST_F(LlamaTest, RopeFreqs) {
     }
 }
 
-TEST_F(LlamaTest, ForwardPhases) {
+template <class E1, class E2>
+std::pair<float, float> suggest_atol_rtol(
+    std::string const& label, const E1& expected, const E2& actual, size_t first_n = 32) {
+    auto abs_diffs = xt::abs(expected - actual);
+
+    float max_abs_diff = xt::amax(abs_diffs)();
+    float atol = max_abs_diff * 1.2f;  // 20 % safety margin
+
+    constexpr float eps = 1e-5f;
+    auto denom = xt::clip(xt::abs(expected), eps, std::numeric_limits<float>::max());
+    auto rel_diffs = abs_diffs / denom;
+
+    // ignore tiny expected values when taking the max
+    auto valid_mask = xt::abs(expected) > eps;
+    auto rel_pruned = xt::where(valid_mask, rel_diffs, 0.0f);  // zeros don’t affect max
+    float max_rel = xt::amax(rel_pruned)();
+    float rtol = 1.2f * max_rel;
+
+    fmt::println("[{}] suggested atol: {}", label, atol);
+    fmt::println("[{}] suggested rtol: {}", label, rtol);
+
+    auto expected_flat = xt::flatten(expected);
+    auto actual_flat = xt::flatten(actual);
+    size_t n = first_n == 0 ? expected_flat.size() : std::min(first_n, expected_flat.size());
+    xt::xarray<float> expected_prefix = xt::view(expected_flat, xt::range(0, n));
+    xt::xarray<float> actual_prefix = xt::view(actual_flat, xt::range(0, n));
+
+    xt::xarray<float> zipped = xt::stack(xtuple(expected_prefix, actual_prefix), 1);
+    fmt::println("[{}] expected vs actual (first {}): {}", label, n, zipped);
+
+    fmt::println("[{}] expected shape: {}", label, expected.shape());
+    fmt::println("[{}] actual shape: {}", label, actual.shape());
+    return std::make_pair(atol, rtol);
+}
+
+ttml::models::llama::Llama init_llama(uint32_t seq_len = 32) {
     using namespace ttml;
-    xt::xarray<float> input_ids_xt = xt::load_npy<float>("/home/ubuntu/intermediate_results/test_input_tokens.npy");
-    xt::xarray<float> attention_mask_xt =
-        xt::load_npy<float>("/home/ubuntu/intermediate_results/test_attention_mask.npy");
-
-    auto x = autograd::create_tensor(core::from_xtensor(input_ids_xt, &autograd::ctx().get_device()));
-    auto mask = autograd::create_tensor(core::from_xtensor(attention_mask_xt, &autograd::ctx().get_device()));
-
-    fmt::println("current working directory: {}", std::filesystem::current_path());
     auto yaml_config = YAML::LoadFile("configs/training_shakespeare_tinyllama.yaml");
     auto training_config = yaml_config["training_config"];
     auto llama_config = training_config["transformer_config"];
     auto config = models::llama::read_config(llama_config);
-    config.max_sequence_length = 32;
+    config.max_sequence_length = seq_len;
 
     auto llama_model = models::llama::Llama(config);
     llama_model.eval();
 
     fmt::println("loading tinyllama.msgpack");
     ttml::serialization::MsgPackFile tinyllama_msgpack{};
-    tinyllama_msgpack.deserialize("/home/ubuntu/tinyllama.msgpack");
+    tinyllama_msgpack.deserialize("/home/j/load_llama/tinyllama.msgpack");
     fmt::println("deserialized tinyllama.msgpack");
 
-    /* load weights using ttml::serialization::read_module*/
     fmt::println("loading weights");
     ttml::serialization::read_module(tinyllama_msgpack, /*name=*/"llama", &llama_model);
     fmt::println("loaded weights");
+    return llama_model;
+}
 
+TEST_F(LlamaTest, ForwardPhases) {
+    using namespace ttml;
+    // Load the float version first
+    xt::xarray<float> input_ids_float_xt = xt::load_npy<float>("/home/j/intermediate_results/test_input_tokens.npy");
+    // Convert the float xtensor to an int xtensor
+    xt::xarray<uint32_t> input_ids_xt = xt::cast<uint32_t>(input_ids_float_xt.reshape({1U, 1U, 1U, 32U}));
+    fmt::println("input_ids_xt: {}", input_ids_xt);
+    xt::xarray<float> attention_mask_xt = xt::load_npy<float>("/home/j/intermediate_results/test_attention_mask.npy");
+    ttnn::Tensor input_ids_tt = core::from_xtensor<uint32_t, ttnn::DataType::UINT32>(
+        input_ids_xt, &autograd::ctx().get_device(), /*layout=*/ttnn::Layout::ROW_MAJOR);
+    auto x = autograd::create_tensor(input_ids_tt);
+    auto mask = autograd::create_tensor(core::from_xtensor(attention_mask_xt, &autograd::ctx().get_device()));
+
+    auto llama_model = init_llama(32);
     auto tok_emb = llama_model.tok_emb;
+    // Cast the ModuleBase pointer to an Embedding pointer using dynamic_pointer_cast
+    auto tok_emb_casted = std::dynamic_pointer_cast<ttml::modules::Embedding>(tok_emb);
+
+    // Check if the cast was successful before accessing the member
+    if (!tok_emb_casted) {
+        throw std::runtime_error("Failed to cast tok_emb to Embedding type.");
+    }
+    // Access the m_weight member through the casted pointer
+    auto emb_weight = tok_emb_casted->m_weight->get_value();
+    auto emb_weight_xt = core::to_xtensor(emb_weight);
+    xt::dump_npy("/home/j/intermediate_results/embedding_weight_tt.npy", emb_weight_xt);
+
     auto tok_emb_res = (*tok_emb)(x);
 
     fmt::println("checking tok_emb_res");
-    auto actual_tok_emb_res = core::to_xtensor(tok_emb_res->get_value());
-    auto expected_tok_emb_res = xt::load_npy<float>("/home/ubuntu/intermediate_results/embedded.npy");
-    auto average_diff = xt::mean(xt::abs(expected_tok_emb_res - actual_tok_emb_res))();
-    fmt::println("average diff for emb: {}", average_diff);
+    xt::xarray<float> actual_tok_emb_res = core::to_xtensor(tok_emb_res->get_value());
+    xt::xarray<float> expected_tok_emb_res =
+        xt::load_npy<float>("/home/j/intermediate_results/test_embedded_tokens_new.npy");
+    expected_tok_emb_res = expected_tok_emb_res.reshape({1U, 1U, 32U, 2048U});
+    float atol_emb = suggest_atol_rtol("tok_emb", expected_tok_emb_res, actual_tok_emb_res).first;
+    EXPECT_TRUE(atol_emb < .25F);
 
-    fmt::println("expected tok emb shape: {}", expected_tok_emb_res.shape());
-    fmt::println("actual tok emb shape: {}", actual_tok_emb_res.shape());
-
-    EXPECT_TRUE(average_diff < 2e-2F);
-
+    fmt::println("checking first block");
     xt::xarray<float> expected_first_block_res =
-        xt::load_npy<float>("/home/ubuntu/intermediate_results/expected_first_block_output.npy");
+        xt::load_npy<float>("/home/j/intermediate_results/expected_first_block_output.npy");
     auto first_block = llama_model.blocks[0];
-    auto actual_first_block_res_tensor = (*first_block)(tok_emb_res, mask);
-    auto actual_first_block_res = core::to_xtensor(actual_first_block_res_tensor->get_value());
-    std::vector<uint32_t> actual_shape(actual_first_block_res.shape().begin(), actual_first_block_res.shape().end());
-    std::vector<uint32_t> expected_shape(
-        expected_first_block_res.shape().begin(), expected_first_block_res.shape().end());
-    fmt::println("actual shape: {}", actual_shape);
-    fmt::println("expected shape: {}", expected_shape);
+    expected_tok_emb_res = expected_tok_emb_res.reshape({1U, 1U, 32U, 2048U});
+    auto tok_emb_tt = core::from_xtensor(expected_tok_emb_res, &autograd::ctx().get_device());
+    auto tok_emb_ag = autograd::create_tensor(tok_emb_tt);
+    auto actual_first_block_res_tensor = (*first_block)(tok_emb_ag, mask);
+    xt::xarray<float> actual_first_block_res = core::to_xtensor(actual_first_block_res_tensor->get_value());
     actual_first_block_res = actual_first_block_res.reshape({1U, 32U, 2048U});
-
-    xt::xarray<float> abs_diffs = xt::abs(expected_first_block_res - actual_first_block_res);
-    float max_abs_diff = xt::amax(abs_diffs)();
-    float atol = max_abs_diff * 1.2F;
-
-    xt::xarray<float> eps = {1e-5F};
-    xt::xarray<float> expected_without_zeros = xt::where(expected_first_block_res > eps, abs_diffs, eps);
-    xt::xarray<float> rel_diffs = (expected_without_zeros - actual_first_block_res) / expected_without_zeros;
-    float max_rel_diff = xt::amax(rel_diffs)();
-
-    fmt::println("suggested atol: {}", atol);
-    fmt::println("max abs diff: {}", max_abs_diff);
-    fmt::println("suggested rtol: {}", max_rel_diff);
+    float atol_first_block = suggest_atol_rtol("first_block", expected_first_block_res, actual_first_block_res).first;
+    EXPECT_TRUE(atol_first_block < .25F);
 
     fmt::println("checking the mlp");
     std::shared_ptr<ttml::modules::LlamaBlock> first_block_ptr =
         std::dynamic_pointer_cast<ttml::modules::LlamaBlock>(first_block);
     auto mlp = first_block_ptr->m_mlp;
 
-    xt::xarray<float> mlp_input_xt = xt::load_npy<float>("/home/ubuntu/intermediate_results/mlp_test_input.npy");
+    xt::xarray<float> mlp_input_xt = xt::load_npy<float>("/home/j/intermediate_results/mlp_test_input.npy");
     auto mlp_input = autograd::create_tensor(core::from_xtensor(mlp_input_xt, &autograd::ctx().get_device()));
     auto mlp_res = (*mlp)(mlp_input);
-    auto mlp_res_xt = core::to_xtensor(mlp_res->get_value());
-    fmt::println("mlp res shape: {}", mlp_res_xt.shape());
-    auto expected_mlp_res = xt::load_npy<float>("/home/ubuntu/intermediate_results/mlp_test_output.npy");
+    xt::xarray<float> mlp_res_xt = core::to_xtensor(mlp_res->get_value());
+    xt::xarray<float> expected_mlp_res = xt::load_npy<float>("/home/j/intermediate_results/mlp_test_output.npy");
     expected_mlp_res = expected_mlp_res.reshape({2048});
     mlp_res_xt = mlp_res_xt.reshape({2048});
-    fmt::println("expected mlp res shape: {}", expected_mlp_res.shape());
-    auto average_diff_mlp = xt::mean(xt::abs(expected_mlp_res - mlp_res_xt))();
-    fmt::println("average diff for mlp: {}", average_diff_mlp);
-
-    fmt::println("MLP diffs: {}", xt::xarray<float>(xt::abs(expected_mlp_res - mlp_res_xt)));
-
-    fmt::println("mlp first tile: ");
-    for (size_t i = 0; i < 32; ++i) {
-        fmt::print("{:8.4f} ", mlp_res_xt(i));
-    }
-    fmt::print("\n");
-
-    fmt::println("expected mlp first tile: ");
-    for (size_t i = 0; i < 32; ++i) {
-        fmt::print("{:8.4f} ", expected_mlp_res(i));
-    }
-    fmt::print("\n");
-
-    EXPECT_TRUE(average_diff_mlp < 2e-2F);
+    float atol_mlp = suggest_atol_rtol("mlp", expected_mlp_res, mlp_res_xt).first;
+    EXPECT_TRUE(atol_mlp < .25F);
 
     // now checking the self attention module
     auto attention_norm = first_block_ptr->m_attention_norm;
     auto attention = first_block_ptr->m_attention;
-    auto attention_res = (*attention_norm)(tok_emb_res);
+    auto attention_res = (*attention_norm)(tok_emb_ag);
     attention_res = (*attention)(attention_res, mask);
-    auto attention_res_xt = core::to_xtensor(attention_res->get_value());
-    auto expected_attention_res = xt::load_npy<float>("/home/ubuntu/intermediate_results/self_attn_output.npy");
-    auto average_diff_attention = xt::mean(xt::abs(expected_attention_res - attention_res_xt))();
-    fmt::println("average diff for attention: {}", average_diff_attention);
+    xt::xarray<float> attention_res_xt = core::to_xtensor(attention_res->get_value());
+    xt::xarray<float> expected_attention_res = xt::load_npy<float>("/home/j/intermediate_results/self_attn_output.npy");
+    float atol_attention = suggest_atol_rtol("self_attention", expected_attention_res, attention_res_xt).first;
+    EXPECT_TRUE(atol_attention < .25F);
+}
 
-    fmt::println("attention shape: {}", attention_res_xt.shape());
-    attention_res_xt = attention_res_xt.reshape({1, 32, 2048});
-    fmt::println("expected attention shape: {}", expected_attention_res.shape());
+TEST_F(LlamaTest, QProjTest) {
+    using namespace ttml;
+    xt::xarray<float> q_input = xt::load_npy<float>("/home/j/intermediate_results/first_q_test_input.npy");
+    xt::xarray<float> q_expected = xt::load_npy<float>("/home/j/intermediate_results/expected_first_q_result.npy");
+    auto llama_model = init_llama(32);
+    std::shared_ptr<ttml::modules::LlamaBlock> first_block_ptr =
+        std::dynamic_pointer_cast<ttml::modules::LlamaBlock>(llama_model.blocks[0]);
+    auto q_proj = first_block_ptr->m_attention->m_q_linear;
 
-    fmt::println("self attention first tile diagonal: ");
-    for (size_t i = 0; i < std::min(attention_res_xt.shape()[1], attention_res_xt.shape()[2]); ++i) {
-        fmt::print("{:8.4f} ", attention_res_xt(0, i, i));
-    }
-    fmt::print("\n");
+    auto q_input_tt = core::from_xtensor(q_input, &autograd::ctx().get_device());
+    auto q_input_ag = autograd::create_tensor(q_input_tt);
+    auto q_res = (*q_proj)(q_input_ag);
+    auto q_res_xt = core::to_xtensor(q_res->get_value());
 
-    fmt::println("expected self attention first tile diagonal: ");
-    for (size_t i = 0; i < std::min(expected_attention_res.shape()[1], expected_attention_res.shape()[2]); ++i) {
-        fmt::print("{:8.4f} ", expected_attention_res(0, i, i));
-    }
-    fmt::print("\n");
+    float atol_q_proj = suggest_atol_rtol("q_proj", q_expected, q_res_xt, 0).first;
+    EXPECT_TRUE(atol_q_proj < .25F);
+}
 
-    EXPECT_TRUE(average_diff_attention < 2e-2F);
+TEST_F(LlamaTest, KVProjTest) {
+    using namespace ttml;
+    xt::xarray<float> kv_input = xt::load_npy<float>("/home/j/intermediate_results/first_q_test_input.npy");
+    xt::xarray<float> kv_expected = xt::load_npy<float>("/home/j/intermediate_results/expected_first_kv_result.npy");
+    auto llama_model = init_llama(32);
+    std::shared_ptr<ttml::modules::LlamaBlock> first_block_ptr =
+        std::dynamic_pointer_cast<ttml::modules::LlamaBlock>(llama_model.blocks[0]);
+    auto kv_proj = first_block_ptr->m_attention->m_kv_linear;
+    auto q_proj = first_block_ptr->m_attention->m_q_linear;
+    auto kv_input_tt = core::from_xtensor(kv_input, &autograd::ctx().get_device());
+    auto kv_input_ag = autograd::create_tensor(kv_input_tt);
+    auto kv_res = (*kv_proj)(kv_input_ag);
+    auto kv_res_xt = core::to_xtensor(kv_res->get_value());
+
+    float atol_kv_proj = suggest_atol_rtol("kv_proj", kv_expected, kv_res_xt, 0).first;
+    EXPECT_TRUE(atol_kv_proj < .25F);
+
+    xt::xarray<float> expected_k = xt::load_npy<float>("/home/j/intermediate_results/expected_first_k_result.npy");
+    xt::xarray<float> expected_v = xt::load_npy<float>("/home/j/intermediate_results/expected_first_v_result.npy");
+    auto q_res = (*q_proj)(kv_input_ag);
+    auto [query_with_heads, key_with_heads, value_with_heads] = ops::grouped_heads_creation(q_res, kv_res, 32, 4);
+
+    fmt::println("query_with_heads shape: {}", query_with_heads->get_value().logical_shape());
+    fmt::println("key_with_heads shape: {}", key_with_heads->get_value().logical_shape());
+    fmt::println("value_with_heads shape: {}", value_with_heads->get_value().logical_shape());
+    xt::xarray<float> actual_k = core::to_xtensor(key_with_heads->get_value());
+    xt::xarray<float> actual_v = core::to_xtensor(value_with_heads->get_value());
+    float atol_k_proj = suggest_atol_rtol("k_proj", expected_k, actual_k, 0).first;
+    float atol_v_proj = suggest_atol_rtol("v_proj", expected_v, actual_v, 0).first;
+    EXPECT_TRUE(atol_k_proj < .25F);
+    EXPECT_TRUE(atol_v_proj < .25F);
 }

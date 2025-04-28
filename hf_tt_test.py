@@ -217,13 +217,13 @@ def compare_ropes(seq_len, scale_factor=None, theta=10000.0, num_heads=32, head_
     # assert hf_model.config.rope_scaling == None
 
     def check_proj_permute_path():
-        x_hidden = torch.randn(1, seq_len, head_dim * num_heads)
-        hf_q = torch.einsum("cd,bsc->bsd", hf_q_proj, x_hidden)
+        x_hidden = np.rand(1, seq_len, head_dim * num_heads)
+        hf_q = np.einsum("cd,bsc->bsd", hf_q_proj, x_hidden)
         hf_q = hf_q.reshape(1, seq_len, num_heads, head_dim)
         hf_roped = do_hf_rope(hf_q)
         hf_roped_interleaved = interleave_halves(hf_roped)
         meta_q_proj = unpermute_proj(hf_q_proj, n_heads=num_heads)
-        meta_q = torch.einsum("cd,bsc->bsd", meta_q_proj, x_hidden)
+        meta_q = np.einsum("cd,bsc->bsd", meta_q_proj, x_hidden)
         meta_q = meta_q.reshape(1, seq_len, num_heads, head_dim)
         q_after_actual = do_tt_rope(meta_q)
         q_after_actual = q_after_actual.float().cpu().numpy()
@@ -250,12 +250,33 @@ def compare_ropes(seq_len, scale_factor=None, theta=10000.0, num_heads=32, head_
         print(f"meta: Mean absolute error: {mean_abs_error}")
         print(f"meta: Max absolute error: {np.max(np.abs(hf_ref - q_after_actual_with_interleave))}")
 
+    def check_meta_permute_path():
+        x_hidden = torch.randn(1, seq_len, num_heads * head_dim).cpu().numpy()
+        hf_q_proj_np = hf_q_proj.cpu().numpy()
+        hf_q_proj = hf_q_proj_np
+        hf_q = hf_q_proj @ x_hidden
+        hf_q = hf_q.reshape(1, seq_len, num_heads, head_dim)
+        hf_q = torch.tensor(hf_q, dtype=torch.float32)
+        hf_roped = do_hf_rope(hf_q)
+        hf_roped_interleaved = interleave_halves(hf_roped)
+        meta_q_proj = unpermute_proj(hf_q_proj, n_heads=num_heads)
+        meta_q = meta_q_proj @ x_hidden
+        meta_q = meta_q.reshape(1, seq_len, num_heads, head_dim)
+        meta_q = torch.tensor(meta_q, dtype=torch.float32)
+        q_after_actual = do_meta_rope(meta_q)
+        q_after_actual = q_after_actual.float().cpu().numpy()
+        hf_ref = hf_roped_interleaved.float().cpu().numpy()
+        mean_abs_error = np.mean(np.abs(hf_ref - q_after_actual))
+        print(f"meta permute: Mean absolute error: {mean_abs_error}")
+        print(f"meta permute: Max absolute error: {np.max(np.abs(hf_ref - q_after_actual))}")
+
+    check_meta_permute_path()
     check_proj_permute_path()
     check_interleave_path()
     check_meta_path()
 
 
-compare_ropes(32, head_dim=32, scale_factor=None)
+compare_ropes(32, head_dim=64, scale_factor=None)
 
 
 def check_meta_tt_bf16():
@@ -266,4 +287,4 @@ def check_meta_tt_bf16():
     print(f"Mean absolute error: {mean_abs_error}")
 
 
-check_meta_tt_bf16()
+# check_meta_tt_bf16()

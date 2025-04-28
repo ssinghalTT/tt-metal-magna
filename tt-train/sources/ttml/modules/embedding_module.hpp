@@ -10,6 +10,7 @@
 namespace ttml::modules {
 
 class Embedding : public autograd::ModuleBase {
+public:
     autograd::TensorPtr m_weight;
 
     void initialize_tensors(uint32_t num_embeddings, uint32_t embedding_dim);
