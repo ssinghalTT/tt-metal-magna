@@ -628,25 +628,59 @@ Tensor _polyval(
 
 Tensor ExecuteGCD::invoke(
     const Tensor& input_a, const Tensor& input_b, const std::optional<MemoryConfig>& output_mem_config) {
+    std::cout << "\n implementation here :" << std::endl;
+
+    std::cout << "\n\t Apply abs on tensor 1 :" << std::endl;
     Tensor input_a_abs = ttnn::abs(input_a);
+    std::cout << "\tA: " << std::endl;
+    input_a_abs.print();
     Tensor input_b_abs = ttnn::abs(input_b);
+    std::cout << "\tB: " << std::endl;
+    input_b_abs.print();
     Tensor a_gt_b = ttnn::gt(input_a_abs, input_b_abs);
+    std::cout << "\n\tA>B? : " << std::endl;
+    a_gt_b.print();
     Tensor min = ttnn::where(a_gt_b, input_b_abs, input_a_abs);
+    std::cout << "\n\tMin tensor : " << std::endl;
+    min.print();
     Tensor max = ttnn::where(a_gt_b, input_a_abs, input_b_abs);
     a_gt_b.deallocate();
+    std::cout << "\n\tMax tensor : " << std::endl;
+    max.print();
     // https://en.wikipedia.org/wiki/Lam%C3%A9%27s_theorem
     // While 186 is the theoretical maximum iterations for numbers within the floating point range according to Lame's
     // theorem, in practice when evaluating gcd of consecutive Fibonacci numbers coerced to floating point, the
     // maximum number of iterations reached is only 14 because the remainder converges to 0 much more quickly. In
     // addition, limited precision in bfloat16 format decreases support for input to the range [-1024, 1024]
-    constexpr std::size_t max_iterations = 14;
+    constexpr std::size_t max_iterations = 2;
     for (std::size_t iteration = 0; iteration < max_iterations; ++iteration) {
-        Tensor isz = ttnn::eqz(min);
+        std::cout << "\n\t\tisz = Check if min tesnor is equal to zero or not : " << std::endl;
+        Tensor isz = ttnn::eqz(min, output_mem_config);
+        // isz.print();
+
+        // //////////////////////
+        // check for new value_compare
+        // Tensor zero_tensor = ttnn::full_like(min, 0.0f);
+        // zero_tensor.print();
+        // Tensor isz = ttnn::eq(min, zero_tensor, std::nullopt, output_mem_config);
+        isz.print();
+        // /////////////////////////
         //  0's in min are replaced with 1
-        Tensor rem = ttnn::remainder(max, ttnn::where(isz, isz, min));
+        std::cout << "\n\t\t0's in min are replaced with 1 : " << std::endl;
+        Tensor replace = ttnn::where(isz, isz, min);
+        replace.print();
+        std::cout << "\n\t\tApply remainder on max and replaced tensor : " << std::endl;
+        Tensor rem = ttnn::remainder(max, replace);
+        rem.print();
+        std::cout << "\n\t\tApply where on isz to replace with max or min: " << std::endl;
         max = ttnn::where(isz, max, min);
+        max.print();
+        std::cout << "\n\t\tUpdate min: " << std::endl;
         min = rem;
+        min.print();
     }
+    std::cout << "\n\tresult tensor : " << std::endl;
+    max.print();
     return max;
 }
 
