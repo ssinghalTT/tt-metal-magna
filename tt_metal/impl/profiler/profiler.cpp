@@ -658,7 +658,7 @@ void DeviceProfiler::serializeJsonNocTraces(
             const auto& current_event = events[i];
             bool coalesced = false;
 
-            if (current_event.contains("type") && current_event["type"] == "FABRIC_UNICAST_WRITE" &&
+            if (current_event.contains("type") && current_event["type"].get<std::string>().starts_with("FABRIC_") &&
                 (i + 1 < events.size())) {
                 const auto& next_event_const = events[i + 1];
                 if (next_event_const.contains("type") && next_event_const["type"] == "WRITE_") {

@@ -27,12 +27,45 @@ void record_fabric_header(const volatile tt::tt_fabric::PacketHeader* fabric_hea
 #endif
 
     auto noc_send_type = fh->get_noc_send_type();
-    if (noc_send_type == tt::tt_fabric::NocSendType::NOC_UNICAST_WRITE) {
-        const volatile auto& unicast_write_cmd = fh->get_command_fields().unicast_write;
-        noc_event_profiler::recordFabricNocEvent(
-            KernelProfilerNocEventMetadata::NocEventType::FABRIC_UNICAST_WRITE,
-            unicast_write_cmd.noc_address,
-            num_hops);
+
+    switch (noc_send_type) {
+        case tt::tt_fabric::NocSendType::NOC_UNICAST_WRITE: {
+            const volatile auto& unicast_write_cmd = fh->get_command_fields().unicast_write;
+            noc_event_profiler::recordFabricNocEvent(
+                KernelProfilerNocEventMetadata::NocEventType::FABRIC_UNICAST_WRITE,
+                unicast_write_cmd.noc_address,
+                num_hops);
+            break;
+        }
+        case tt::tt_fabric::NocSendType::NOC_UNICAST_ATOMIC_INC: {
+            const volatile auto& unicast_write_cmd = fh->get_command_fields().unicast_seminc;
+            noc_event_profiler::recordFabricNocEvent(
+                KernelProfilerNocEventMetadata::NocEventType::FABRIC_UNICAST_ATOMIC_INC,
+                unicast_write_cmd.noc_address,
+                num_hops);
+            break;
+        }
+        case tt::tt_fabric::NocSendType::NOC_FUSED_UNICAST_ATOMIC_INC: {
+            const volatile auto& unicast_write_cmd = fh->get_command_fields().unicast_seminc_fused;
+            noc_event_profiler::recordFabricNocEvent(
+                KernelProfilerNocEventMetadata::NocEventType::FABRIC_FUSED_UNICAST_ATOMIC_INC,
+                unicast_write_cmd.noc_address,
+                num_hops);
+            break;
+        }
+        case tt::tt_fabric::NocSendType::NOC_UNICAST_INLINE_WRITE: {
+            const volatile auto& unicast_write_cmd = fh->get_command_fields().unicast_inline_write;
+            noc_event_profiler::recordFabricNocEvent(
+                KernelProfilerNocEventMetadata::NocEventType::FABRIC_UNICAST_INLINE_WRITE,
+                unicast_write_cmd.noc_address,
+                num_hops);
+            break;
+        }
+        case tt::tt_fabric::NocSendType::NOC_MULTICAST_WRITE:
+        case tt::tt_fabric::NocSendType::NOC_MULTICAST_ATOMIC_INC: {
+            // unsupported for now; metadata exceeds packet size
+            break;
+        }
     }
 }
 
