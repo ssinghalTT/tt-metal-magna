@@ -225,11 +225,12 @@ class Attention(LightweightModule):
             dtype=self.wqkv_dtype,
             layout=ttnn.TILE_LAYOUT,
             device=self.mesh_device,
-            memory_config=ttnn.DRAM_MEMORY_CONFIG if self.TG else wqkv_mem_config,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            # memory_config=ttnn.DRAM_MEMORY_CONFIG if self.TG else wqkv_mem_config,
             mesh_mapper=ttnn.ShardTensor2dMesh(
                 self.mesh_device, dims=(3, 2) if self.TG else (2, 3), mesh_shape=configuration.cluster_shape
             ),
-            cache_file_name=cache_name("wqkv_sharded_2d"),
+            # cache_file_name=cache_name("wqkv_sharded_2d"),
         )
 
         # For ring topology we can use all gather matmul for wo
@@ -335,16 +336,21 @@ class Attention(LightweightModule):
         # QKV matmuls
         # Use HiFi2 for DRAM-sharded matmuls as they are otherwise flop-bound. Loses 1 bit of activation precision.
         ###
+        x = ttnn.sharded_to_interleaved(x, ttnn.L1_MEMORY_CONFIG, ttnn.bfloat16)
 
-        xqkv_fused_sharded = ttnn.linear(
+        xqkv_fused = ttnn.linear(
             x,
             self.wqkv,
             # bias=self.wqkv_bias,
-            memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
-            program_config=self.model_config["XQKV_DECODE_PROGCFG"],
+            # memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
+            memory_config=ttnn.L1_MEMORY_CONFIG,
+            # memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            # program_config=self.model_config["XQKV_DECODE_PROGCFG"],
             compute_kernel_config=self.li_qkv_decode_compute_kernel_cfg,
             dtype=self.ccl_dtype if self.TG else self.activation_dtype or ttnn.bfloat16,
         )
+        # xqkv_fused = ttnn.sharded_to_interleaved(xqkv_fused_sharded, ttnn.L1_MEMORY_CONFIG, ttnn.bfloat16)
+
         # FIXME: File bug against dram-sharded matmuls with bias
         # if self.wqkv_bias_decode:
         #     breakpoint()
@@ -353,23 +359,23 @@ class Attention(LightweightModule):
         #     num_tiles = int(math.ceil(xqkv_fused_sharded.shape[-2] / self.tile_size))
         #     xqkv_fused_sharded = xqkv_fused_sharded + self.wqkv_bias_decode[num_tiles - 1]
 
-        # ttnn.deallocate(x)
-        xqkv_fused = tt_all_reduce(
-            xqkv_fused_sharded,
-            self.mesh_device,
-            cluster_axis=1,
-            num_reduce_scatter_links=self.num_reduce_scatter_links,
-            num_all_gather_links=self.num_all_gather_links,
-            memory_config=self.model_config["QKV_OUT_GATHERED_MEMCFG"](list(self.mesh_device.shape)[1]),
-            sharded=True,
-            dtype=self.ccl_dtype,
-            topology=self.ccl_topology,
-        )
+        ttnn.deallocate(x)
+        # xqkv_fused = tt_all_reduce(
+        #     xqkv_fused_sharded,
+        #     self.mesh_device,
+        #     cluster_axis=1,
+        #     num_reduce_scatter_links=self.num_reduce_scatter_links,
+        #     num_all_gather_links=self.num_all_gather_links,
+        #     memory_config=self.model_config["QKV_OUT_GATHERED_MEMCFG"](list(self.mesh_device.shape)[1]),
+        #     sharded=True,
+        #     dtype=self.ccl_dtype,
+        #     topology=self.ccl_topology,
+        # )
 
         # bfloat16 is required by nlp_create_qkv_heads_decode
-        xqkv_fused = ttnn.sharded_to_interleaved(xqkv_fused_sharded, ttnn.L1_MEMORY_CONFIG, ttnn.bfloat16)
+        # xqkv_fused = ttnn.sharded_to_interleaved(xqkv_fused_sharded, ttnn.L1_MEMORY_CONFIG, ttnn.bfloat16)
 
-        ttnn.deallocate(xqkv_fused_sharded)
+        # ttnn.deallocate(xqkv_fused_sharded)
 
         # Reshape such that true unpadded batch is tracked in shape
         fqkv_shape = xqkv_fused.shape
