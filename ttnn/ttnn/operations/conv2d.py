@@ -18,6 +18,7 @@ def _nearest_32(x):
     return math.ceil(x / 32) * 32
 
 
+SlidingWindowParallelConfig = ttnn._ttnn.operations.sliding_window.ParallelConfig
 Conv2dConfig = ttnn._ttnn.operations.conv.Conv2dConfig
 Conv2dSliceConfig = ttnn._ttnn.operations.conv.Conv2dSliceConfig
 Conv2dSliceHeight = ttnn._ttnn.operations.conv.Conv2dSliceConfig.SliceTypeEnum.SliceHeight

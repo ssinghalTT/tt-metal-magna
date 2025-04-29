@@ -348,6 +348,7 @@ from ttnn.operations.conv2d import (
     Conv2dSliceConfig,
     Conv2dSliceHeight,
     Conv2dSliceWidth,
+    SlidingWindowParallelConfig,
 )
 
 from ttnn._ttnn.operations.experimental import Conv3dConfig
