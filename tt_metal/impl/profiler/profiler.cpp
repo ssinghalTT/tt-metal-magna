@@ -698,14 +698,18 @@ void DeviceProfiler::serializeJsonNocTraces(
                                 modified_write_event["type"] = current_event["type"];
 
                                 // add route override
+                                bool noc1_for_first_route = next_event_const.at("noc").get<std::string>() == "NOC_1";
                                 modified_write_event["route_override"] = nlohmann::json::array_t();
-                                for (auto& [chip_id, coord_pair] : route) {
+                                for (int i = 0; i < route.size(); i++) {
+                                    auto& [chip_id, coord_pair] = route[i];
                                     int p1_x = coord_pair.first.x;
                                     int p1_y = coord_pair.first.y;
                                     int p2_x = coord_pair.second.x;
                                     int p2_y = coord_pair.second.y;
+                                    std::string noc_type = (i == 0 && noc1_for_first_route) ? "NOC_1" : "NOC_0";
                                     modified_write_event["route_override"].push_back(nlohmann::json::object_t{
                                         {"chip_id", chip_id},
+                                        {"noc", noc_type},
                                         {"p1_x", p1_x},
                                         {"p1_y", p1_y},
                                         {"p2_x", p2_x},
