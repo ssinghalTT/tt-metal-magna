@@ -187,6 +187,11 @@ from ttnn.types import (
     BinaryOpType,
     BcastOpMath,
     BcastOpDim,
+    CircularBufferAttributes,
+    DataMovementAttributes,
+    ComputeAttributes,
+    ProgramAttributes,
+    CBIndex,
 )
 
 from ttnn.device import (
