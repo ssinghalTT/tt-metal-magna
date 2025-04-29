@@ -367,7 +367,7 @@ class Transformer(LightweightModule):
             elif activation_dtype is not None and x.dtype != activation_dtype:
                 x = ttnn.typecast(x, activation_dtype)
 
-            x = layer(
+            x_out = layer(
                 x,
                 current_pos,
                 rot_mats,

@@ -2,7 +2,6 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-import math
 import torch
 
 import ttnn
@@ -347,13 +346,14 @@ class Attention(LightweightModule):
             dtype=self.ccl_dtype if self.TG else self.activation_dtype or ttnn.bfloat16,
         )
         # FIXME: File bug against dram-sharded matmuls with bias
-        if self.wqkv_bias_decode:
-            # select the bias tensor based on the number of tiles in the rows
-            # WARNING: must not change the batch size between compiling and executing a trace
-            num_tiles = int(math.ceil(xqkv_fused_sharded.shape[-2] / self.tile_size))
-            xqkv_fused_sharded = xqkv_fused_sharded + self.wqkv_bias_decode[num_tiles - 1]
+        # if self.wqkv_bias_decode:
+        #     breakpoint()
+        #     # select the bias tensor based on the number of tiles in the rows
+        #     # WARNING: must not change the batch size between compiling and executing a trace
+        #     num_tiles = int(math.ceil(xqkv_fused_sharded.shape[-2] / self.tile_size))
+        #     xqkv_fused_sharded = xqkv_fused_sharded + self.wqkv_bias_decode[num_tiles - 1]
 
-        ttnn.deallocate(x)
+        # ttnn.deallocate(x)
         xqkv_fused = tt_all_reduce(
             xqkv_fused_sharded,
             self.mesh_device,
@@ -366,17 +366,8 @@ class Attention(LightweightModule):
             topology=self.ccl_topology,
         )
 
-        if self.TG:
-            # TODO: Slice the fused_query_key_value tensor get batch=8
-            xqkv_fused = ttnn.matmul(
-                self.slice_mat,
-                xqkv_fused,
-                dtype=ttnn.bfloat16,
-                memory_config=self.model_config["CREATE_HEAD_INPUT_MEMCFG"],
-            )
-        else:
-            # bfloat16 is required by nlp_create_qkv_heads_decode
-            xqkv_fused = ttnn.sharded_to_interleaved(xqkv_fused_sharded, ttnn.L1_MEMORY_CONFIG, ttnn.bfloat16)
+        # bfloat16 is required by nlp_create_qkv_heads_decode
+        xqkv_fused = ttnn.sharded_to_interleaved(xqkv_fused_sharded, ttnn.L1_MEMORY_CONFIG, ttnn.bfloat16)
 
         ttnn.deallocate(xqkv_fused_sharded)
 
@@ -399,81 +390,83 @@ class Attention(LightweightModule):
             num_kv_heads=self.n_local_kv_heads,
             memory_config=self.model_config["CREATE_QKV_DECODE_SHARD"],
         )
+        # return q_heads_pre_rot_1BQD  # No hangs if returned before SDPA
+        # ttnn.deallocate(xqkv_fused)
 
-        ttnn.deallocate(xqkv_fused)
+        # # Q Rotary Embeddings
+        # q_heads_1BQD = ttnn.experimental.rotary_embedding_llama(
+        #     q_heads_pre_rot_1BQD, rot_mats[0], rot_mats[1], self.transformation_mats["decode"], is_decode_mode=True
+        # )
 
-        # Q Rotary Embeddings
-        q_heads_1BQD = ttnn.experimental.rotary_embedding_llama(
-            q_heads_pre_rot_1BQD, rot_mats[0], rot_mats[1], self.transformation_mats["decode"], is_decode_mode=True
-        )
+        # # K Rotary Embeddings
+        # k_heads_1BKD = ttnn.experimental.rotary_embedding_llama(
+        #     k_heads_pre_rot_1BKD, rot_mats[0], rot_mats[1], self.transformation_mats["decode"], is_decode_mode=True
+        # )
 
-        # K Rotary Embeddings
-        k_heads_1BKD = ttnn.experimental.rotary_embedding_llama(
-            k_heads_pre_rot_1BKD, rot_mats[0], rot_mats[1], self.transformation_mats["decode"], is_decode_mode=True
-        )
-
-        ttnn.deallocate(q_heads_pre_rot_1BQD)
-        ttnn.deallocate(k_heads_pre_rot_1BKD)
+        # ttnn.deallocate(q_heads_pre_rot_1BQD)
+        # ttnn.deallocate(k_heads_pre_rot_1BKD)
 
         ###
         # KV update
         ###
-        if kv_cache:
-            keys = kv_cache[0]
-            values = kv_cache[1]
-        else:
-            keys = self.layer_past[0]
-            values = self.layer_past[1]
+        # breakpoint()
+        # if kv_cache:
+        keys = kv_cache[0]
+        values = kv_cache[1]
+        # else:
+        # keys = self.layer_past[0]
+        # values = self.layer_past[1]
         # k_heads, [seqlen, n_kv_heads, bsz, head_dim]
         # v_heads [seqlen, n_kv_heads, bsz, head_dim]
         # keys, [max_batch_size, n_kv_heads // configuration.num_devices, max_seq_len, head_dim]
-        ttnn.experimental.paged_update_cache(keys, k_heads_1BKD, update_idxs_tensor=current_pos, page_table=page_table)
-        ttnn.experimental.paged_update_cache(
-            values, v_heads_1BKD, update_idxs_tensor=current_pos, page_table=page_table
-        )
+        # ttnn.experimental.paged_update_cache(keys, k_heads_1BKD, update_idxs_tensor=current_pos, page_table=page_table)
+        # ttnn.experimental.paged_update_cache(
+        #     values, v_heads_1BKD, update_idxs_tensor=current_pos, page_table=page_table
+        # )
 
-        ttnn.deallocate(k_heads_1BKD)
-        ttnn.deallocate(v_heads_1BKD)
+        # ttnn.deallocate(k_heads_1BKD)
+        # ttnn.deallocate(v_heads_1BKD)
 
         # NOTE: Varying the batch size will result in slightly different outputs.
         # For example, a prompt w/ 1 user vs, the same prompt repeated N times for N users, will produce different outputs
         # This is because the SDPA op in decode mode has different number of reductions depending on batch size
         # Which leads to slightly different outputs from attention (due to accumulated errors)
-        if page_table:
-            attn_output_1G4D = ttnn.transformer.paged_scaled_dot_product_attention_decode(
-                q_heads_1BQD,
-                keys,
-                values,
-                cur_pos_tensor=current_pos,
-                page_table_tensor=page_table,
-                scale=self.scale,
-                program_config=self.model_config["SDPA_DECODE_PROGCFG"],
-                compute_kernel_config=self.sdpa_decode_compute_kernel_cfg,
-                memory_config=ttnn.DRAM_MEMORY_CONFIG,
-            )
-        else:
-            attn_output_1G4D = ttnn.transformer.scaled_dot_product_attention_decode(
-                q_heads_1BQD,
-                keys,
-                values,
-                cur_pos_tensor=current_pos,
-                scale=self.scale,
-                program_config=self.model_config["SDPA_DECODE_PROGCFG"],
-                compute_kernel_config=self.sdpa_decode_compute_kernel_cfg,
-                memory_config=ttnn.DRAM_MEMORY_CONFIG,  # FIXME: why not L1 height sharded e.g. SCORES_BATCHED_MM_OUTPUT_MEMCFG?
-            )
-
-        ttnn.deallocate(q_heads_1BQD)
-
-        attn_output_11BH = ttnn.to_memory_config(
-            attn_output_1G4D,
-            memory_config=self.model_config["SCORES_BATCHED_MM_OUTPUT_MEMCFG"](self.batch_size_per_device_group),
+        # if page_table:
+        attn_output_1G4D = ttnn.transformer.paged_scaled_dot_product_attention_decode(
+            q_heads_pre_rot_1BQD,
+            keys,
+            values,
+            cur_pos_tensor=current_pos,
+            page_table_tensor=page_table,
+            scale=self.scale,
+            program_config=self.model_config["SDPA_DECODE_PROGCFG"],
+            compute_kernel_config=self.sdpa_decode_compute_kernel_cfg,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
         )
-        attn_output_cat = ttnn.experimental.nlp_concat_heads_decode(
-            attn_output_11BH,
-            num_heads=self.n_local_heads,
-        )
-        return attn_output_cat
+        return attn_output_1G4D
+        # else:
+        #     attn_output_1G4D = ttnn.transformer.scaled_dot_product_attention_decode(
+        #         k_heads_pre_rot_1BKD,
+        #         keys,
+        #         values,
+        #         cur_pos_tensor=current_pos,
+        #         scale=self.scale,
+        #         program_config=self.model_config["SDPA_DECODE_PROGCFG"],
+        #         compute_kernel_config=self.sdpa_decode_compute_kernel_cfg,
+        #         memory_config=ttnn.DRAM_MEMORY_CONFIG,  # FIXME: why not L1 height sharded e.g. SCORES_BATCHED_MM_OUTPUT_MEMCFG?
+        #     )
+
+        # ttnn.deallocate(q_heads_1BQD)
+
+        # attn_output_11BH = ttnn.to_memory_config(
+        #     attn_output_1G4D,
+        #     memory_config=self.model_config["SCORES_BATCHED_MM_OUTPUT_MEMCFG"](self.batch_size_per_device_group),
+        # )
+        # attn_output_cat = ttnn.experimental.nlp_concat_heads_decode(
+        #     attn_output_11BH,
+        #     num_heads=self.n_local_heads,
+        # )
+        # return attn_output_cat
         # ttnn.deallocate(attn_output_11BH)
         # ttnn.deallocate(attn_output_1G4D)
 
