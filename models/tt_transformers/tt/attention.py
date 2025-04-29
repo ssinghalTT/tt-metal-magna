@@ -7,7 +7,7 @@ import torch
 
 import ttnn
 from models.common.lightweightmodule import LightweightModule
-from models.tt_transformers.tt.ccl import tt_all_reduce, tt_all_gather
+from models.tt_transformers.tt.ccl import tt_all_reduce
 from models.tt_transformers.tt.model_config import TensorGroup, OpGroup
 
 
@@ -473,93 +473,94 @@ class Attention(LightweightModule):
             attn_output_11BH,
             num_heads=self.n_local_heads,
         )
-        ttnn.deallocate(attn_output_11BH)
-        ttnn.deallocate(attn_output_1G4D)
+        return attn_output_cat
+        # ttnn.deallocate(attn_output_11BH)
+        # ttnn.deallocate(attn_output_1G4D)
 
-        if self.use_fused_all_gather_matmul:
-            attn_output_cat = ttnn.to_memory_config(
-                attn_output_cat, self.model_config["ATTN_ALL_GATHER_MATMUL_OUTPUT_MEMCFG"]
-            )
-            _, dense_out_sharded, _ = ttnn.experimental.all_gather_matmul(
-                attn_output_cat,
-                self.wo,
-                dim=3,
-                all_gather_core_grid_offset=(0, 4),
-                num_links=1,
-                program_config=self.model_config["ATTN_ALL_GATHER_MATMUL_PROGCFG"],
-                compute_kernel_config=self.li_o_decode_compute_kernel_cfg,
-                memory_config_ag=self.model_config["ATTN_ALL_GATHER_MATMUL_OUTPUT_MEMCFG"],
-                memory_config_mm=self.model_config["DECODE_RESIDUAL_MEMCFG"],
-            )
-            ttnn.deallocate(attn_output_cat)
-            dense_out_sharded = ttnn.to_memory_config(dense_out_sharded, self.model_config["DECODE_RESIDUAL_MEMCFG"])
-            return dense_out_sharded
+        # if self.use_fused_all_gather_matmul:
+        #     attn_output_cat = ttnn.to_memory_config(
+        #         attn_output_cat, self.model_config["ATTN_ALL_GATHER_MATMUL_OUTPUT_MEMCFG"]
+        #     )
+        #     _, dense_out_sharded, _ = ttnn.experimental.all_gather_matmul(
+        #         attn_output_cat,
+        #         self.wo,
+        #         dim=3,
+        #         all_gather_core_grid_offset=(0, 4),
+        #         num_links=1,
+        #         program_config=self.model_config["ATTN_ALL_GATHER_MATMUL_PROGCFG"],
+        #         compute_kernel_config=self.li_o_decode_compute_kernel_cfg,
+        #         memory_config_ag=self.model_config["ATTN_ALL_GATHER_MATMUL_OUTPUT_MEMCFG"],
+        #         memory_config_mm=self.model_config["DECODE_RESIDUAL_MEMCFG"],
+        #     )
+        #     ttnn.deallocate(attn_output_cat)
+        #     dense_out_sharded = ttnn.to_memory_config(dense_out_sharded, self.model_config["DECODE_RESIDUAL_MEMCFG"])
+        #     return dense_out_sharded
 
-        else:
-            attn_output = tt_all_gather(
-                attn_output_cat,
-                self.mesh_device,
-                dim=2,
-                cluster_axis=1,
-                num_links=2,
-                memory_config=self.model_config["GATHER_USERS_MEMCFG"](list(self.mesh_device.shape)[1]),
-                sharded=True,
-                # dtype=self.ccl_dtype,  # Running bf16 until we have SDPA output bfp8 df; otherwise we have two sharded to interleaved/interleaved to sharded conversions
-            )
-            if self.TG:
-                attn_output = ttnn.to_memory_config(attn_output, ttnn.L1_MEMORY_CONFIG)
-                # user_selection_matrix = [1, 1, 32, 128]
-                # user_selection_matrix @ activation -> [1, 1, 32, 128] * [1, 1, 128, 2048] -> [1, 1, 32, 2048]
-                attn_output = ttnn.matmul(
-                    self.user_selection_matrix,
-                    attn_output,
-                    core_grid=ttnn.CoreGrid(y=4, x=8),
-                    dtype=ttnn.bfloat16,
-                    memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
-                )
+        # else:
+        #     attn_output = tt_all_gather(
+        #         attn_output_cat,
+        #         self.mesh_device,
+        #         dim=2,
+        #         cluster_axis=1,
+        #         num_links=2,
+        #         memory_config=self.model_config["GATHER_USERS_MEMCFG"](list(self.mesh_device.shape)[1]),
+        #         sharded=True,
+        #         # dtype=self.ccl_dtype,  # Running bf16 until we have SDPA output bfp8 df; otherwise we have two sharded to interleaved/interleaved to sharded conversions
+        #     )
+        #     if self.TG:
+        #         attn_output = ttnn.to_memory_config(attn_output, ttnn.L1_MEMORY_CONFIG)
+        #         # user_selection_matrix = [1, 1, 32, 128]
+        #         # user_selection_matrix @ activation -> [1, 1, 32, 128] * [1, 1, 128, 2048] -> [1, 1, 32, 2048]
+        #         attn_output = ttnn.matmul(
+        #             self.user_selection_matrix,
+        #             attn_output,
+        #             core_grid=ttnn.CoreGrid(y=4, x=8),
+        #             dtype=ttnn.bfloat16,
+        #             memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
+        #         )
 
-            # TODO: Fix this once self.TG supports dram-sharded matmuls
-            dense_out_sharded = ttnn.matmul(
-                attn_output,
-                self.wo,
-                core_grid=ttnn.CoreGrid(y=4, x=8) if self.TG else None,
-                program_config=self.model_config["ATTN_OUTPUT_PROGCFG"] if not self.TG else None,
-                memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if self.TG else attn_output_cat.memory_config(),
-                dtype=ttnn.bfloat8_b if self.TG else None,
-                compute_kernel_config=self.li_o_decode_compute_kernel_cfg,
-            )
+        #     # TODO: Fix this once self.TG supports dram-sharded matmuls
+        #     dense_out_sharded = ttnn.matmul(
+        #         attn_output,
+        #         self.wo,
+        #         core_grid=ttnn.CoreGrid(y=4, x=8) if self.TG else None,
+        #         program_config=self.model_config["ATTN_OUTPUT_PROGCFG"] if not self.TG else None,
+        #         memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG if self.TG else attn_output_cat.memory_config(),
+        #         dtype=ttnn.bfloat8_b if self.TG else None,
+        #         compute_kernel_config=self.li_o_decode_compute_kernel_cfg,
+        #     )
 
-            ttnn.deallocate(attn_output_cat)
+        #     ttnn.deallocate(attn_output_cat)
 
-            # All reduce
-            dense_out_reduced = tt_all_reduce(
-                dense_out_sharded,
-                self.mesh_device,
-                cluster_axis=0,
-                num_reduce_scatter_links=self.num_reduce_scatter_links,
-                num_all_gather_links=self.num_all_gather_links,
-                dim=0 if (self.TG and self.hidden_size < 8192) else 3,
-                topology=self.ccl_topology,
-                memory_config=(
-                    (
-                        self.model_config["SELF_OUT_REDUCE_SCATTER_MEMCFG"]
-                        if self.hidden_size == 8192
-                        else self.model_config["SELF_OUT_GATHERED_MEMCFG"](list(self.mesh_device.shape)[0])
-                    )
-                    if self.TG
-                    else self.model_config["DECODE_RESIDUAL_MEMCFG"]
-                ),
-                sharded=True,
-                dtype=self.ccl_dtype,
-                use_composite=True if self.hidden_size == 8192 else False,
-            )
+        #     # All reduce
+        #     dense_out_reduced = tt_all_reduce(
+        #         dense_out_sharded,
+        #         self.mesh_device,
+        #         cluster_axis=0,
+        #         num_reduce_scatter_links=self.num_reduce_scatter_links,
+        #         num_all_gather_links=self.num_all_gather_links,
+        #         dim=0 if (self.TG and self.hidden_size < 8192) else 3,
+        #         topology=self.ccl_topology,
+        #         memory_config=(
+        #             (
+        #                 self.model_config["SELF_OUT_REDUCE_SCATTER_MEMCFG"]
+        #                 if self.hidden_size == 8192
+        #                 else self.model_config["SELF_OUT_GATHERED_MEMCFG"](list(self.mesh_device.shape)[0])
+        #             )
+        #             if self.TG
+        #             else self.model_config["DECODE_RESIDUAL_MEMCFG"]
+        #         ),
+        #         sharded=True,
+        #         dtype=self.ccl_dtype,
+        #         use_composite=True if self.hidden_size == 8192 else False,
+        #     )
 
-            if not self.TG:
-                dense_out_reduced = ttnn.to_memory_config(
-                    dense_out_reduced, self.model_config["DECODE_RESIDUAL_MEMCFG"]
-                )
+        #     if not self.TG:
+        #         dense_out_reduced = ttnn.to_memory_config(
+        #             dense_out_reduced, self.model_config["DECODE_RESIDUAL_MEMCFG"]
+        #         )
 
-            return dense_out_reduced
+        #     return dense_out_reduced
 
     def forward_prefill(
         self,

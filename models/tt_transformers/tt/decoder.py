@@ -7,7 +7,6 @@ from models.tt_transformers.tt.mlp import MLP
 from models.common.rmsnorm import RMSNorm
 from models.common.lightweightmodule import LightweightModule
 from models.tt_transformers.tt.distributed_norm import DistributedNorm
-from models.tt_transformers.tt.model_config import TensorGroup
 
 
 class TransformerBlock(LightweightModule):
@@ -128,28 +127,31 @@ class TransformerBlock(LightweightModule):
             chunk_start_idx=chunk_start_idx,
             kv_cache=kv_cache,
         )
-        # Here x and attn_out are both fractured across devices
-        h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg, dtype=ttnn.bfloat16 if TG else None)
-        ttnn.deallocate(attn_out)
-        if mode == "prefill":
-            x.deallocate(True)
+        return attn_out
+        # # Here x and attn_out are both fractured across devices
+        # h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg, dtype=ttnn.bfloat16 if TG else None)
+        # ttnn.deallocate(attn_out)
+        # if mode == "prefill":
+        #     x.deallocate(True)
 
-        # Norms take fractured inputs and output replicated across devices
-        ff_in = self.ff_norm(h, mode)
-        if TG and mode == "decode":
-            ff_in = ttnn.to_memory_config(ff_in, memory_config=self.model_config["MLP_ACT_MEMCFG"])
-        # MLP takes replicated inputs and produces fractured outputs
-        ff_out = self.feed_forward.forward(ff_in, mode)
-        # ff_out and h are both fractured across devices
-        activation_dtype = self.model_config["DECODERS_OPTIMIZATIONS"].get_tensor_dtype(
-            decoder_id=self.layer_num, tensor=TensorGroup.ACTIVATION
-        )
-        out = ttnn.add(
-            h,
-            ff_out,
-            memory_config=skip_mem_cfg,
-            dtype=self.args.ccl_dtype
-            if TG and not self.args.is_distributed_norm(mode)
-            else activation_dtype or ttnn.bfloat16,
-        )
-        return out  # fractured across devices
+        # # Norms take fractured inputs and output replicated across devices
+        # ff_in = self.ff_norm(h, mode)
+        # if TG and mode == "decode":
+        #     ff_in = ttnn.to_memory_config(ff_in, memory_config=self.model_config["MLP_ACT_MEMCFG"])
+        # # MLP takes replicated inputs and produces fractured outputs
+        # ff_out = self.feed_forward.forward(ff_in, mode)
+        # # ff_out and h are both fractured across devices
+        # activation_dtype = self.model_config["DECODERS_OPTIMIZATIONS"].get_tensor_dtype(
+        #     decoder_id=self.layer_num, tensor=TensorGroup.ACTIVATION
+        # )
+        # out = ttnn.add(
+        #     h,
+        #     ff_out,
+        #     memory_config=skip_mem_cfg,
+        #     dtype=self.args.ccl_dtype
+        #     if TG and not self.args.is_distributed_norm(mode)
+        #     else activation_dtype or ttnn.bfloat16,
+        # )
+
+        # breakpoint()
+        # return out  # fractured across devices

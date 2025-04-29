@@ -379,22 +379,22 @@ class Transformer(LightweightModule):
                 kv_cache=kv_cache[i] if kv_cache is not None else None,
             )
 
-        if mode == "prefill" and get_last_token == -1:
-            return x
+        # if mode == "prefill" and get_last_token == -1:
+        #     return x
 
-        # Slicing the tensor to the nearest ceiling/floor multiples of 32 for the prefill_len, to get the last token
-        if get_last_token != -1:
-            x = ttnn.slice(x, (0, 0, get_last_token, 0), (1, 1, get_last_token + 32, x.shape[-1]))
+        # # Slicing the tensor to the nearest ceiling/floor multiples of 32 for the prefill_len, to get the last token
+        # if get_last_token != -1:
+        #     x = ttnn.slice(x, (0, 0, get_last_token, 0), (1, 1, get_last_token + 32, x.shape[-1]))
 
-        # Output norm
-        x = self.norm(x, mode=mode)
+        # # Output norm
+        # x = self.norm(x, mode=mode)
 
-        if mode == "prefill" and self.model_config["LM_HEAD_INPUT_MEMCFG"].is_sharded():
-            x = ttnn.interleaved_to_sharded(x, self.model_config["LM_HEAD_INPUT_MEMCFG"])
+        # if mode == "prefill" and self.model_config["LM_HEAD_INPUT_MEMCFG"].is_sharded():
+        #     x = ttnn.interleaved_to_sharded(x, self.model_config["LM_HEAD_INPUT_MEMCFG"])
 
-        x = self.lm_head(x)
+        # x = self.lm_head(x)
 
-        if mode == "prefill":
-            x = ttnn.to_layout(x, layout=ttnn.ROW_MAJOR_LAYOUT)
-            x = ttnn.to_memory_config(x, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+        # if mode == "prefill":
+        #     x = ttnn.to_layout(x, layout=ttnn.ROW_MAJOR_LAYOUT)
+        #     x = ttnn.to_memory_config(x, memory_config=ttnn.DRAM_MEMORY_CONFIG)
         return x

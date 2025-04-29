@@ -14,17 +14,14 @@ import os
 import ttnn
 
 
-from models.tt_transformers.tt.generator import Generator, SamplingParams
+from models.tt_transformers.tt.generator import Generator
 from models.tt_transformers.tt.model_config import DecodersPrecision, parse_decoder_json
 
 from models.tt_transformers.tt.common import (
-    preprocess_inputs_prefill,
     PagedAttentionConfig,
     sample_host,
     create_tt_model,
 )
-from models.perf.benchmarking_utils import BenchmarkProfiler
-from models.demos.utils.llm_demo_utils import create_benchmark_data
 
 
 def load_and_cache_context(context_url, cache_dir, max_length=None):
@@ -190,9 +187,9 @@ def prepare_generator_args(
             "models/tt_transformers/demo/sample_prompts/input_data_questions_prefill_128.json",  # input_prompts
             True,  # instruct mode
             1,  # repeat_batches
-            1024,  # max_seq_len
+            128 * 1024,  # max_seq_len
             1,  # batch_size
-            200,  # max_generated_tokens
+            10000,  # max_generated_tokens
             True,  # paged_attention
             {"page_block_size": 32, "page_max_num_blocks_per_dp": 1024},  # page_params
             {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
@@ -204,9 +201,9 @@ def prepare_generator_args(
             "models/tt_transformers/demo/sample_prompts/input_data_questions_prefill_128.json",  # input_prompts
             True,  # instruct mode
             1,  # repeat_batches
-            1024,  # max_seq_len
+            128 * 1024,  # max_seq_len
             32,  # batch_size
-            200,  # max_generated_tokens
+            1000,  # max_generated_tokens
             True,  # paged_attention
             {"page_block_size": 32, "page_max_num_blocks_per_dp": 1024},  # page_params
             {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
@@ -488,18 +485,11 @@ def test_demo_text(
         os.chmod(output_directory, 0o755)
         output_filename = f"{output_directory}/llama_text_demo_output_{timestamp}.txt"
 
-    # Start profiler
-    logger.info(f"Start profiler")
-    profiler = BenchmarkProfiler()
-    profiler.start("run")
-
     logger.info(f"Reading inputs...")
-    profiler.start("loading_inputs")
     if len(input_prompts) == 1:  # Manual input
         input_prompts = input_prompts * global_batch_size
     else:  # Inputs from file
         input_prompts = load_inputs(input_prompts, global_batch_size, input_prompts)
-    profiler.end("loading_inputs")
 
     # To simulate a deployment environment, the demo supports repeating batched prompts.
     # This loop will rotate the prompts between the users for each batch, to simulate users sending different requests
@@ -525,98 +515,88 @@ def test_demo_text(
 
     logger.info("Starting inference...")
     for batch_idx, input_prompts in enumerate(repeat_batch_prompts):
-        logger.info(f"Processing batch {batch_idx}")
-        profiler.start(f"preprocess_prefill_inputs", iteration=batch_idx)
-        # Preprocess initial prompt inputs
-        (
-            input_tokens_prefill_pt,
-            encoded_prompts,
-            decoding_pos,
-            prefill_lens,
-        ) = preprocess_inputs_prefill(
-            input_prompts,
-            tokenizer,
-            model_args,
-            instruct,
-            max_generated_tokens,
-        )
+        # logger.info(f"Processing batch {batch_idx}")
+        # # Preprocess initial prompt inputs
+        # (
+        #     input_tokens_prefill_pt,
+        #     encoded_prompts,
+        #     decoding_pos,
+        #     prefill_lens,
+        # ) = preprocess_inputs_prefill(
+        #     input_prompts,
+        #     tokenizer,
+        #     model_args,
+        #     instruct,
+        #     max_generated_tokens,
+        # )
 
-        max_encoded_prompt_len = max(len(p) for p in encoded_prompts)
-        assert (
-            max_generated_tokens + max_encoded_prompt_len <= max_seq_len
-        ), f"Prompt prefill tokens ({max_encoded_prompt_len}) + maximum number of decoded iterations ({max_generated_tokens}) needs to be <= than max_seq_len ({max_seq_len})"
+        # max_encoded_prompt_len = max(len(p) for p in encoded_prompts)
+        # assert (
+        #     max_generated_tokens + max_encoded_prompt_len <= max_seq_len
+        # ), f"Prompt prefill tokens ({max_encoded_prompt_len}) + maximum number of decoded iterations ({max_generated_tokens}) needs to be <= than max_seq_len ({max_seq_len})"
 
-        profiler.end(f"preprocess_prefill_inputs", iteration=batch_idx)
+        # # when doing repeating batches, set kv-caches to zero, to avoid context leaking
+        # if batch_idx != 0:
+        #     for i in range(len(model)):
+        #         for layer in model[i].layers:
+        #             k_cache, v_cache = layer.attention.layer_past
+        #             k_cache = ttnn.mul(k_cache, 0, output_tensor=k_cache)
+        #             v_cache = ttnn.mul(v_cache, 0, output_tensor=v_cache)
 
-        # when doing repeating batches, set kv-caches to zero, to avoid context leaking
-        if batch_idx != 0:
-            for i in range(len(model)):
-                for layer in model[i].layers:
-                    k_cache, v_cache = layer.attention.layer_past
-                    k_cache = ttnn.mul(k_cache, 0, output_tensor=k_cache)
-                    v_cache = ttnn.mul(v_cache, 0, output_tensor=v_cache)
+        # input_tokens_prefill_pt = torch.stack(input_tokens_prefill_pt).view(global_batch_size, -1)
 
-        input_tokens_prefill_pt = torch.stack(input_tokens_prefill_pt).view(global_batch_size, -1)
+        # logger.info("Skip prefill warmup...")
+        # profiler.start(f"compile_prefill", iteration=batch_idx)
+        # logits = generator.prefill_forward_text(
+        #     input_tokens_prefill_pt[::batch_size, :],  # Warmup prefill for each device
+        #     page_table=page_table,
+        #     kv_cache=tt_kv_cache,
+        #     prompt_lens=decoding_pos,
+        # )
+        # logger.info("Finished skip prefill warmup")
 
-        logger.info("Starting prefill warmup...")
-        profiler.start(f"compile_prefill", iteration=batch_idx)
-        logits = generator.prefill_forward_text(
-            input_tokens_prefill_pt[::batch_size, :],  # Warmup prefill for each device
-            page_table=page_table,
-            kv_cache=tt_kv_cache,
-            prompt_lens=decoding_pos,
-        )
-        profiler.end(f"compile_prefill", iteration=batch_idx)
-        logger.info("Finished prefill warmup")
+        # logger.info(f"Starting prefill...")
+        # logits = generator.prefill_forward_text(
+        #     input_tokens_prefill_pt,
+        #     page_table=page_table,
+        #     kv_cache=tt_kv_cache,
+        #     prompt_lens=decoding_pos,
+        # )
+        # prefilled_token = torch.argmax(logits, dim=-1)
+        # logger.info(f"Prefill finished")
 
-        logger.info(f"Starting prefill...")
-        profiler.start(f"inference_prefill", iteration=batch_idx)
-        logits = generator.prefill_forward_text(
-            input_tokens_prefill_pt,
-            page_table=page_table,
-            kv_cache=tt_kv_cache,
-            prompt_lens=decoding_pos,
-        )
-        prefilled_token = torch.argmax(logits, dim=-1)
-        profiler.end(f"inference_prefill", iteration=batch_idx)
-        logger.info(f"Prefill finished")
+        # breakpoint()
 
         # Keep track of generated outputs to print out every iteration
-        all_outputs = [encoded_prompts[b][: prefill_lens[b]] for b in range(global_batch_size)]
-        for user in range(global_batch_size):
-            user_tok = int(prefilled_token[user].item())
-            all_outputs[user].append(user_tok)
+        # all_outputs = [encoded_prompts[b][: prefill_lens[b]] for b in range(global_batch_size)]
+        # for user in range(global_batch_size):
+        #     user_tok = int(prefilled_token[user].item())
+        #     all_outputs[user].append(user_tok)
 
-        user_done = [False] * global_batch_size  # Keeps track when a user reaches EoD token
+        # user_done = [False] * global_batch_size  # Keeps track when a user reaches EoD token
 
-        # TODO Argmax on device is only supported for batch_size=1 (per submesh)
-        argmax_on_device = (
-            False if (global_batch_size // data_parallel > 1 or sampling_params["temperature"] != 0) else True
-        )
-        if argmax_on_device:
-            device_sampling_params = SamplingParams(temperature=0.0, top_k=-1, top_p=1.0)
-        else:
-            device_sampling_params = None
+        # # TODO Argmax on device is only supported for batch_size=1 (per submesh)
+        # argmax_on_device = (
+        #     False if (global_batch_size // data_parallel > 1 or sampling_params["temperature"] != 0) else True
+        # )
+        # if argmax_on_device:
+        #     device_sampling_params = SamplingParams(temperature=0.0, top_k=-1, top_p=1.0)
+        # else:
+        #     device_sampling_params = None
 
         # Initial positions
-        current_pos = torch.tensor([decoding_pos[b] for b in range(global_batch_size)])
+        # current_pos = torch.tensor([decoding_pos[b] for b in range(global_batch_size)])
 
         # Start decoding
         iteration = 0
         users_decoding = True
+        current_pos = torch.tensor([0 for b in range(global_batch_size)])
+        out_tok = torch.tensor([[20110]])
 
-        out_tok = prefilled_token
-
-        logger.info(f"Starting decode loop...")
-
+        # out_tok = prefilled_token
         # Log total inference (accounting for compile_decode as well)
-        profiler.start(f"inference_decode", iteration=batch_idx)
         while users_decoding:
-            if iteration == 0:  # First iteration also accounts for compile time
-                profiler.start(f"compile_decode", iteration=batch_idx)
-            else:
-                profiler.start(f"inference_decode_time_{iteration}", iteration=batch_idx)
-
+            logger.info(f"decode loop [iter {iteration}]...")
             # Run decode forward
             logits = generator.decode_forward_text(
                 out_tok,
@@ -624,298 +604,11 @@ def test_demo_text(
                 enable_trace=enable_trace,
                 page_table=page_table,
                 kv_cache=tt_kv_cache,
-                sampling_params=device_sampling_params,
-            )
-
-            # Get the next token
-            if device_sampling_params is not None:
-                out_tok = logits.unsqueeze(1)
-            else:
-                # TODO Fix use case with temperature > 0
-                _, out_tok = sample_host(
-                    logits,
-                    temperature=sampling_params["temperature"],
-                    top_p=sampling_params["top_p"],
-                    on_host=True,
-                )
-
-            if iteration == 0:  # First iteration will account the compile time
-                profiler.end(f"compile_decode", iteration=batch_idx)
-                decode_iteration_time = profiler.get_duration("compile_decode", iteration=batch_idx)
-            else:
-                profiler.end(f"inference_decode_time_{iteration}", iteration=batch_idx)
-                decode_iteration_time = profiler.get_duration(f"inference_decode_time_{iteration}", iteration=batch_idx)
-
-            # Always print perf after every iteration
-            tokens_per_second_per_user = 1 / decode_iteration_time
-            logger.info(
-                f"Iteration {iteration}: {1000*decode_iteration_time:.0f}ms @ {tokens_per_second_per_user:.1f} tok/s/user ({global_batch_size*tokens_per_second_per_user:.1f} tok/s throughput)"
+                sampling_params=None,
             )
 
             current_pos += 1
-
-            # Save output token to print out later
-            for user in range(global_batch_size):
-                user_tok = out_tok[user].item()
-                if (
-                    user_tok not in tokenizer.stop_tokens and user_done[user] == False
-                ):  # Read until an eos token (e.g. <|eot_id|>); create_tokenizer adds stop_tokens to HF tokenizers
-                    all_outputs[user].append(user_tok)
-                else:
-                    if (
-                        stop_at_eos
-                    ):  # For performance gathering in CI, we want to sometimes force decoding for a fixed number of iterations
-                        user_done[user] = True
-                        logger.trace(f"[User {user}] Finished decoding at iteration {iteration}")
-                        if all(user_done):
-                            users_decoding = False
-
-            # Print out generated outputs for each user at the end of every iteration
-            if not is_ci_env:
-                for user in range(global_batch_size):
-                    text = "".join(tokenizer.decode(all_outputs[user]))
-                    if len(text) > 100:
-                        text = "..." + text[-97:]
-                    text = text.replace("\n", " ")
-                    logger.info("[User {}] {}".format(user, text))
-
             iteration += 1
-
             # Upper limit of generated tokens for each user
             if iteration >= max_generated_tokens:
                 users_decoding = False
-
-            # Final print
-            if not users_decoding:
-                profiler.start(f"log_saving_file", iteration=batch_idx)
-                logger.info("Finished decoding, printing the final outputs...\n")
-                for i, (output, prompt) in enumerate(zip(all_outputs, input_prompts)):
-                    text = tokenizer.decode(output)
-                    prompt_including_assistant_tags = tokenizer.decode(
-                        model_args[0].encode_prompt(prompt, instruct=instruct)
-                    )
-                    text_after_prompt = text.replace(prompt_including_assistant_tags, "", 1)
-                    if print_to_file:
-                        with open(output_filename, "a") as f:
-                            f.write(
-                                f"\nbatch: {batch_idx} user: {i}\nprompt: {prompt} \noutput:\n{text_after_prompt}\n"
-                            )
-                    else:
-                        # Strip leading newlines from output when sent to terminal
-                        short_prompt = (
-                            (prompt[:100] + "\n<long prompt not printed in full>\n" + prompt[-100:])
-                            if len(prompt) > 200
-                            else prompt
-                        )
-                        logger.info(
-                            f"\n==REPEAT BATCH {batch_idx}\n==USER {i} - PROMPT\n{short_prompt} \n==USER {i} - OUTPUT\n{text_after_prompt.strip()}\n"
-                        )
-                profiler.end(f"log_saving_file", iteration=batch_idx)
-
-        num_tokens_generated_decode.append(iteration)  # Save the number of tokens generated for each repeat batch
-
-    profiler.end(f"inference_decode", iteration=batch_idx)
-
-    # Finish profiling at the end of inference for all repeated batches
-    profiler.end("run")
-
-    # Prepare profile benchmark metrics for the first repeat batch only
-    compile_prefill_time = profiler.get_duration("compile_prefill")
-    compile_decode_time = profiler.get_duration("compile_decode")
-
-    total_inference_prefill_time = profiler.get_duration("inference_prefill")
-    total_inference_decode_time = 0
-    for i in range(1, iteration):  # Iteration 0 is the compile time
-        total_inference_decode_time += profiler.get_duration(f"inference_decode_time_{i}")
-
-    # Average prefill time for each user
-    avg_time_to_first_token = total_inference_prefill_time / global_batch_size
-    # Average decode time per batch iteration
-    avg_decode_iteration_time = total_inference_decode_time / (iteration - 1)
-
-    prefill_tok_s = prefill_lens[0] / total_inference_prefill_time * global_batch_size
-    decode_tok_s_user = (num_tokens_generated_decode[0] - 1) / total_inference_decode_time  # Remove the compile time
-    decode_tok_s = (
-        (num_tokens_generated_decode[0] - 1) / total_inference_decode_time * global_batch_size
-    )  # Remove the compile time
-
-    measurements = {
-        # Required measurements
-        "compile_prefill": compile_prefill_time,
-        "compile_decode": compile_decode_time,
-        "inference_prefill": total_inference_prefill_time,
-        "inference_decode": total_inference_decode_time,
-        "prefill_time_to_token": avg_time_to_first_token,
-        "prefill_t/s": prefill_tok_s,  # tokens/s
-        "decode_t/s/u": decode_tok_s_user,  # tokens/s/u
-        "decode_t/s": decode_tok_s,  # tokens/s
-        # Optional measurements
-        "Total compile time": compile_prefill_time + compile_decode_time,
-        "Full demo runtime": profiler.get_duration("run"),
-    }
-
-    # Decode performance for some specific tokens
-    tok_1_perf = profiler.get_duration(f"inference_decode_time_{1}")  # Iteration 0 is compile time
-    tok_128_perf = profiler.get_duration(f"inference_decode_time_{127}") if 127 < iteration else 0
-    tok_1024_perf = profiler.get_duration(f"inference_decode_time_{1023}") if 1023 < iteration else 0
-    tok_4096_perf = profiler.get_duration(f"inference_decode_time_{4095}") if 4095 < iteration else 0
-
-    if not stop_at_eos:
-        logger.info(f"Please note that 'stop_at_eos' is disabled. Output repetition is expected.")
-
-    logger.info("")
-    logger.info(f"=== Performance metrics ===")
-    logger.info(
-        f"1st token decode time: {tok_1_perf*1000:.2f}ms [{round(1/tok_1_perf, 2)} t/s/u, {round((1/tok_1_perf)*global_batch_size, 2)} t/s]"
-    )
-    if tok_128_perf > 0:
-        logger.info(
-            f"128th token decode time: {tok_128_perf*1000:.2f}ms [{round(1/tok_128_perf, 2)} t/s/u, {round((1/tok_128_perf)*global_batch_size, 2)} t/s]"
-        )
-    if tok_1024_perf > 0:
-        logger.info(
-            f"1024th token decode time: {tok_1024_perf*1000:.2f}ms [{round(1/tok_1024_perf, 2)} t/s/u, {round((1/tok_1024_perf)*global_batch_size, 2)} t/s]"
-        )
-    if tok_4096_perf > 0:
-        logger.info(
-            f"4096th token decode time: {tok_4096_perf*1000:.2f}ms [{round(1/tok_4096_perf, 2)} t/s/u, {round((1/tok_4096_perf)*global_batch_size, 2)} t/s]"
-        )
-
-    # Print some of the perf metrics
-    logger.info("==")
-    logger.info(f"Prefill compile time: {round(compile_prefill_time, 2)}s")
-    logger.info(f"Decode compile time: {round(compile_decode_time, 2)}s")
-    logger.info("")
-    logger.info(f"Average Time to First Token (TTFT): {round(avg_time_to_first_token*1000, 2)}ms")
-    logger.info(
-        f"Average speed: {round(avg_decode_iteration_time * 1000, 2)}ms @ {round(decode_tok_s_user, 2)} tok/s/user ({round(decode_tok_s, 2)} tok/s throughput)"
-    )
-
-    # Benchmark targets
-    supported_models = ["Llama3.2-1B", "Llama3.2-3B", "Llama3.1-8B", "Llama3.2-11B", "Llama3.1-70B", "Mistral-7B"]
-    supported_devices = ["N150", "P150", "P300", "N300", "P150x4", "T3K", "TG"]
-
-    tt_device_name = model_args[0].device_name
-
-    if model_args[0].base_model_name in supported_models:
-        assert tt_device_name in supported_devices, f"Device {tt_device_name} not supported"
-
-        # Set the target times to first token for every combination of device and model
-        target_prefill_tok_s = {
-            "N150_Llama3.2-1B": 1050,  # TODO Update target
-            "N300_Llama3.2-1B": 1050,  # TODO Update target
-            "T3K_Llama3.2-1B": 1050,  # TODO Update target
-            "TG_Llama3.2-1B": 1050,  # TODO Update target
-            #
-            "N150_Llama3.2-3B": 1050,  # TODO Update target
-            "N300_Llama3.2-3B": 1050,  # TODO Update target
-            "T3K_Llama3.2-3B": 1050,  # TODO Update target
-            "TG_Llama3.2-3B": 1050,  # TODO Update target
-            #
-            "N150_Llama3.1-8B": 1050,
-            "P150_Llama3.1-8B": 1050,
-            "N300_Llama3.1-8B": 1050,
-            "P300_Llama3.1-8B": 1050,
-            "T3K_Llama3.1-8B": 1050,
-            "TG_Llama3.1-8B": 1050,
-            #
-            "N150_Llama3.2-11B": 1050,  # TODO Update target
-            "N300_Llama3.2-11B": 1050,  # TODO Update target
-            "T3K_Llama3.2-11B": 1050,  # TODO Update target
-            "TG_Llama3.2-11B": 1050,  # TODO Update target
-            #
-            "N150_Llama3.1-70B": 1050,  # TODO Update target
-            "N300_Llama3.1-70B": 1050,  # TODO Update target
-            "T3K_Llama3.1-70B": 1050,  # TODO Update target
-            "TG_Llama3.1-70B": 1050,  # TODO Update target
-            #
-            "N150_Mistral-7B": 1050,
-            "N300_Mistral-7B": 1050,
-            "T3K_Mistral-7B": 1050,
-        }[f"{tt_device_name}_{model_args[0].base_model_name}"]
-
-        # Set the target decode timesfor every combination of device and model
-        target_decode_tok_s_u = {
-            "N150_Llama3.2-1B": 160,  # TODO Update target
-            "N300_Llama3.2-1B": 250,  # TODO Update target
-            "T3K_Llama3.2-1B": 300,  # TODO Update target
-            "TG_Llama3.2-1B": 300,  # TODO Update target
-            #
-            "N150_Llama3.2-3B": 60,  # TODO Update target
-            "N300_Llama3.2-3B": 100,  # TODO Update target
-            "T3K_Llama3.2-3B": 150,  # TODO Update target
-            "TG_Llama3.2-3B": 150,  # TODO Update target
-            #
-            "N150_Llama3.1-8B": 23,  # TODO Update target
-            "P150_Llama3.1-8B": 23,  # TODO Update target
-            "N300_Llama3.1-8B": 38,
-            "P300_Llama3.1-8B": 38,
-            "T3K_Llama3.1-8B": 45,
-            "TG_Llama3.1-8B": 45,  # TODO Update target
-            #
-            "N150_Llama3.2-11B": 23,
-            "N300_Llama3.2-11B": 38,  # TODO Update target
-            "T3K_Llama3.2-11B": 45,  # TODO Update target
-            "TG_Llama3.2-11B": 45,  # TODO Update target
-            #
-            "T3K_Llama3.1-70B": 20,  # TODO Update target
-            "TG_Llama3.1-70B": 20,  # TODO Update target
-            #
-            "N150_Mistral-7B": 23,
-            "N300_Mistral-7B": 38,  # TODO Update target
-            "T3K_Mistral-7B": 45,  # TODO Update target
-            "TG_Mistral-7B": 45,  # TODO Update target
-        }[f"{tt_device_name}_{model_args[0].base_model_name}"]
-
-        target_decode_tok_s = target_decode_tok_s_u * global_batch_size
-        targets = {
-            "prefill_t/s": target_prefill_tok_s,
-            "decode_t/s": target_decode_tok_s,
-            "decode_t/s/u": target_decode_tok_s_u,
-        }
-    else:
-        logger.warning(f"Model {model_args[0].base_model_name} does not have performance targets set")
-        targets = {}
-
-    # Save benchmark data for CI dashboard
-    if is_ci_env:
-        # Instead of running warmup iterations, the demo profiles the initial compile iteration
-        bench_n_warmup_iter = {"inference_prefill": 0, "inference_decode": 1}
-        benchmark_data = create_benchmark_data(profiler, measurements, bench_n_warmup_iter, targets)
-
-        # Save the decode performance of every iteration for plotting in superset
-        for i in range(1, iteration):
-            benchmark_data.add_measurement(
-                profiler,
-                0,
-                "inference_decode",
-                f"time_to_token_{i}",
-                profiler.get_duration(f"inference_decode_time_{i}") * 1000,
-                step_warm_up_num_iterations=None,
-                target=None,
-            )
-
-        # Also save the avg decode performance for the 128 iterations (excluding the compile time)
-        inference_decode_time_first_128 = sum(
-            profiler.get_duration(f"inference_decode_time_{i}") for i in range(1, 128)
-        )
-        benchmark_data.add_measurement(
-            profiler,
-            0,
-            "inference_decode",
-            "avg_decode_time_first_128",
-            inference_decode_time_first_128 * 1000 / 127,
-            step_warm_up_num_iterations=None,
-            target=None,
-        )
-
-        benchmark_data.save_partial_run_json(
-            profiler,
-            run_type=f"{tt_device_name}-demo",
-            ml_model_name=model_args[0].base_model_name,
-            ml_model_type="llm",
-            num_layers=model_args[0].n_layers,
-            batch_size=global_batch_size,
-            input_sequence_length=max(prefill_lens),
-            output_sequence_length=num_tokens_generated_decode[0],
-        )
