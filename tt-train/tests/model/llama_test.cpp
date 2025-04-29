@@ -296,3 +296,23 @@ TEST_F(LlamaTest, KVProjTest) {
     EXPECT_TRUE(atol_k_proj < .25F);
     EXPECT_TRUE(atol_v_proj < .25F);
 }
+
+TEST_F(LlamaTest, AttnNormTest) {
+    using namespace ttml;
+    xt::xarray<float> attention_norm_input =
+        xt::load_npy<float>("/home/j/intermediate_results/test_embedded_tokens_new.npy");
+    xt::xarray<float> expected_attention_norm_res =
+        xt::load_npy<float>("/home/j/intermediate_results/expected_first_attn_norm_result.npy");
+    attention_norm_input = attention_norm_input.reshape({1U, 1U, 32U, 2048U});
+    auto llama_model = init_llama(32);
+    std::shared_ptr<ttml::modules::LlamaBlock> first_block_ptr =
+        std::dynamic_pointer_cast<ttml::modules::LlamaBlock>(llama_model.blocks[0]);
+    auto attention_norm = first_block_ptr->m_attention_norm;
+    auto attention_norm_input_tt = core::from_xtensor(attention_norm_input, &autograd::ctx().get_device());
+    auto attention_norm_input_ag = autograd::create_tensor(attention_norm_input_tt);
+    auto attention_norm_res = (*attention_norm)(attention_norm_input_ag);
+    xt::xarray<float> attention_norm_res_xt = core::to_xtensor(attention_norm_res->get_value());
+    float atol_attention_norm =
+        suggest_atol_rtol("attention_norm", expected_attention_norm_res, attention_norm_res_xt, 0).first;
+    EXPECT_TRUE(atol_attention_norm < .25F);
+}
