@@ -233,6 +233,31 @@ class Attention(LightweightModule):
             # cache_file_name=cache_name("wqkv_sharded_2d"),
         )
 
+        # q_heads_torch_tensor = wq.unsqueeze(0).unsqueeze(0) # [1,1,32,128]
+        q_heads_torch_tensor = torch.randn([32, 128]).unsqueeze(0).unsqueeze(0)
+        q_range = ttnn.CoreRangeSet(
+            {
+                ttnn.CoreRange(
+                    ttnn.CoreCoord(0, 0),
+                    ttnn.CoreCoord(0, 0),
+                )
+            }
+        )
+        q_shard = shard_spec = ttnn.ShardSpec(q_range, (32, 128), ttnn.ShardOrientation.ROW_MAJOR)
+        q_heads_mem_config = ttnn.MemoryConfig(ttnn.TensorMemoryLayout.HEIGHT_SHARDED, ttnn.BufferType.L1, q_shard)
+
+        self.q_heads_pre_stored = ttnn.as_tensor(
+            q_heads_torch_tensor,
+            dtype=ttnn.bfloat16,
+            layout=ttnn.TILE_LAYOUT,
+            device=self.mesh_device,
+            # memory_config=ttnn.L1_HEIGHT_SHARDED_MEMORY_CONFIG ,# wqkv_mem_config,
+            memory_config=q_heads_mem_config,  # wqkv_mem_config,
+            mesh_mapper=ttnn.ShardTensor2dMesh(
+                self.mesh_device, dims=(3, 2) if self.TG else (2, 3), mesh_shape=configuration.cluster_shape
+            ),
+        )
+
         # For ring topology we can use all gather matmul for wo
         self.use_fused_all_gather_matmul = self.model_config["USE_FUSED_ALL_GATHER_MATMUL"]
         pt_wo = self.state_dict[f"{wo_str}.weight"].transpose(-1, -2).unsqueeze(0).unsqueeze(0)
@@ -336,19 +361,20 @@ class Attention(LightweightModule):
         # QKV matmuls
         # Use HiFi2 for DRAM-sharded matmuls as they are otherwise flop-bound. Loses 1 bit of activation precision.
         ###
+
         x = ttnn.sharded_to_interleaved(x, ttnn.L1_MEMORY_CONFIG, ttnn.bfloat16)
 
-        xqkv_fused = ttnn.linear(
-            x,
-            self.wqkv,
-            # bias=self.wqkv_bias,
-            # memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
-            memory_config=ttnn.L1_MEMORY_CONFIG,
-            # memory_config=ttnn.DRAM_MEMORY_CONFIG,
-            # program_config=self.model_config["XQKV_DECODE_PROGCFG"],
-            compute_kernel_config=self.li_qkv_decode_compute_kernel_cfg,
-            dtype=self.ccl_dtype if self.TG else self.activation_dtype or ttnn.bfloat16,
-        )
+        # xqkv_fused = ttnn.linear(
+        #     x,
+        #     self.wqkv,
+        #     # bias=self.wqkv_bias,
+        #     # memory_config=ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG,
+        #     memory_config=ttnn.L1_MEMORY_CONFIG,
+        #     # memory_config=ttnn.DRAM_MEMORY_CONFIG,
+        #     # program_config=self.model_config["XQKV_DECODE_PROGCFG"],
+        #     compute_kernel_config=self.li_qkv_decode_compute_kernel_cfg,
+        #     dtype=self.ccl_dtype if self.TG else self.activation_dtype or ttnn.bfloat16,
+        # )
         # xqkv_fused = ttnn.sharded_to_interleaved(xqkv_fused_sharded, ttnn.L1_MEMORY_CONFIG, ttnn.bfloat16)
 
         # FIXME: File bug against dram-sharded matmuls with bias
@@ -359,7 +385,7 @@ class Attention(LightweightModule):
         #     num_tiles = int(math.ceil(xqkv_fused_sharded.shape[-2] / self.tile_size))
         #     xqkv_fused_sharded = xqkv_fused_sharded + self.wqkv_bias_decode[num_tiles - 1]
 
-        ttnn.deallocate(x)
+        # ttnn.deallocate(x)
         # xqkv_fused = tt_all_reduce(
         #     xqkv_fused_sharded,
         #     self.mesh_device,
@@ -378,24 +404,25 @@ class Attention(LightweightModule):
         # ttnn.deallocate(xqkv_fused_sharded)
 
         # Reshape such that true unpadded batch is tracked in shape
-        fqkv_shape = xqkv_fused.shape
-        xqkv_fused = ttnn.reshape(
-            xqkv_fused, (1, 1, self.batch_size_per_device_group, fqkv_shape[3]), (1, 1, 32, fqkv_shape[3])
-        )
+        # fqkv_shape = xqkv_fused.shape
+        # xqkv_fused = ttnn.reshape(
+        #     xqkv_fused, (1, 1, self.batch_size_per_device_group, fqkv_shape[3]), (1, 1, 32, fqkv_shape[3])
+        # )
 
         ###
         # Reshape and rotary embeddings
         ###
-        (
-            q_heads_pre_rot_1BQD,
-            k_heads_pre_rot_1BKD,
-            v_heads_1BKD,
-        ) = ttnn.experimental.nlp_create_qkv_heads_decode(
-            xqkv_fused,
-            num_heads=self.n_local_heads,
-            num_kv_heads=self.n_local_kv_heads,
-            memory_config=self.model_config["CREATE_QKV_DECODE_SHARD"],
-        )
+        # (
+        #     q_heads_pre_rot_1BQD,
+        #     k_heads_pre_rot_1BKD,
+        #     v_heads_1BKD,
+        # ) = ttnn.experimental.nlp_create_qkv_heads_decode(
+        #     xqkv_fused,
+        #     num_heads=self.n_local_heads,
+        #     num_kv_heads=self.n_local_kv_heads,
+        #     memory_config=ttnn.L1_HEIGHT_SHARDED_MEMORY_CONFIG,
+        # )
+        # breakpoint()
         # return q_heads_pre_rot_1BQD  # No hangs if returned before SDPA
         # ttnn.deallocate(xqkv_fused)
 
@@ -438,6 +465,8 @@ class Attention(LightweightModule):
         # This is because the SDPA op in decode mode has different number of reductions depending on batch size
         # Which leads to slightly different outputs from attention (due to accumulated errors)
         # if page_table:
+        q_heads_pre_rot_1BQD = self.q_heads_pre_stored
+
         attn_output_1G4D = ttnn.transformer.paged_scaled_dot_product_attention_decode(
             q_heads_pre_rot_1BQD,
             keys,
