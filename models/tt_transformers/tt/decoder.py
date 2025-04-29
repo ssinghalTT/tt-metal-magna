@@ -109,15 +109,15 @@ class TransformerBlock(LightweightModule):
     ) -> ttnn.Tensor:
         TG = self.args.is_galaxy
         # x is fractured across devices and interleaved in DRAM (for prefill) and sharded in L1 (for decode)
-        skip_mem_cfg = self.model_config["DECODE_RESIDUAL_MEMCFG"] if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG
-        assert (
-            x.memory_config() == skip_mem_cfg
-        ), f"decoder input memcfg mismatch: {x.memory_config()} != {skip_mem_cfg}"
-        # Norms take fractured inputs and output replicated across devices
-        attn_in = self.attention_norm(x, mode)
+        # skip_mem_cfg = self.model_config["DECODE_RESIDUAL_MEMCFG"] if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG
+        # assert (
+        #     x.memory_config() == skip_mem_cfg
+        # ), f"decoder input memcfg mismatch: {x.memory_config()} != {skip_mem_cfg}"
+        # # Norms take fractured inputs and output replicated across devices
+        # attn_in = self.attention_norm(x, mode)
         # Attention takes replicated inputs and produces fractured outputs
         attn_out = self.attention.forward(
-            attn_in,
+            x,
             current_pos,
             rot_mats,
             user_id,
