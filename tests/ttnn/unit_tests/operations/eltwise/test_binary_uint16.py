@@ -322,3 +322,63 @@ def test_binary_sub_uint16_sharded(a_shape, b_shape, sharded_config, device):
     output_tensor = ttnn.to_torch(output_tensor, dtype=torch.int32)
 
     assert torch.equal(output_tensor, torch_output_tensor)
+
+
+@pytest.mark.parametrize(
+    "a_shape, b_shape",
+    [
+        (torch.Size([1, 2, 32]), torch.Size([1, 2, 32])),
+        # (torch.Size([1]), torch.Size([1, 5, 12])),
+        # (torch.Size([1, 2, 32, 64, 125]), torch.Size([1, 2, 32, 1, 1])),
+        # (torch.Size([]), torch.Size([])),
+        # (torch.Size([5]), torch.Size([1])),
+    ],
+)
+@pytest.mark.parametrize(
+    "low_a, high_a, low_b, high_b",
+    [
+        (101, 300, 0, 100),
+        # (1000, 10000, 500, 999),
+        # (30000, 40000, 10000, 15000),
+        # (50000, 55000, 1000, 2000),
+        # (32001, 65000, 0, 32000),
+    ],
+)
+def test_binary_mul_uint16_bcast(a_shape, b_shape, low_a, high_a, low_b, high_b, device):
+    # num_elements = max(int(torch.prod(torch.tensor(a_shape)).item()), 1)
+    # torch_input_tensor_a = torch.linspace(high_a, low_a, num_elements, dtype=torch.int32)
+    # torch_input_tensor_a = torch_input_tensor_a[:num_elements].reshape(a_shape).nan_to_num(0.0)
+
+    # num_elements = max(int(torch.prod(torch.tensor(b_shape)).item()), 1)
+    # torch_input_tensor_b = torch.linspace(high_b, low_b, num_elements, dtype=torch.int32)
+    # torch_input_tensor_b = torch_input_tensor_b[:num_elements].reshape(b_shape).nan_to_num(0.0)
+
+    torch_input_tensor_a = torch.tensor([[1, 2], [3, 4]], dtype=torch.int32)
+    torch_input_tensor_b = torch.tensor([[0, 1], [2, 3]], dtype=torch.int32)
+
+    golden_function = ttnn.get_golden_function(ttnn.mul)
+    torch_output_tensor = golden_function(torch_input_tensor_a, torch_input_tensor_b, device=device)
+
+    input_tensor_a = ttnn.from_torch(
+        torch_input_tensor_a,
+        dtype=ttnn.uint16,
+        device=device,
+        layout=ttnn.TILE_LAYOUT,
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,
+    )
+
+    input_tensor_b = ttnn.from_torch(
+        torch_input_tensor_b,
+        dtype=ttnn.uint16,
+        device=device,
+        layout=ttnn.TILE_LAYOUT,
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,
+    )
+    output_tensor = ttnn.mul(input_tensor_a, input_tensor_b, use_legacy=False)
+    print(output_tensor)
+    output_tensor = ttnn.typecast(output_tensor, dtype=ttnn.uint32)
+    output_tensor = ttnn.to_torch(output_tensor, dtype=torch.int32)
+    print(torch_output_tensor)
+    print(output_tensor)
+
+    assert torch.equal(output_tensor, torch_output_tensor)
