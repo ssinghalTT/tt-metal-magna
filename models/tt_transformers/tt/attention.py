@@ -362,7 +362,7 @@ class Attention(LightweightModule):
         # Use HiFi2 for DRAM-sharded matmuls as they are otherwise flop-bound. Loses 1 bit of activation precision.
         ###
 
-        x = ttnn.sharded_to_interleaved(x, ttnn.L1_MEMORY_CONFIG, ttnn.bfloat16)
+        # x = ttnn.sharded_to_interleaved(x, ttnn.L1_MEMORY_CONFIG, ttnn.bfloat16)
 
         # xqkv_fused = ttnn.linear(
         #     x,

@@ -189,7 +189,7 @@ def prepare_generator_args(
             1,  # repeat_batches
             128 * 1024,  # max_seq_len
             1,  # batch_size
-            10000,  # max_generated_tokens
+            50000,  # max_generated_tokens
             True,  # paged_attention
             {"page_block_size": 32, "page_max_num_blocks_per_dp": 1024},  # page_params
             {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
