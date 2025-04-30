@@ -205,7 +205,7 @@ run_yolov9c_perf() {
 }
 run_mobilenetv2_func(){
 
-  WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest -k "pretrained_weight_true" models/experimental/demos/demo/demo.py::test_mobilenetv2_imagenet_demo
+  WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest -k "pretrained_weight_true" models/demos/demo/demo.py::test_mobilenetv2_imagenet_demo
 
 }
 
