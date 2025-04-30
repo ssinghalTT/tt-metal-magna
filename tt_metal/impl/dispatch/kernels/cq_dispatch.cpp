@@ -69,8 +69,10 @@ constexpr uint32_t virtualize_unicast_cores = get_compile_time_arg_val(37);
 constexpr uint32_t num_virtual_unicast_cores = get_compile_time_arg_val(38);
 constexpr uint32_t num_physical_unicast_cores = get_compile_time_arg_val(39);
 
-constexpr uint32_t is_d_variant = get_compile_time_arg_val(40);
-constexpr uint32_t is_h_variant = get_compile_time_arg_val(41);
+constexpr uint32_t noc_sharing_atomic = get_compile_time_arg_val(40);
+
+constexpr uint32_t is_d_variant = get_compile_time_arg_val(41);
+constexpr uint32_t is_h_variant = get_compile_time_arg_val(42);
 
 constexpr uint8_t upstream_noc_index = UPSTREAM_NOC_INDEX;
 constexpr uint32_t upstream_noc_xy = uint32_t(NOC_XY_ENCODING(UPSTREAM_NOC_X, UPSTREAM_NOC_Y));
@@ -135,6 +137,27 @@ static uint8_t go_signal_state_wr_ptr = 0;
 static uint8_t go_signal_state_rd_ptr = 0;
 
 static uint32_t go_signal_noc_data[max_num_go_signal_noc_data_entries];
+
+static volatile tt_l1_ptr uint32_t* const noc_atomic_ptr = (volatile tt_l1_ptr uint32_t*)(noc_sharing_atomic);
+
+class LockUpstreamNocAtomicCallback {
+public:
+    static void lock() {
+        // lock_no_atomic is only supported on wormhole. TODO: use real atomics and support this on blackhole.
+#if defined(ARCH_WORMHOLE)
+        if constexpr (!distributed_dispatcher) {
+            lock_no_atomic(noc_atomic_ptr, dispatch_lock_index);
+        }
+#endif
+    }
+    static void unlock() {
+#if defined(ARCH_WORMHOLE)
+        if constexpr (!distributed_dispatcher) {
+            unlock_no_atomic(noc_atomic_ptr, dispatch_lock_index);
+        }
+#endif
+    }
+};
 
 FORCE_INLINE volatile uint32_t* get_cq_completion_read_ptr() {
     return reinterpret_cast<volatile uint32_t*>(dev_completion_q_rd_ptr);
@@ -225,7 +248,8 @@ void process_write_host_h(uint32_t& block_noc_writes_to_clear, uint32_t block_ne
                     upstream_noc_xy,
                     upstream_dispatch_cb_sem_id,
                     dispatch_cb_pages_per_block,
-                    dispatch_cb_blocks>(block_noc_writes_to_clear, rd_block_idx);
+                    dispatch_cb_blocks,
+                    LockUpstreamNocAtomicCallback>(block_noc_writes_to_clear, rd_block_idx);
             }
             // Wait for dispatcher to supply a page (this won't go beyond the buffer end)
             uint32_t n_pages = cb_acquire_pages<my_dispatch_cb_sem_id, dispatch_cb_log_page_size>(
@@ -377,7 +401,8 @@ void relay_to_next_cb(
                     upstream_noc_xy,
                     upstream_dispatch_cb_sem_id,
                     dispatch_cb_pages_per_block,
-                    dispatch_cb_blocks>(block_noc_writes_to_clear, rd_block_idx);
+                    dispatch_cb_blocks,
+                    LockUpstreamNocAtomicCallback>(block_noc_writes_to_clear, rd_block_idx);
             }
 
             // Wait for dispatcher to supply a page (this won't go beyond the buffer end)
@@ -466,7 +491,8 @@ void process_write_linear(
                     upstream_noc_xy,
                     upstream_dispatch_cb_sem_id,
                     dispatch_cb_pages_per_block,
-                    dispatch_cb_blocks>(block_noc_writes_to_clear, rd_block_idx);
+                    dispatch_cb_blocks,
+                    LockUpstreamNocAtomicCallback>(block_noc_writes_to_clear, rd_block_idx);
             }
             // Wait for dispatcher to supply a page (this won't go beyond the buffer end)
             uint32_t n_pages = cb_acquire_pages<my_dispatch_cb_sem_id, dispatch_cb_log_page_size>(
@@ -528,7 +554,8 @@ void process_write_paged(uint32_t& block_noc_writes_to_clear, uint32_t block_nex
                     upstream_noc_xy,
                     upstream_dispatch_cb_sem_id,
                     dispatch_cb_pages_per_block,
-                    dispatch_cb_blocks>(block_noc_writes_to_clear, rd_block_idx);
+                    dispatch_cb_blocks,
+                    LockUpstreamNocAtomicCallback>(block_noc_writes_to_clear, rd_block_idx);
             }
             // Wait for dispatcher to supply a page (this won't go beyond the buffer end)
             uint32_t n_pages = cb_acquire_pages<my_dispatch_cb_sem_id, dispatch_cb_log_page_size>(
@@ -659,7 +686,8 @@ void process_write_packed(
                     upstream_noc_xy,
                     upstream_dispatch_cb_sem_id,
                     dispatch_cb_pages_per_block,
-                    dispatch_cb_blocks>(block_noc_writes_to_clear, rd_block_idx);
+                    dispatch_cb_blocks,
+                    LockUpstreamNocAtomicCallback>(block_noc_writes_to_clear, rd_block_idx);
             }
 
             // Wait for dispatcher to supply a page (this won't go beyond the buffer end)
@@ -791,7 +819,8 @@ void process_write_packed_large(
                         upstream_noc_xy,
                         upstream_dispatch_cb_sem_id,
                         dispatch_cb_pages_per_block,
-                        dispatch_cb_blocks>(block_noc_writes_to_clear, rd_block_idx);
+                        dispatch_cb_blocks,
+                        LockUpstreamNocAtomicCallback>(block_noc_writes_to_clear, rd_block_idx);
                 }
                 uint32_t n_pages = cb_acquire_pages<my_dispatch_cb_sem_id, dispatch_cb_log_page_size>(
                     cb_fence, block_next_start_addr, rd_block_idx, upstream_total_acquired_page_count);
@@ -853,7 +882,8 @@ void process_write_packed_large(
                     upstream_noc_xy,
                     upstream_dispatch_cb_sem_id,
                     dispatch_cb_pages_per_block,
-                    dispatch_cb_blocks>(block_noc_writes_to_clear, rd_block_idx);
+                    dispatch_cb_blocks,
+                    LockUpstreamNocAtomicCallback>(block_noc_writes_to_clear, rd_block_idx);
             }
 
             // Wait for dispatcher to supply a page (this won't go beyond the buffer end)
@@ -936,10 +966,12 @@ static void process_wait() {
             neg_sem_val << REMOTE_DEST_BUF_WORDS_FREE_INC);
     }
     if (notify_prefetch) {
+        LockUpstreamNocAtomicCallback::lock();
         noc_semaphore_inc(
             get_noc_addr_helper(upstream_noc_xy, get_semaphore<fd_core_type>(upstream_sync_sem)),
             1,
             upstream_noc_index);
+        LockUpstreamNocAtomicCallback::unlock();
     }
 
     cmd_ptr += sizeof(CQDispatchCmd);
@@ -1261,6 +1293,9 @@ void kernel_main() {
     if constexpr (use_fabric(fabric_router_noc_xy)) {
         tt::tt_fabric::fabric_endpoint_init(client_interface, 0 /*unused*/);
     }
+    if constexpr (!distributed_dispatcher) {
+        *noc_atomic_ptr = 0;
+    }
 
     // Initialize local state of any additional nocs used instead of the default
     static_assert(my_noc_index != upstream_noc_index);
@@ -1316,7 +1351,8 @@ void kernel_main() {
                 upstream_noc_index,
                 upstream_noc_xy,
                 upstream_dispatch_cb_sem_id,
-                dispatch_cb_pages_per_block>(
+                dispatch_cb_pages_per_block,
+                LockUpstreamNocAtomicCallback>(
                 cmd_ptr,
                 cb_fence,
                 block_noc_writes_to_clear,
@@ -1338,6 +1374,7 @@ void kernel_main() {
     noc_async_write_barrier();
 
     if (is_h_variant && !is_d_variant) {
+        LockUpstreamNocAtomicCallback::lock();
         // Set upstream semaphore MSB to signal completion and path teardown
         // in case dispatch_h is connected to a depacketizing stage.
         // TODO: This should be replaced with a signal similar to what packetized
@@ -1346,8 +1383,10 @@ void kernel_main() {
             get_noc_addr_helper(upstream_noc_xy, get_semaphore<fd_core_type>(upstream_dispatch_cb_sem_id)),
             0x80000000,
             upstream_noc_index);
+        LockUpstreamNocAtomicCallback::unlock();
     }
 
+    LockUpstreamNocAtomicCallback::lock();
     // Release any held pages from the previous block
     cb_block_release_pages<
         upstream_noc_index,
@@ -1359,6 +1398,7 @@ void kernel_main() {
     uint32_t npages =
         dispatch_cb_pages_per_block - ((block_next_start_addr[rd_block_idx] - cmd_ptr) >> dispatch_cb_log_page_size);
     cb_release_pages<upstream_noc_index, upstream_noc_xy, upstream_dispatch_cb_sem_id>(npages);
+    LockUpstreamNocAtomicCallback::unlock();
 
     // Confirm expected number of pages, spinning here is a leak
     cb_wait_all_pages<my_dispatch_cb_sem_id>(upstream_total_acquired_page_count);

@@ -67,6 +67,9 @@ void DispatchSKernel::GenerateStaticConfigs() {
     static_config_.first_stream_used = my_dispatch_constants.get_dispatch_stream_index(0);
     static_config_.max_num_worker_sems = DispatchSettings::DISPATCH_MESSAGE_ENTRIES;
     static_config_.max_num_go_signal_noc_data_entries = DispatchSettings::DISPATCH_GO_SIGNAL_NOC_DATA_ENTRIES;
+
+    static_config_.noc_sharing_atomic =
+        my_dispatch_constants.get_device_command_queue_addr(CommandQueueDeviceAddrType::NOC_SHARING_ATOMIC);
 }
 
 void DispatchSKernel::GenerateDependentConfigs() {
@@ -116,9 +119,10 @@ void DispatchSKernel::CreateKernel() {
         virtualize_num_eth_cores,
         num_virtual_active_eth_cores,
         num_physical_active_eth_cores,
+        static_config_.noc_sharing_atomic.value(),
     };
 
-    TT_ASSERT(compile_args.size() == 15);
+    TT_ASSERT(compile_args.size() == 16);
     auto my_virtual_core = device_->virtual_core_from_logical_core(logical_core_, GetCoreType());
     auto upstream_virtual_core =
         device_->virtual_core_from_logical_core(dependent_config_.upstream_logical_core.value(), GetCoreType());
