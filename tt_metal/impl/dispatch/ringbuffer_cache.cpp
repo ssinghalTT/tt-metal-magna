@@ -41,9 +41,10 @@ void RingbufferCacheManager::invalidate_manager_entry(void) {
     TT_ASSERT(valid_idx < this->valid_.size(), "RingbufferCacheManager invalidation: pgm_id out of range");
     TT_ASSERT(
         this->valid_[valid_idx] != RingbufferCacheManager::invalid_cache_entry_,
-        "RingbufferCacheManager invalidation: entry not valid (mgr: idx:{}, offset:{}, length:{}, valid idx (pgm "
-        "id):{}, valid[pgm id]:{})",
+        "RingbufferCacheManager invalidation: entry not valid (mgr: oldest_idx:{}, next_idx:{}, offset:{}, length:{}, "
+        "valid idx (pgm id):{}, valid[pgm id]:{})",
         this->manager_.oldest_idx,
+        this->manager_.next_idx,
         entry.offset,
         entry.length,
         valid_idx,
@@ -54,14 +55,12 @@ void RingbufferCacheManager::invalidate_manager_entry(void) {
 }
 
 void RingbufferCacheManager::invalidate_oldest_until_wraparound(void) {
-    while (this->manager_.entry[this->manager_.oldest_idx].offset >= this->manager_.next_block_offset) {
-        if (this->manager_.oldest_idx == this->manager_.next_idx) {
-            invalidate_manager_entry();
-            break;
-        } else {
-            invalidate_manager_entry();
-        }
+    while ((this->manager_.entry[this->manager_.oldest_idx].offset >= this->manager_.next_block_offset) and
+           (this->manager_.oldest_idx != this->manager_.next_idx)) {
+        invalidate_manager_entry();
     }
+    // there is a possibility that there is another older block at oldest_idx, but if so, it will get evicted from
+    // add_manager_entry
 }
 
 void RingbufferCacheManager::invalidate_sufficient_blocks(int required_space, int offset) {
@@ -126,6 +125,11 @@ std::optional<typename RingbufferCacheManager::CacheOffset> RingbufferCacheManag
         if (free_space_to_end < required_space) [[unlikely]] {
             invalidate_sufficient_blocks(required_space);  // free up space from beginning
             cache_offset = 0;
+            // manager_.oldest_idx would have caught up to manager_.next_idx, which would cause cache eviction attempt
+            // from add_manager_entry, but there are no more blocks to evict
+            add_manager_entry_no_evict(pgm_id, required_space);
+            query_result.offset = cache_offset;
+            return query_result;
         } else {
             cache_offset = next_block_offset;  // cache has space
         }
@@ -141,11 +145,8 @@ std::optional<typename RingbufferCacheManager::CacheOffset> RingbufferCacheManag
         }
     }
     // made room, now allocate the new entry
-    if (cache_offset == 0) {
-        add_manager_entry_no_evict(pgm_id, required_space);
-    } else {
-        add_manager_entry(pgm_id, cache_offset, required_space);
-    }
+    add_manager_entry(pgm_id, cache_offset, required_space);
+
     query_result.offset = cache_offset;
     return query_result;
 }
