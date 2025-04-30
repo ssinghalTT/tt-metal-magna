@@ -74,10 +74,17 @@ jobs:
     needs: build-artifact-profiler
     uses: ./.github/workflows/run-profiler-regression.yaml
     secrets: inherit
+    strategy:
+      fail-fast: false
+      matrix:
+        test-group: [
+          { runner-label: P100 },
+          { runner-label: P150 },
+        ]
     with:
       arch: "blackhole"
       timeout: 20
-      runner-label: ${{ inputs.runner-label || 'BH' }}
+      runner-label: ${{ matrix.test-group.runner-label || 'BH' }}
       docker-image: ${{ needs.build-artifact-profiler.outputs.dev-docker-image }}
       build-artifact-name: ${{ needs.build-artifact-profiler.outputs.build-artifact-name }}
       wheel-artifact-name: ${{ needs.build-artifact-profiler.outputs.wheel-artifact-name }}
@@ -86,18 +93,32 @@ jobs:
     needs: build-artifact
     secrets: inherit
     uses: ./.github/workflows/umd-unit-tests.yaml
+    strategy:
+      fail-fast: false
+      matrix:
+        test-group: [
+          { runner-label: P100 },
+          { runner-label: P150 },
+        ]
     with:
       arch: blackhole
-      runner-label: ${{ inputs.runner-label || 'BH' }}
+      runner-label: ${{ matrix.test-group.runner-label || 'BH' }}
       docker-image: ${{ needs.build-artifact.outputs.dev-docker-image }}
       build-artifact-name: ${{ needs.build-artifact.outputs.build-artifact-name }}
   sd-unit-tests:
     needs: build-artifact
     uses: ./.github/workflows/build-and-unit-tests.yaml
     secrets: inherit
+    strategy:
+      fail-fast: false
+      matrix:
+        test-group: [
+          { runner-label: P100 },
+          { runner-label: P150 },
+        ]
     with:
       arch: blackhole
-      runner-label: ${{ inputs.runner-label || 'BH' }}
+      runner-label: ${{ matrix.test-group.runner-label || 'BH' }}
       timeout: 15
       docker-image: ${{ needs.build-artifact.outputs.dev-docker-image }}
       build-artifact-name: ${{ needs.build-artifact.outputs.build-artifact-name }}
@@ -107,10 +128,17 @@ jobs:
     needs: build-artifact
     uses: ./.github/workflows/fast-dispatch-build-and-unit-tests.yaml
     secrets: inherit
+    strategy:
+      fail-fast: false
+      matrix:
+        test-group: [
+          { runner-label: P100 },
+          { runner-label: P150 },
+        ]
     with:
       timeout: 40
       arch: blackhole
-      runner-label: ${{ inputs.runner-label || 'BH' }}
+      runner-label: ${{ matrix.test-group.runner-label || 'BH' }}
       docker-image: ${{ needs.build-artifact.outputs.dev-docker-image }}
       wheel-artifact-name: ${{ needs.build-artifact.outputs.wheel-artifact-name }}
       enable-watcher: ${{ inputs.enable-watcher || false }}
@@ -119,9 +147,16 @@ jobs:
     needs: build-artifact
     secrets: inherit
     uses: ./.github/workflows/cpp-post-commit.yaml
+    strategy:
+      fail-fast: false
+      matrix:
+        test-group: [
+          { runner-label: P100 },
+          { runner-label: P150 },
+        ]
     with:
       arch: blackhole
-      runner-label: ${{ inputs.runner-label || 'BH' }}
+      runner-label: ${{ matrix.test-group.runner-label || 'BH' }}
       timeout: 20
       docker-image: ${{ needs.build-artifact.outputs.dev-docker-image }}
       build-artifact-name: ${{ needs.build-artifact.outputs.build-artifact-name }}
@@ -131,9 +166,16 @@ jobs:
     needs: build-artifact
     secrets: inherit
     uses: ./.github/workflows/models-post-commit.yaml
+    strategy:
+      fail-fast: false
+      matrix:
+        test-group: [
+          { runner-label: P100 },
+          { runner-label: P150 },
+        ]
     with:
       arch: blackhole
-      runner-label: ${{ inputs.runner-label || 'BH' }}
+      runner-label: ${{ matrix.test-group.runner-label || 'BH' }}
       timeout: 20
       docker-image: ${{ needs.build-artifact.outputs.dev-docker-image }}
       wheel-artifact-name: ${{ needs.build-artifact.outputs.wheel-artifact-name }}
