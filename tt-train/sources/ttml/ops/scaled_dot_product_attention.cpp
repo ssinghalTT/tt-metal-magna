@@ -142,7 +142,8 @@ autograd::TensorPtr scaled_dot_product_attention(
     const autograd::TensorPtr& query,
     const autograd::TensorPtr& key,
     const autograd::TensorPtr& value,
-    const std::optional<autograd::TensorPtr>& mask bool is_hf_mode = false) {
+    const std::optional<autograd::TensorPtr>& mask,
+    bool is_hf_mode = false) {
     validate_qkv_shapes(query, key, value);
 
     auto [batch_num, heads, seq_len, embedding_dim] = query->get_value().get_logical_shape().to_array_4D();
@@ -172,7 +173,9 @@ autograd::TensorPtr scaled_dot_product_attention(
     if (is_hf_mode) {
         // huggingface inference pipeline performs a transpose here on the 2nd
         // and 3rd dims to match with the meta-style. since we're using HF style
-        // weights we need to match it.
+        // weights we need to match it unless we're using the ttnn head concat
+        // op. This is only used currently for testing against HF attention
+        // implementations.
 
         // (B, H, S, E) -> (B, S, H, E)
         attention_qkv = ttnn::transpose(attention_qkv, 2, 1);

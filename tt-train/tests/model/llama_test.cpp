@@ -368,7 +368,7 @@ TEST_F(LlamaTest, GQA_SDPA_Test) {
     xt::xarray<float> test_mask = xt::load_npy<float>("/home/j/intermediate_results/random_sdpa_mask.npy");
     test_mask.reshape({B, 1, S, S});
     xt::xarray<float> expected_sdpa_res = xt::load_npy<float>("/home/j/intermediate_results/random_sdpa_res.npy");
-    expected_sdpa_res.reshape({B, H, S, D});
+    expected_sdpa_res.reshape({B, S, H, D});
 
     auto llama_model = init_llama(32);
     std::shared_ptr<ttml::modules::LlamaBlock> first_block_ptr =
@@ -384,9 +384,9 @@ TEST_F(LlamaTest, GQA_SDPA_Test) {
 
     // note: I'm not applying rope here for this test for simplicity, but I'll
     // be mirroring this choice in the Python test gen code so it is fine.
-    auto attention = ttml::ops::scaled_dot_product_attention(q_ag, k_ag, v_ag, mask_ag);
+    auto attention = ttml::ops::scaled_dot_product_attention(q_ag, k_ag, v_ag, mask_ag, /*is_hf_mode=*/true);
     xt::xarray<float> sdpa_res = core::to_xtensor(attention->get_value());
-    sdpa_res = sdpa_res.reshape({B, H, S, D});
+    sdpa_res = sdpa_res.reshape({B, S, H, D});
     float atol_sdpa = suggest_atol_rtol("sdpa", expected_sdpa_res, sdpa_res, 0).first;
     EXPECT_TRUE(atol_sdpa < .1F);
 }
