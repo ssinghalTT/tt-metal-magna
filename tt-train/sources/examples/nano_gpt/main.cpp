@@ -440,7 +440,7 @@ int main(int argc, char **argv) {
     bool enable_wandb = true;
     bool ddp = false;
     bool enable_tp = false;
-    bool save_and_exit = false;
+    std::string save_and_exit_path = "";
     app.add_option("-c,--config", config_name, "Yaml Config name")->default_val(config_name);
     app.add_option("-e,--eval", is_eval, "Is evaluation")->default_val(is_eval);
     app.add_option("-t,--add_time_to_name", add_time_to_name, "Add time to run name")->default_val(add_time_to_name);
@@ -448,7 +448,8 @@ int main(int argc, char **argv) {
     app.add_option("-d,--ddp", ddp, "Enable DDP")->default_val(ddp);
     app.add_option("-p,--tp", enable_tp, "Enable TP")->default_val(enable_tp);
     app.add_option("-n,--name", run_name, "Run name")->default_val(run_name);
-    app.add_option("-s,--save_and_exit", save_and_exit, "Save and exit")->default_val(save_and_exit);
+    app.add_option("-s,--save_and_exit", save_and_exit_path, "Save and exit (path to dumped msgpack)")
+        ->default_val(save_and_exit_path);
     CLI11_PARSE(app, argc, argv);
 
     if (ddp && enable_tp) {
@@ -691,17 +692,15 @@ int main(int argc, char **argv) {
             }
         },
         config.transformer_config);
-    if (save_and_exit) {
-        if (config.model_path.empty()) {
-            throw std::runtime_error("Model path is empty");
-        }
-        if (std::filesystem::exists(config.model_path)) {
-            throw std::runtime_error("Model path already exists: " + config.model_path);
+    if (!save_and_exit_path.empty()) {
+        if (std::filesystem::exists(save_and_exit_path)) {
+            throw std::runtime_error("Model path already exists: " + save_and_exit_path);
         }
         fmt::println("Saving model and exiting");
         ttml::serialization::MsgPackFile serializer;
         ttml::serialization::write_module(serializer, "llama", model.get());
-        serializer.serialize(config.model_path);
+        serializer.serialize(save_and_exit_path);
+        fmt::println("Model saved to {}", save_and_exit_path);
         std::exit(0);
     }
 

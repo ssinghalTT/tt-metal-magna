@@ -36,15 +36,8 @@ ttml::autograd::TensorPtr GroupedQueryAttention::operator()(
     auto q = (*m_q_linear)(x);
     auto kv = (*m_kv_linear)(x);
 
-    fmt::println("q shape {}", q->get_value().logical_shape());
-    fmt::println("kv shape {}", kv->get_value().logical_shape());
-
     auto [query_with_heads, key_with_heads, value_with_heads] =
         ops::grouped_heads_creation(q, kv, m_num_heads, m_num_groups);
-
-    fmt::println("query_with_heads shape {}", query_with_heads->get_value().logical_shape());
-    fmt::println("key_with_heads shape {}", key_with_heads->get_value().logical_shape());
-    fmt::println("value_with_heads shape {}", value_with_heads->get_value().logical_shape());
 
     if (m_embedding) {
         query_with_heads = (*m_embedding)(query_with_heads);

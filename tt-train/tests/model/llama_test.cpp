@@ -13,8 +13,10 @@
 #include "core/compute_kernel_config.hpp"
 #include "core/tt_tensor_utils.hpp"
 #include "core/xtensor_utils.hpp"
+#include "gtest/gtest.h"
 #include "modules/embedding_module.hpp"
 #include "ops/multi_head_utils.hpp"
+#include "ops/scaled_dot_product_attention.hpp"
 #include "serialization/serialization.hpp"
 
 class LlamaTest : public ::testing::Test {
@@ -315,4 +317,76 @@ TEST_F(LlamaTest, AttnNormTest) {
     float atol_attention_norm =
         suggest_atol_rtol("attention_norm", expected_attention_norm_res, attention_norm_res_xt, 0).first;
     EXPECT_TRUE(atol_attention_norm < .25F);
+}
+
+TEST_F(LlamaTest, AttnTest) {
+    using namespace ttml;
+    xt::xarray<float> attn_input = xt::load_npy<float>("/home/j/intermediate_results/expected_first_attn_input.npy");
+    xt::xarray<float> attn_mask = xt::load_npy<float>("/home/j/intermediate_results/expected_first_attn_mask.npy");
+    xt::xarray<float> expected_attention_res =
+        xt::load_npy<float>("/home/j/intermediate_results/expected_first_attn_output.npy");
+
+    auto B = attn_input.shape()[0];
+    auto S = attn_input.shape()[1];
+    auto E = attn_input.shape()[2];
+    attn_input = attn_input.reshape({B, 1, S, E});
+    attn_mask = attn_mask.reshape({B, 1, S, S});
+    expected_attention_res = expected_attention_res.reshape({B, 1, S, E});
+
+    auto llama_model = init_llama(32);
+    std::shared_ptr<ttml::modules::LlamaBlock> first_block_ptr =
+        std::dynamic_pointer_cast<ttml::modules::LlamaBlock>(llama_model.blocks[0]);
+    auto attention = first_block_ptr->m_attention;
+    auto attention_input_tt = core::from_xtensor(attn_input, &autograd::ctx().get_device(), ttnn::TILE_LAYOUT);
+    auto attention_input_ag = autograd::create_tensor(attention_input_tt);
+
+    auto attention_mask_tt = core::from_xtensor(attn_mask, &autograd::ctx().get_device(), ttnn::TILE_LAYOUT);
+    auto attention_mask_ag = autograd::create_tensor(attention_mask_tt);
+    auto attention_res = (*attention)(attention_input_ag, attention_mask_ag);
+    xt::xarray<float> attention_res_xt = core::to_xtensor(attention_res->get_value());
+    attention_res_xt = attention_res_xt.reshape({B, S, E});
+    float atol_attention = suggest_atol_rtol("attention", expected_attention_res, attention_res_xt, 0).first;
+    // attention results are very small, so we need to be stricter with the atol.
+    EXPECT_TRUE(atol_attention < .1F);
+}
+
+TEST_F(LlamaTest, GQA_SDPA_Test) {
+    using namespace ttml;
+    auto B = 1;
+    auto S = 32;
+    auto H = 32;
+    auto G = 4;
+    auto E = 2048;
+    auto D = E / H;
+
+    xt::xarray<float> test_q = xt::load_npy<float>("/home/j/intermediate_results/random_sdpa_q.npy");
+    test_q.reshape({B, H, S, D});
+    xt::xarray<float> test_k = xt::load_npy<float>("/home/j/intermediate_results/random_sdpa_k.npy");
+    test_k.reshape({B, G, S, D});
+    xt::xarray<float> test_v = xt::load_npy<float>("/home/j/intermediate_results/random_sdpa_v.npy");
+    test_v.reshape({B, G, S, D});
+    xt::xarray<float> test_mask = xt::load_npy<float>("/home/j/intermediate_results/random_sdpa_mask.npy");
+    test_mask.reshape({B, 1, S, S});
+    xt::xarray<float> expected_sdpa_res = xt::load_npy<float>("/home/j/intermediate_results/random_sdpa_res.npy");
+    expected_sdpa_res.reshape({B, H, S, D});
+
+    auto llama_model = init_llama(32);
+    std::shared_ptr<ttml::modules::LlamaBlock> first_block_ptr =
+        std::dynamic_pointer_cast<ttml::modules::LlamaBlock>(llama_model.blocks[0]);
+    auto q_tt = core::from_xtensor(test_q, &autograd::ctx().get_device());
+    auto k_tt = core::from_xtensor(test_k, &autograd::ctx().get_device());
+    auto v_tt = core::from_xtensor(test_v, &autograd::ctx().get_device());
+    auto q_ag = autograd::create_tensor(q_tt);
+    auto k_ag = autograd::create_tensor(k_tt);
+    auto v_ag = autograd::create_tensor(v_tt);
+    auto mask_tt = core::from_xtensor(test_mask, &autograd::ctx().get_device());
+    auto mask_ag = autograd::create_tensor(mask_tt);
+
+    // note: I'm not applying rope here for this test for simplicity, but I'll
+    // be mirroring this choice in the Python test gen code so it is fine.
+    auto attention = ttml::ops::scaled_dot_product_attention(q_ag, k_ag, v_ag, mask_ag);
+    xt::xarray<float> sdpa_res = core::to_xtensor(attention->get_value());
+    sdpa_res = sdpa_res.reshape({B, H, S, D});
+    float atol_sdpa = suggest_atol_rtol("sdpa", expected_sdpa_res, sdpa_res, 0).first;
+    EXPECT_TRUE(atol_sdpa < .1F);
 }

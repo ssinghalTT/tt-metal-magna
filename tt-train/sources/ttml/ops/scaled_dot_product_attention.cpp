@@ -9,6 +9,7 @@
 #include "autograd/auto_context.hpp"
 #include "autograd/graph_utils.hpp"
 #include "core/compute_kernel_config.hpp"
+#include "core/ttnn_all_includes.hpp"
 #include "ttnn_fixed/matmuls.hpp"
 #include "ttnn_fixed/trivial_ttnn_ops.hpp"
 
@@ -141,7 +142,7 @@ autograd::TensorPtr scaled_dot_product_attention(
     const autograd::TensorPtr& query,
     const autograd::TensorPtr& key,
     const autograd::TensorPtr& value,
-    const std::optional<autograd::TensorPtr>& mask) {
+    const std::optional<autograd::TensorPtr>& mask bool is_hf_mode = false) {
     validate_qkv_shapes(query, key, value);
 
     auto [batch_num, heads, seq_len, embedding_dim] = query->get_value().get_logical_shape().to_array_4D();
@@ -168,6 +169,14 @@ autograd::TensorPtr scaled_dot_product_attention(
     // softmax(σQ@K+mask) @ V
     ttnn::Tensor attention_qkv =
         group_shared_matmul(attention_weights, value->get_value(), /*transpose_a=*/false, /*transpose_b=*/false);
+    if (is_hf_mode) {
+        // huggingface inference pipeline performs a transpose here on the 2nd
+        // and 3rd dims to match with the meta-style. since we're using HF style
+        // weights we need to match it.
+
+        // (B, H, S, E) -> (B, S, H, E)
+        attention_qkv = ttnn::transpose(attention_qkv, 2, 1);
+    }
     auto out = ttml::autograd::create_tensor(attention_qkv);
 
     ttml::autograd::GradFunction grad = [scale,
