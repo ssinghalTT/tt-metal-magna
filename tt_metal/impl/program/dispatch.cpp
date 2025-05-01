@@ -69,6 +69,15 @@ enum NOC : uint8_t;
 }  // namespace tt
 
 namespace tt::tt_metal {
+using detail::ProgramImpl;
+
+namespace detail {
+std::shared_ptr<Kernel> GetKernel(const ProgramImpl& program, KernelHandle kernel_id) {
+    return program.get_kernel(kernel_id);
+}
+
+}  // namespace detail
+
 namespace program_dispatch {
 
 namespace {
@@ -390,7 +399,7 @@ void finalize_program_offsets(T& workload, IDevice* device) {
     uint32_t kernel_text_offset = 0;
     uint32_t kernel_text_size = 0;
     // TODO (AS): Explicitly encode what's needed by the lambdas below.
-    auto set_program_offsets_and_sizes = [&](Program& program, uint32_t index) {
+    auto set_program_offsets_and_sizes = [&](ProgramImpl& program, uint32_t index) {
         auto& program_config = program.get_program_config(index);
         program_config.rta_offset = rta_offset;
         program_config.crta_offsets = crta_offsets;
@@ -406,7 +415,7 @@ void finalize_program_offsets(T& workload, IDevice* device) {
     };
 
     const auto& hal = MetalContext::instance().hal();
-    auto set_program_attrs_across_core_types = [&](Program& program) {
+    auto set_program_attrs_across_core_types = [&](ProgramImpl& program) {
         program.get_program_config_sizes()[hal.get_programmable_core_type_count()] =
             workload.runs_on_noc_multicast_only_cores();
         program.get_program_config_sizes()[hal.get_programmable_core_type_count() + 1] =
@@ -459,20 +468,20 @@ void finalize_program_offsets(T& workload, IDevice* device) {
             max_size,
             magic_enum::enum_name(programmable_core_type));
 
-        if constexpr (std::is_same_v<T, Program>) {
+        if constexpr (std::is_same_v<T, ProgramImpl>) {
             set_program_offsets_and_sizes(workload, index);
         } else {
             for (auto& [_, program] : workload.get_programs()) {
-                set_program_offsets_and_sizes(program, index);
+                set_program_offsets_and_sizes(program.impl(), index);
             }
         }
     }
     // The sem offsets cross programmable_core_types so must be set after the loop above
-    if constexpr (std::is_same_v<T, Program>) {
+    if constexpr (std::is_same_v<T, ProgramImpl>) {
         set_program_attrs_across_core_types(workload);
     } else {
         for (auto& [_, program] : workload.get_programs()) {
-            set_program_attrs_across_core_types(program);
+            set_program_attrs_across_core_types(program.impl());
         }
     }
     workload.set_finalized();
@@ -661,7 +670,7 @@ using BatchedTransfers = std::unordered_map<
 
 BatchedTransfers assemble_runtime_args_commands(
     ProgramCommandSequence& program_command_sequence,
-    Program& program,
+    ProgramImpl& program,
     IDevice* device,
     const CommandConstants& constants) {
     BatchedTransfers transfers = {};
@@ -1012,7 +1021,7 @@ class SemphoreCommandGenerator {
 public:
     // Generate batched_transfers (for multicast) and unicast_semaphore_cmds for the semaphores in the program.
     void size_commands(
-        Program& program,
+        ProgramImpl& program,
         IDevice* device,
         DeviceCommandCalculator& calculator,
         const CommandConstants& constants,
@@ -1080,7 +1089,7 @@ public:
 
     // Write unicast semaphore commands to the device command sequence.
     void assemble_unicast_commands(
-        HostMemDeviceCommand& device_command_sequence, Program& program, const CommandConstants& constants) const {
+        HostMemDeviceCommand& device_command_sequence, ProgramImpl& program, const CommandConstants& constants) const {
         // Unicast Semaphore Cmd
         uint32_t index =
             MetalContext::instance().hal().get_programmable_core_type_index(HalProgrammableCoreType::ACTIVE_ETH);
@@ -1127,7 +1136,7 @@ public:
     // Construct the circular buffer commands for the program into batched_transfers. This class must stay alive until
     // batched_transfers is used, because batched_transfers contains pointers to the circular buffer data in this class.
     void construct_commands(
-        IDevice* device, const CommandConstants& constants, Program& program, BatchedTransfers& batched_transfers) {
+        IDevice* device, const CommandConstants& constants, ProgramImpl& program, BatchedTransfers& batched_transfers) {
         const auto& hal = MetalContext::instance().hal();
         uint32_t index = hal.get_programmable_core_type_index(HalProgrammableCoreType::TENSIX);
 
@@ -1198,7 +1207,7 @@ public:
     // program.
     void size_commands(
         IDevice* device,
-        Program& program,
+        ProgramImpl& program,
         const ProgramTransferInfo& program_transfer_info,
         const std::shared_ptr<Buffer>& kernels_buffer,
         const CommandConstants& constants,
@@ -1498,7 +1507,7 @@ public:
     // This includes the launch message for the TENSIX and ETH cores.
     void construct_commands(
         IDevice* device,
-        Program& program,
+        ProgramImpl& program,
         DeviceCommandCalculator& calculator,
         const CommandConstants& constants,
         SubDeviceId sub_device_id) {
@@ -1749,7 +1758,10 @@ public:
 };
 
 void assemble_device_commands(
-    ProgramCommandSequence& program_command_sequence, Program& program, IDevice* device, SubDeviceId sub_device_id) {
+    ProgramCommandSequence& program_command_sequence,
+    ProgramImpl& program,
+    IDevice* device,
+    SubDeviceId sub_device_id) {
     CommandConstants constants;
     auto dispatch_core_config = MetalContext::instance().get_dispatch_core_manager().get_dispatch_core_config();
     constants.dispatch_core_type = dispatch_core_config.get_core_type();
@@ -1927,7 +1939,7 @@ void reserve_space_in_kernel_config_buffer(
 }
 
 void update_program_dispatch_commands(
-    Program& program,
+    ProgramImpl& program,
     ProgramCommandSequence& cached_program_command_sequence,
     uint32_t multicast_cores_launch_message_wptr,
     uint32_t unicast_cores_launch_message_wptr,
@@ -2309,9 +2321,9 @@ void set_go_signal_noc_data_on_dispatch(
     manager.fetch_queue_write(cmd_sequence_sizeB, cq_id);
 }
 
-template void finalize_program_offsets<Program>(Program&, IDevice*);
+template void finalize_program_offsets<ProgramImpl>(ProgramImpl&, IDevice*);
 template void finalize_program_offsets<distributed::MeshWorkload>(distributed::MeshWorkload&, IDevice*);
-template uint32_t program_base_addr_on_core<Program, IDevice*>(Program&, IDevice*, HalProgrammableCoreType);
+template uint32_t program_base_addr_on_core<ProgramImpl, IDevice*>(ProgramImpl&, IDevice*, HalProgrammableCoreType);
 template uint32_t program_base_addr_on_core<distributed::MeshWorkload, distributed::MeshDevice*>(
     distributed::MeshWorkload&, distributed::MeshDevice*, HalProgrammableCoreType);
 }  // namespace program_dispatch
