@@ -42,7 +42,7 @@ on:
         default: true
         type: boolean
       run-p100-p150-separately:
-        description: 'Run P100 and P150 separately'
+        description: 'Run P100 and P150 separately (ignores inputs.runner-label)'
         default: false
         type: boolean
   schedule:
