@@ -72,8 +72,10 @@ jobs:
         run: |
           if [ "${{ github.event.schedule }}" = "0 7 * * *" ] || [ "${{ inputs.run-p100-p150-separately }}" = "true" ]; then
             echo "matrix={\"runner-label\":[\"P100\",\"P150\"]}" >> $GITHUB_OUTPUT
+            echo "::notice::Matrix configured for P100 and P150 runners"
           else
             echo "matrix={\"runner-label\":[\"BH\"]}" >> $GITHUB_OUTPUT
+            echo "::notice::Matrix configured for BH runner"
           fi
   build-artifact:
     uses: ./.github/workflows/build-artifact.yaml
