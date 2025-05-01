@@ -74,8 +74,9 @@ jobs:
             echo "matrix={\"runner-label\":[\"P100\",\"P150\"]}" >> $GITHUB_OUTPUT
             echo "::notice::Matrix configured for P100 and P150 runners"
           else
-            echo "matrix={\"runner-label\":[\"${{ inputs.runner-label }}\"]}" >> $GITHUB_OUTPUT
-            echo "::notice::Matrix configured for ${{ inputs.runner-label }} runner"
+            RUNNER_LABEL="${{ inputs.runner-label || 'BH' }}"
+            echo "matrix={\"runner-label\":[\"$RUNNER_LABEL\"]}" >> $GITHUB_OUTPUT
+            echo "::notice::Matrix configured for $RUNNER_LABEL runner"
           fi
   build-artifact:
     uses: ./.github/workflows/build-artifact.yaml
