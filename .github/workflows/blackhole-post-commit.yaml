@@ -100,7 +100,7 @@ jobs:
   #   secrets: inherit
   #   strategy:
   #     fail-fast: false
-  #     matrix: ${{ needs.prepare-matrix.outputs.matrix }}
+  #     matrix: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
   #   with:
   #     arch: "blackhole"
   #     timeout: 20
@@ -115,7 +115,7 @@ jobs:
     uses: ./.github/workflows/umd-unit-tests.yaml
     strategy:
       fail-fast: false
-      matrix: ${{ needs.prepare-matrix.outputs.matrix }}
+      matrix: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
     with:
       arch: blackhole
       runner-label: ${{ matrix.runner-label || 'BH' }}
@@ -127,7 +127,7 @@ jobs:
   #   secrets: inherit
   #   strategy:
   #     fail-fast: false
-  #     matrix: ${{ needs.prepare-matrix.outputs.matrix }}
+  #     matrix: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
   #   with:
   #     arch: blackhole
   #     runner-label: ${{ matrix.runner-label || 'BH' }}
@@ -142,7 +142,7 @@ jobs:
   #   secrets: inherit
   #   strategy:
   #     fail-fast: false
-  #     matrix: ${{ needs.prepare-matrix.outputs.matrix }}
+  #     matrix: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
   #   with:
   #     timeout: 40
   #     arch: blackhole
@@ -157,7 +157,7 @@ jobs:
   #   uses: ./.github/workflows/cpp-post-commit.yaml
   #   strategy:
   #     fail-fast: false
-  #     matrix: ${{ needs.prepare-matrix.outputs.matrix }}
+  #     matrix: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
   #   with:
   #     arch: blackhole
   #     runner-label: ${{ matrix.runner-label || 'BH' }}
@@ -172,7 +172,7 @@ jobs:
   #   uses: ./.github/workflows/models-post-commit.yaml
   #   strategy:
   #     fail-fast: false
-  #     matrix: ${{ needs.prepare-matrix.outputs.matrix }}
+  #     matrix: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
   #   with:
   #     arch: blackhole
   #     runner-label: ${{ matrix.runner-label || 'BH' }}
