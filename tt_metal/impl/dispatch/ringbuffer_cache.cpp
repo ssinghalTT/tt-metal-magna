@@ -31,8 +31,8 @@ void RingbufferCacheManager::add_manager_entry(uint64_t pgm_id, uint32_t offset,
     add_manager_entry_common(pgm_id, offset, length);
 }
 
-void RingbufferCacheManager::add_manager_entry_no_evict(uint64_t pgm_id, uint32_t length) {
-    add_manager_entry_common(pgm_id, 0, length);
+void RingbufferCacheManager::add_manager_entry_no_evict(uint64_t pgm_id, uint32_t offset, uint32_t length) {
+    add_manager_entry_common(pgm_id, offset, length);
 }
 
 void RingbufferCacheManager::invalidate_manager_entry(void) {
@@ -54,21 +54,37 @@ void RingbufferCacheManager::invalidate_manager_entry(void) {
     this->manager_.update_oldest_idx();
 }
 
-void RingbufferCacheManager::invalidate_oldest_until_wraparound(void) {
+bool RingbufferCacheManager::invalidate_oldest_until_wraparound(void) {
+    if (this->manager_.oldest_idx == this->manager_.next_idx) {
+        this->invalidate_manager_entry();
+    }
     while ((this->manager_.entry[this->manager_.oldest_idx].offset >= this->manager_.next_block_offset) and
            (this->manager_.oldest_idx != this->manager_.next_idx)) {
         invalidate_manager_entry();
     }
-    // there is a possibility that there is another older block at oldest_idx, but if so, it will get evicted from
-    // add_manager_entry
+    if (this->manager_.oldest_idx == this->manager_.next_idx) {
+        // this means cache is empty and caller should call add_manager_entry_no_evict
+        return true;
+    } else {
+        return false;
+    }
 }
 
-void RingbufferCacheManager::invalidate_sufficient_blocks(int required_space, int offset) {
+bool RingbufferCacheManager::invalidate_sufficient_blocks(int required_space, int offset) {
+    if (this->manager_.oldest_idx == this->manager_.next_idx) {
+        this->invalidate_manager_entry();
+    }
     int oldest_block_offset = this->manager_.entry[this->manager_.oldest_idx].offset;
     int available_space = oldest_block_offset - offset;
-    while (available_space < required_space) {
+    while (available_space < required_space and this->manager_.oldest_idx != this->manager_.next_idx) {
         available_space += this->manager_.entry[this->manager_.oldest_idx].length;
         invalidate_manager_entry();  // invalidate oldest entry
+    }
+    if (this->manager_.oldest_idx == this->manager_.next_idx) {
+        // this means cache is empty and caller should call add_manager_entry_no_evict
+        return true;
+    } else {
+        return false;
     }
 }
 
@@ -84,7 +100,7 @@ std::optional<typename RingbufferCacheManager::CacheOffset> RingbufferCacheManag
         // first entry, so we can just add it
         this->valid_.resize(pgm_id + 1, RingbufferCacheManager::invalid_cache_entry_);
         manager_.entry.resize(std::min(this->cache_manager_initial_entry_size_, this->cache_size_blocks_));
-        add_manager_entry_no_evict(pgm_id, required_space);
+        add_manager_entry_no_evict(pgm_id, 0, required_space);
         query_result.is_cached = false;
         query_result.offset = 0;
         return query_result;
@@ -121,31 +137,33 @@ std::optional<typename RingbufferCacheManager::CacheOffset> RingbufferCacheManag
     int next_block_offset = this->manager_.next_block_offset;
     int oldest_block_offset = this->manager_.entry[this->manager_.oldest_idx].offset;
     int free_space_to_end = this->cache_size_blocks_ - next_block_offset;
+    bool cache_emptied = false;
     if (next_block_offset > oldest_block_offset) {
         if (free_space_to_end < required_space) [[unlikely]] {
-            invalidate_sufficient_blocks(required_space);  // free up space from beginning
+            cache_emptied = invalidate_sufficient_blocks(required_space);  // free up space from beginning
             cache_offset = 0;
-            // manager_.oldest_idx would have caught up to manager_.next_idx, which would cause cache eviction attempt
-            // from add_manager_entry, but there are no more blocks to evict
-            add_manager_entry_no_evict(pgm_id, required_space);
-            query_result.offset = cache_offset;
-            return query_result;
         } else {
             cache_offset = next_block_offset;  // cache has space
         }
     } else {
         if (free_space_to_end >= required_space) {
-            invalidate_sufficient_blocks(required_space, next_block_offset);
+            cache_emptied = invalidate_sufficient_blocks(required_space, next_block_offset);
             cache_offset = next_block_offset;
         } else [[unlikely]] {
             // cache is not full, but must wraparound for sufficient space
-            invalidate_oldest_until_wraparound();
-            invalidate_sufficient_blocks(required_space);  // free up space from beginning
+            cache_emptied = invalidate_oldest_until_wraparound();
+            if (not cache_emptied) {
+                cache_emptied = invalidate_sufficient_blocks(required_space);  // free up space from beginning
+            }
             cache_offset = 0;
         }
     }
     // made room, now allocate the new entry
-    add_manager_entry(pgm_id, cache_offset, required_space);
+    if (cache_emptied) {
+        add_manager_entry_no_evict(pgm_id, cache_offset, required_space);
+    } else {
+        add_manager_entry(pgm_id, cache_offset, required_space);
+    }
 
     query_result.offset = cache_offset;
     return query_result;

@@ -23,6 +23,7 @@ namespace tt::tt_metal {
  */
 class RingbufferCacheManager {
     friend class RingbufferCacheTestFixture;  // for unit testing purposes
+    friend class RingbufferCacheRandomizedTestsFixture;  // for unit testing purposes
 
 public:
     RingbufferCacheManager(int cache_block_sizeB, int cache_size_blocks, int manager_entry_initial_size) :
@@ -48,15 +49,12 @@ public:
 
     /*! @brief Reset the cache state */
     void reset() {
+        this->manager_.clear();
         std::vector<RingbufferCacheManagerEntry> temp_entry;
         this->manager_.entry.swap(temp_entry);
 
         std::vector<int32_t> temp_valid;
         this->valid_.swap(temp_valid);
-
-        this->manager_.oldest_idx = 0;
-        this->manager_.next_idx = 0;
-        this->manager_.next_block_offset = 0;
     }
 
     struct CacheOffset {
@@ -109,6 +107,11 @@ private:
             }
             this->next_idx = local_next_idx & (entry.size() - 1);
         }
+        void clear() {
+            this->oldest_idx = 0;
+            this->next_idx = 0;
+            this->next_block_offset = 0;
+        }
     } manager_;
 
     /*! @brief indexed by program id. Contains index to entry in cache manager if cache hit */
@@ -117,10 +120,10 @@ private:
 
     void add_manager_entry_common(uint64_t pgm_id, uint32_t offset, uint32_t length);
     void add_manager_entry(uint64_t pgm_id, uint32_t offset, uint32_t length);
-    void add_manager_entry_no_evict(uint64_t pgm_id, uint32_t length);
+    void add_manager_entry_no_evict(uint64_t pgm_id, uint32_t offset, uint32_t length);
     void invalidate_manager_entry(void);
-    void invalidate_oldest_until_wraparound(void);
-    void invalidate_sufficient_blocks(int required_space, int offset = 0);
+    bool invalidate_oldest_until_wraparound(void);
+    bool invalidate_sufficient_blocks(int required_space, int offset = 0);
 };
 
 }  // namespace tt::tt_metal
