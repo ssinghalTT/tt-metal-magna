@@ -2,19 +2,20 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+#include <dev_msgs.h>
 #include <cstddef>
 #include <cstdint>
 #include <numeric>
+#include <vector>
 
+#include "blackhole/bh_hal.hpp"
 #include "core_config.h"  // ProgrammableCoreType
 #include "dev_mem_map.h"
-#include <dev_msgs.h>
-#include "noc/noc_parameters.h"
+#include "hal_types.hpp"
+#include "llrt/hal.hpp"
 #include "noc/noc_overlay_parameters.h"
+#include "noc/noc_parameters.h"
 #include "tensix.h"
-
-#include "hal.hpp"
-#include "blackhole/bh_hal.hpp"
 
 // Reserved DRAM addresses
 // Host writes (4B value) to and reads from DRAM_BARRIER_BASE across all channels to ensure previous writes have been
@@ -37,6 +38,8 @@ void Hal::initialize_bh() {
         static_cast<int>(HalProgrammableCoreType::ACTIVE_ETH) == static_cast<int>(ProgrammableCoreType::ACTIVE_ETH));
     static_assert(
         static_cast<int>(HalProgrammableCoreType::IDLE_ETH) == static_cast<int>(ProgrammableCoreType::IDLE_ETH));
+
+    static_assert(MaxProcessorsPerCoreType <= PROFILER_RISC_COUNT);
 
     HalCoreInfoType tensix_mem_map = blackhole::create_tensix_mem_map();
     this->core_info_.push_back(tensix_mem_map);
@@ -128,6 +131,9 @@ void Hal::initialize_bh() {
     this->virtual_worker_start_x_ = VIRTUAL_TENSIX_START_X;
     this->virtual_worker_start_y_ = VIRTUAL_TENSIX_START_Y;
     this->eth_fw_is_cooperative_ = false;
+    this->virtualized_core_types_ = {
+        AddressableCoreType::TENSIX, AddressableCoreType::ETH, AddressableCoreType::PCIE, AddressableCoreType::DRAM};
+    this->tensix_harvest_axis_ = static_cast<HalTensixHarvestAxis>(tensix_harvest_axis);
 
     this->eps_ = EPS_BH;
     this->nan_ = NAN_BH;

@@ -44,7 +44,11 @@ from models.demos.llama3_subdevices.tt.llama_ccl import TT_CCL
         "decode",
     ],
 )
-@pytest.mark.parametrize("device_params", [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL}], indirect=True)
+@pytest.mark.parametrize(
+    "device_params",
+    [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL, "fabric_config": ttnn.FabricConfig.FABRIC_1D}],
+    indirect=True,
+)
 def test_llama_rms_norm_inference(
     max_seq_len,
     batch_size,
@@ -55,8 +59,6 @@ def test_llama_rms_norm_inference(
 ):
     dtype = ttnn.bfloat16
 
-    mesh_device.enable_async(True)
-
     model_args = TtModelArgs(mesh_device, max_batch_size=batch_size, max_seq_len=max_seq_len, dummy_weights=True)
 
     model_args.n_layers = 1
@@ -64,15 +66,9 @@ def test_llama_rms_norm_inference(
     state_dict_prefix = model_args.get_state_dict_prefix("", 0)
     first_layer_prefix = state_dict_prefix + "attention_norm."
 
-    prefetcher_setup = TtLlamaPrefetcherSetup(
-        mesh_device,
-        n_tensors=1,
-        n_layers=1,
-    )
-    mesh_device.set_sub_device_stall_group(
-        [prefetcher_setup.prefetcher_sub_device_id, prefetcher_setup.worker_sub_device_id]
-    )
-    tt_ccl = TT_CCL(mesh_device, model_args, prefetcher_setup.worker_sub_device_id)
+    prefetcher_setup = TtLlamaPrefetcherSetup(mesh_device, n_tensors=0, n_layers=1, mode=mode)
+    mesh_device.set_sub_device_stall_group([prefetcher_setup.worker_sub_device_id])
+    tt_ccl = TT_CCL(mesh_device, model_args, prefetcher_setup.worker_sub_device_id, mode=mode)
 
     # Create the inner RMSNormxw
     tt_inner_norm = TtRMSNorm(

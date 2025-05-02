@@ -83,6 +83,7 @@ class TtTransformerBlock(LightweightModule):
                 is_distributed=self.args.is_distributed_norm,
                 sharded_program_config=self.model_config["SHARDED_NORM_ATTN_PRGM_CFG"],
                 sharded_output_config=self.model_config["SHARDED_ATTN_INPUT_MEMCFG"],
+                output_mem_config=self.model_config["SHARDED_ATTN_INPUT_RING_MEMCFG"],
             ),
             args,
             TG=args.is_galaxy,
@@ -100,11 +101,20 @@ class TtTransformerBlock(LightweightModule):
                 is_distributed=self.args.is_distributed_norm,
                 sharded_program_config=self.model_config["SHARDED_NORM_MLP_PRGM_CFG"],
                 sharded_output_config=self.model_config["SHARDED_MLP_INPUT_MEMCFG"],
+                output_mem_config=self.model_config["SHARDED_FF12_RING_MEMCFG"],
             ),
             args,
             TG=args.is_galaxy,
             tt_ccl=tt_ccl,
         )
+
+    def prefetch(self, prefetcher_setup, tt_ccl):
+        self.prefetcher_setup = prefetcher_setup
+        self.tt_ccl = tt_ccl
+        self.attention.prefetch(prefetcher_setup, tt_ccl)
+        self.feed_forward.prefetch(prefetcher_setup, tt_ccl)
+        self.attention_norm.tt_ccl = tt_ccl
+        self.ff_norm.tt_ccl = tt_ccl
 
     def forward(
         self,
@@ -127,16 +137,15 @@ class TtTransformerBlock(LightweightModule):
         ), f"decoder input memcfg mismatch: {x.memory_config()} != {skip_mem_cfg}"
         # Norms take fractured inputs and output replicated across devices
         try:
-            attn_in, h = self.attention_norm(x, None, mode)
+            attn_in_sharded, h = self.attention_norm(x, None, mode)
         except Exception as e:
             print(e)
             print("failed to run attention norm")
             assert False, "Failed to run attention norm"
+        # print("attention norm done", attn_in)
         # NOTE: donnot deallocate x here as it updated inplace and returns new h
         # Attention takes replicated inputs and produces fractured outputs
         # pad attn input
-        attn_in_sharded = ttnn.to_memory_config(attn_in, self.model_config["SHARDED_ATTN_INPUT_RING_MEMCFG"])
-        attn_in.deallocate(True)
         attn_out = self.attention.forward(
             attn_in_sharded,
             current_pos,
@@ -148,22 +157,23 @@ class TtTransformerBlock(LightweightModule):
             chunk_start_idx=chunk_start_idx,
             kv_cache=kv_cache,
         )
+        # print("attention done", attn_out)
 
         # Norms take fractured inputs and output replicated across devices
         h = ttnn.add(x, attn_out, memory_config=skip_mem_cfg)  # , dtype=ttnn.bfloat16)
         # x.deallocate(True)
-        attn_out.deallocate(True)
-        ff_in, _ = self.ff_norm(h, None, mode)
+        # attn_out.deallocate(True)
+        ff_in_sharded, _ = self.ff_norm(h, None, mode)
+        # print("ff norm done", ff_in)
         # if TG and mode == "decode":
         #     ff_in = ttnn.to_memory_config(ff_in, memory_config=self.model_config["MLP_ACT_MEMCFG"])
 
         # MLP takes replicated inputs and produces fractured outputs
-        ff_in_sharded = ttnn.to_memory_config(ff_in, self.model_config["SHARDED_FF12_RING_MEMCFG"])
-        ff_in.deallocate(True)
         ff_out = self.feed_forward.forward(ff_in_sharded, mode)
+        # print("feed forward done", ff_out)
         # if self.layer_num == self.n_layers - 1:
         out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)  # , dtype=ttnn.bfloat16)
-        ff_out.deallocate(True)
+        # ff_out.deallocate(True)
         # else:
         #     out = ff_out
         return out, h  # fractured across devices

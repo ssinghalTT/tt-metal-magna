@@ -70,6 +70,12 @@ inline __attribute__((always_inline)) void notify_brisc_and_wait() {
         if (run_value == RUN_SYNC_MSG_GO || run_value == RUN_SYNC_MSG_LOAD) {
             break;
         }
+#if defined(ARCH_WORMHOLE)
+        // Avoid hammering L1 while other cores are trying to work. Seems not to
+        // be needed on Blackhole, probably because invalidate_l1_cache takes
+        // time.
+        asm volatile("nop; nop; nop; nop; nop");
+#endif
         invalidate_l1_cache();
     }
 }
@@ -91,6 +97,11 @@ void l1_to_ncrisc_iram_copy_wait() {
 #endif
 
 int main(int argc, char *argv[]) {
+    // Workaround for tt-metal#16439, making sure gathering multiple instructions issued to Tensix is disabled
+    // Ncrisc does not issue Tensix instructions but to be consistent for all riscs around Tensix we disable it
+#ifdef ARCH_BLACKHOLE
+    disable_gathering();
+#endif
     configure_l1_data_cache();
     DIRTY_STACK_MEMORY();
     WAYPOINT("I");

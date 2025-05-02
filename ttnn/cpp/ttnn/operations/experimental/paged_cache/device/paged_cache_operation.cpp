@@ -174,8 +174,16 @@ void PagedUpdateCacheDeviceOperation::validate(
     };
 
     const auto validateFusedUpdateTensors = [](const Tensor& input_tensor1, const Tensor& input_tensor2) {
-        bool is_overlap = input_tensor1.shard_spec()->grid.intersects(input_tensor2.shard_spec()->grid);
-        TT_FATAL(!is_overlap, "input_tensor1 and input_tensor2 must not overlap");
+        CoreRangeSet input1_cores = input_tensor1.shard_spec().value().grid;
+        CoreRangeSet input2_cores = input_tensor2.shard_spec().value().grid;
+
+        bool is_overlap = input1_cores.intersects(input2_cores);
+        TT_FATAL(!is_overlap, "input_tensor1 ({}) and input_tensor2 ({}) must not overlap", input1_cores, input2_cores);
+        TT_FATAL(
+            input1_cores.num_cores() == input2_cores.num_cores(),
+            "input_tensor1 ({}) and input_tensor2 ({}) must have same number of cores",
+            input1_cores,
+            input2_cores);
     };
 
     // Validate number of input tensors based on operation type
@@ -206,7 +214,7 @@ void PagedUpdateCacheDeviceOperation::validate(
     }
 }
 
-const std::vector<ttnn::TensorSpec> PagedUpdateCacheDeviceOperation::compute_output_specs(
+std::vector<ttnn::TensorSpec> PagedUpdateCacheDeviceOperation::compute_output_specs(
     const std::vector<Tensor>& input_tensors) const {
     // Do nothing because it's an in-place operation
     return {};
@@ -267,7 +275,7 @@ PagedUpdateCacheOpParallelizationStrategy PagedUpdateCacheDeviceOperation::get_p
     return PagedUpdateCacheOpParallelizationStrategy::MULTI_CORE;
 }
 
-const operation::Hash PagedUpdateCacheDeviceOperation::compute_program_hash(
+operation::Hash PagedUpdateCacheDeviceOperation::compute_program_hash(
     const std::vector<Tensor>& input_tensors,
     const std::vector<std::optional<const Tensor>>& optional_input_tensors) const {
     return operation::hash_operation<PagedUpdateCacheDeviceOperation>(

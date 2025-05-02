@@ -301,6 +301,12 @@ inline void start_ncrisc_kernel_run(dispatch_core_processor_masks enables) {
 inline void wait_ncrisc_trisc() {
     WAYPOINT("NTW");
     while (mailboxes->slave_sync.all != RUN_SYNC_MSG_ALL_SLAVES_DONE) {
+#if defined(ARCH_WORMHOLE)
+        // Avoid hammering L1 while other cores are trying to work. Seems not to
+        // be needed on Blackhole, probably because invalidate_l1_cache takes
+        // time.
+        asm volatile("nop; nop; nop; nop; nop");
+#endif
         invalidate_l1_cache();
     }
     WAYPOINT("NTD");
@@ -318,6 +324,11 @@ inline void barrier_remote_cb_interface_setup(uint8_t noc_index, uint32_t end_cb
 }
 
 int main() {
+    // Workaround for tt-metal#16439, making sure gathering multiple instructions issued to Tensix is disabled
+    // Brisc does not issue Tensix instructions but to be consistent for all riscs around Tensix we disable it
+#ifdef ARCH_BLACKHOLE
+    disable_gathering();
+#endif
     configure_l1_data_cache();
     DIRTY_STACK_MEMORY();
     WAYPOINT("I");

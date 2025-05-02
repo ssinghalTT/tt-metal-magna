@@ -240,8 +240,7 @@ ttnn::Tensor SliceOperation::invoke(
     const ttnn::Tensor& output_tensor_end,
     const std::optional<ttnn::SmallVector<T>>& step,
     const std::optional<MemoryConfig>& memory_config_arg,
-    const std::optional<Tensor>& optional_output_tensor,
-    const std::optional<float>& pad_value) {
+    const std::optional<Tensor>& optional_output_tensor) {
     TT_FATAL(
         output_tensor_start.get_logical_shape().rank() == 1,
         "The start tensor for slicing must be in 1D shape, but got {}D",
@@ -269,9 +268,7 @@ ttnn::Tensor SliceOperation::invoke(
         output_tensor_start_span,
         output_tensor_end_span,
         tt::stl::Span<const T>(step_value),
-        memory_config_arg,
-        optional_output_tensor,
-        pad_value);
+        memory_config_arg);
 }
 template <typename T>
 ttnn::Tensor SliceOperation::invoke(
@@ -280,17 +277,9 @@ ttnn::Tensor SliceOperation::invoke(
     const ttnn::Tensor& output_tensor_end,
     const std::optional<ttnn::SmallVector<T>>& step,
     const std::optional<MemoryConfig>& memory_config_arg,
-    const std::optional<Tensor>& optional_output_tensor,
-    const std::optional<float>& pad_value) {
+    const std::optional<Tensor>& optional_output_tensor) {
     return SliceOperation::invoke(
-        ttnn::DefaultQueueId,
-        input_tensor,
-        output_tensor_start,
-        output_tensor_end,
-        step,
-        memory_config_arg,
-        optional_output_tensor,
-        pad_value);
+        ttnn::DefaultQueueId, input_tensor, output_tensor_start, output_tensor_end, step, memory_config_arg);
 }
 
 template ttnn::Tensor SliceOperation::invoke<int>(
@@ -394,8 +383,7 @@ template ttnn::Tensor SliceOperation::invoke<uint32_t>(
     const ttnn::Tensor& output_tensor_end,
     const std::optional<ttnn::SmallVector<uint32_t>>& step,
     const std::optional<MemoryConfig>& memory_config_arg,
-    const std::optional<Tensor>& optional_output_tensor,
-    const std::optional<float>& pad_value = std::nullopt);
+    const std::optional<Tensor>& optional_output_tensor);
 
 template ttnn::Tensor SliceOperation::invoke<uint32_t>(
     QueueId queue_id,
@@ -404,7 +392,6 @@ template ttnn::Tensor SliceOperation::invoke<uint32_t>(
     const ttnn::Tensor& output_tensor_end,
     const std::optional<ttnn::SmallVector<uint32_t>>& step,
     const std::optional<MemoryConfig>& memory_config_arg,
-    const std::optional<Tensor>& optional_output_tensor,
-    const std::optional<float>& pad_value = std::nullopt);
+    const std::optional<Tensor>& optional_output_tensor);
 
 }  // namespace ttnn::operations::data_movement

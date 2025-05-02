@@ -68,87 +68,54 @@ Tensor optimized_conv_new(
     const MemoryConfig& memory_config,
     DataType dtype,
     std::array<std::uint32_t, 4> input_tensor_shape,
-    bool use_shallow_conv_variant,
     const DeviceComputeKernelConfig& compute_kernel_config,
     bool enable_act_double_buffer,
     bool enable_weights_double_buffer,
     bool enable_split_reader,
     bool enable_subblock_padding) {
-    std::vector<Tensor> output_tensors = {Tensor(tt::tt_metal::operation::get_workers_for_op_output({a, b}))};
+    TT_FATAL(
+        b.get_layout() == Layout::TILE,
+        "Weights should be in TILE layout.");  // Weights should already be formatted
+    const auto& ashape = input_tensor_shape;
+    auto padded_a_shape = ttnn::Shape({ashape[0], ashape[1], ashape[2], tt::round_up(ashape[3], 16)});
+    experimental::auto_format::FormatParams input_a_format_params = {
+        .pad_shape = padded_a_shape, .pad_value = 0.0, .target_layout = Layout::ROW_MAJOR};
+    experimental::auto_format::FormatParams input_b_format_params = {
+        .pad_shape = b.get_padded_shape(), .pad_value = 0.0, .target_layout = Layout::TILE};
+    experimental::auto_format::FormatParams input_bias_format_params = {};
+    if (bias.has_value()) {
+        input_bias_format_params = {
+            .pad_shape = bias.value().get_padded_shape(), .pad_value = 0, .target_layout = Layout::TILE};
+    }
+    auto output_layout = untilize_out ? Layout::ROW_MAJOR : Layout::TILE;
+    auto arch = is_device_tensor(a)
+                    ? a.device()->arch()
+                    : ttnn::operations::experimental::auto_format::AutoFormat::GetDefaultDevice()->arch();
+    bool fp32_accum =
+        a.device()->arch() == tt::ARCH::WORMHOLE_B0;  // && compute_kernel_config.has_value()) ?
+                                                      // compute_kernel_config.value().fp32_dest_acc_en : false;
+    auto optimized_conv_op = OptimizedConvNew(
+        sliding_window_config,
+        output_channels,
+        groups,
+        untilize_out,
+        bias.has_value(),
+        activation,
+        parallelization_config,
+        block_config,
+        memory_config,
+        dtype,
+        input_tensor_shape,
+        compute_kernel_config,
+        enable_act_double_buffer,
+        enable_weights_double_buffer,
+        enable_split_reader,
+        enable_subblock_padding);
+    IDevice* device = a.device();
 
-    operation::launch_op(
-        [sliding_window_config,
-         output_channels,
-         groups,
-         untilize_out,
-         activation,
-         parallelization_config,
-         block_config,
-         memory_config,
-         dtype,
-         input_tensor_shape,
-         use_shallow_conv_variant,
-         compute_kernel_config,
-         enable_act_double_buffer,
-         enable_weights_double_buffer,
-         enable_split_reader,
-         enable_subblock_padding](
-            const std::vector<Tensor>& input_tensors,
-            const std::vector<std::optional<const Tensor>>& optional_input_tensors,
-            const std::vector<std::optional<Tensor>>& optional_output_tensors) mutable -> std::vector<Tensor> {
-            using ttnn::operations::experimental::auto_format::FormatParams;
-            auto& a = input_tensors.at(0);
-            auto& b = input_tensors.at(1);
-            auto& bias = optional_input_tensors.at(0);
-            TT_FATAL(
-                b.get_layout() == Layout::TILE,
-                "Weights should be in TILE layout.");  // Weights should already be formatted
-            const auto& ashape = input_tensor_shape;
-            auto padded_a_shape = ttnn::Shape({ashape[0], ashape[1], ashape[2], tt::round_up(ashape[3], 16)});
-            FormatParams input_a_format_params = {
-                .pad_shape = padded_a_shape, .pad_value = 0.0, .target_layout = Layout::ROW_MAJOR};
-            FormatParams input_b_format_params = {
-                .pad_shape = b.get_padded_shape(), .pad_value = 0.0, .target_layout = Layout::TILE};
-            FormatParams input_bias_format_params = {};
-            if (bias.has_value()) {
-                input_bias_format_params = {
-                    .pad_shape = bias.value().get_padded_shape(), .pad_value = 0, .target_layout = Layout::TILE};
-            }
-            auto output_layout = untilize_out ? Layout::ROW_MAJOR : Layout::TILE;
-            auto arch = is_tensor_on_device_or_multidevice(a)
-                            ? a.device()->arch()
-                            : ttnn::operations::experimental::auto_format::AutoFormat::GetDefaultDevice()->arch();
-            bool fp32_accum =
-                a.device()->arch() == tt::ARCH::WORMHOLE_B0;  // && compute_kernel_config.has_value()) ?
-                                                              // compute_kernel_config.value().fp32_dest_acc_en : false;
-            auto optimized_conv_op = OptimizedConvNew(
-                sliding_window_config,
-                output_channels,
-                groups,
-                untilize_out,
-                bias.has_value(),
-                activation,
-                parallelization_config,
-                block_config,
-                memory_config,
-                dtype,
-                input_tensor_shape,
-                use_shallow_conv_variant,
-                compute_kernel_config,
-                enable_act_double_buffer,
-                enable_weights_double_buffer,
-                enable_split_reader,
-                enable_subblock_padding);
-            IDevice* device = a.device();
-
-            optimized_conv_op.pre_op_l1_allocation_size_bytes =
-                device->allocator()->get_statistics(tt::tt_metal::BufferType::L1).total_allocated_bytes;
-            return operation::run_without_autoformat(optimized_conv_op, input_tensors, optional_input_tensors);
-        },
-        {a, b},
-        output_tensors,
-        {std::move(bias)});
-    return output_tensors.at(0);
+    optimized_conv_op.pre_op_l1_allocation_size_bytes =
+        device->allocator()->get_statistics(tt::tt_metal::BufferType::L1).total_allocated_bytes;
+    return operation::run_without_autoformat(optimized_conv_op, {a, b}, {bias}).at(0);
 }
 
 void OptimizedConvNew::validate(
@@ -271,7 +238,7 @@ operation::ProgramWithCallbacks OptimizedConvNew::create_program(
     auto& output_tensor = output_tensors.at(0);
     tt::tt_metal::IDevice* device = input_tensor_a.device();
 
-    const auto has_bias = input_tensor_bias.has_value();
+    const bool has_bias = input_tensor_bias.has_value();
 
     const auto weights_shape = input_tensor_b.get_padded_shape();
 
@@ -293,7 +260,6 @@ operation::ProgramWithCallbacks OptimizedConvNew::create_program(
         block_config,
         dtype,
         input_tensor_shape,
-        use_shallow_conv_variant,
         compute_kernel_config,
         output_tensor,
         enable_act_double_buffer,
@@ -329,29 +295,26 @@ operation::ProgramWithCallbacks OptimizedConvNew::create_program(
             input_tensor_shape[3],
             output_channels,
             kernel_dims[1],
-            sliding_window_config.get_output_shape()[2]));
+            sliding_window_config.get_output_shape()[2],
+            has_bias));
 
-    if (device->arch() != tt::ARCH::BLACKHOLE) {
-        // FIXME: This L1 calculation is not accurate for Blackhole due to different alignment.
-        // https://github.com/tenstorrent/tt-metal/issues/17216
-        TT_FATAL(
-            actual_cb_size == l1_usage.CB_allocation_size,
-            "Calculated CB size {} does not match with the actual CB size {}",
-            l1_usage.CB_allocation_size,
-            actual_cb_size);
+    TT_FATAL(
+        actual_cb_size == l1_usage.CB_allocation_size,
+        "Calculated CB size {} does not match with the actual CB size {}",
+        l1_usage.CB_allocation_size,
+        actual_cb_size);
 
-        // For now assume that if post_op_l1_allocation_size == 0 op is being run
-        // in graph capture NO_DISPATCH mode.
-        // ToDo: Device should offer an API to inform the op if it is running in NO_DISPATCH mode.
-        bool is_graph_capture_no_dispathch_mode = post_op_l1_allocation_size == 0;
-        TT_FATAL(
-            post_op_l1_allocation_size == (this->pre_op_l1_allocation_size_bytes + l1_usage.tensor_allocation_size) ||
-                is_graph_capture_no_dispathch_mode,
-            "Mismatch!! L1 Allocation Pre Op =  {}, Post Op = {} Calculated Size = {}",
-            this->pre_op_l1_allocation_size_bytes,
-            post_op_l1_allocation_size,
-            l1_usage.tensor_allocation_size);
-    }
+    // For now assume that if post_op_l1_allocation_size == 0 op is being run
+    // in graph capture NO_DISPATCH mode.
+    // ToDo: Device should offer an API to inform the op if it is running in NO_DISPATCH mode.
+    bool is_graph_capture_no_dispathch_mode = post_op_l1_allocation_size == 0;
+    TT_FATAL(
+        post_op_l1_allocation_size == (this->pre_op_l1_allocation_size_bytes + l1_usage.tensor_allocation_size) ||
+            is_graph_capture_no_dispathch_mode,
+        "Mismatch!! L1 Allocation Pre Op =  {}, Post Op = {} Calculated Size = {}",
+        this->pre_op_l1_allocation_size_bytes,
+        post_op_l1_allocation_size,
+        l1_usage.tensor_allocation_size);
     return program_with_cbs;
 }
 

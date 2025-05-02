@@ -11,12 +11,19 @@
 #include <optional>
 #include <unordered_set>
 
-#include "logger.hpp"
-#include "tt_backend_api_types.hpp"
-#include "buffer.hpp"
-#include "tile.hpp"
+#include <tt-metalium/buffer.hpp>
+#include <tt-metalium/circular_buffer_constants.h>
+#include <tt-metalium/logger.hpp>
+#include <tt-metalium/tile.hpp>
+#include <tt-metalium/tt_backend_api_types.hpp>
+#include <tt-metalium/program_descriptors.hpp>
 
-#include "circular_buffer_constants.h"
+namespace tt {
+enum class DataFormat : uint8_t;
+namespace tt_metal {
+class Buffer;
+}  // namespace tt_metal
+}  // namespace tt
 
 namespace tt::tt_metal {
 
@@ -47,6 +54,8 @@ public:
         bool dynamic_cb,
         uint32_t max_size,
         uint32_t buffer_size);
+
+    CircularBufferConfig(const CBDescriptor& descriptor);
 
     CircularBufferConfig& set_page_size(uint8_t buffer_index, uint32_t page_size);
 

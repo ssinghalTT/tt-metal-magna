@@ -9,7 +9,7 @@
 #include <tt-metalium/host_api.hpp>
 #include <tt-metalium/constants.hpp>
 #include <tt-metalium/util.hpp>
-#include <tt-metalium/hal_exp.hpp>
+#include <tt-metalium/hal.hpp>
 #include <tt-metalium/math.hpp>
 
 #include <tt-metalium/global_circular_buffer_impl.hpp>
@@ -37,7 +37,8 @@ std::pair<uint32_t, uint32_t> get_max_page_size_and_num_pages(
 operation::ProgramWithCallbacks dram_prefetcher_multi_core(
     const std::vector<Tensor>& input_tensors,
     const uint32_t num_layers,
-    const tt::tt_metal::experimental::GlobalCircularBuffer& global_cb) {
+    const tt::tt_metal::experimental::GlobalCircularBuffer& global_cb,
+    const bool enable_performance_mode) {
     /* Buffers */
     const Buffer& global_cb_buffer = global_cb.cb_buffer();
     // tensors that with addresses
@@ -148,7 +149,7 @@ operation::ProgramWithCallbacks dram_prefetcher_multi_core(
     uint32_t remote_cb_size = global_cb.size();
     uint32_t remote_cb_single_tile_size = max_tile_size;
 
-    auto L1_ALIGNMENT = tt::tt_metal::experimental::hal::get_l1_alignment();
+    auto L1_ALIGNMENT = tt::tt_metal::hal::get_l1_alignment();
     uint32_t remote_cb_index = tt::CBIndex::c_31;
     CircularBufferConfig remote_cb_config = CircularBufferConfig(remote_cb_size);
     remote_cb_config.remote_index(remote_cb_index)
@@ -171,12 +172,15 @@ operation::ProgramWithCallbacks dram_prefetcher_multi_core(
         tensor_addrs_cb_index,
     };
 
+    // Configs to enable for performance mode
+    reader_ct_args.push_back((uint32_t)enable_performance_mode /* skip_ptr_update */);
+
     auto reader_kernel_id = CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/prefetcher/prefetcher/device/kernels/reader_dram.cpp",
         reader_core_range,
         tt::tt_metal::DataMovementConfig{
-            .processor = tt::tt_metal::DataMovementProcessor::RISCV_0,
+            .processor = tt::tt_metal::DataMovementProcessor::RISCV_1,
             .noc = tt::tt_metal::NOC::RISCV_0_default,
             .noc_mode = tt::tt_metal::NOC_MODE::DM_DYNAMIC_NOC,
             .compile_args = reader_ct_args});
@@ -192,12 +196,15 @@ operation::ProgramWithCallbacks dram_prefetcher_multi_core(
         remote_cb_index,
     };
 
+    // Configs to enable for performance mode
+    writer_ct_args.push_back((uint32_t)enable_performance_mode /* skip_ptr_update */);
+
     auto writer_kernel_id = CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/prefetcher/prefetcher/device/kernels/writer_l1.cpp",
         reader_core_range,
         tt::tt_metal::DataMovementConfig{
-            .processor = tt::tt_metal::DataMovementProcessor::RISCV_1,
+            .processor = tt::tt_metal::DataMovementProcessor::RISCV_0,
             .noc = tt::tt_metal::NOC::RISCV_0_default,
             .noc_mode = tt::tt_metal::NOC_MODE::DM_DYNAMIC_NOC,
             .compile_args = writer_ct_args});
@@ -233,14 +240,15 @@ operation::ProgramWithCallbacks dram_prefetcher_multi_core(
 
         /* reader kernel */
         uint32_t bank_id = core_index;
-        uint32_t vc = bank_id & 0x1;
+        uint32_t vc = (bank_id & 0x1) + 2;
         bank_ids.push_back(bank_id);
 
         // Compare with previous cores' vc
         for (size_t j = 0; j < core_index; ++j) {
             const CoreCoord& prev_core = reader_cores[j];
-            if (prev_core.y == core.y and ((bank_id & 0x1) == (bank_ids[j] & 0x1))) {  // same vc and same row
-                vc = (vc + 1) & 0x1;
+            if (prev_core.y == core.y and
+                (((bank_id & 0x1) + 2) == ((bank_ids[j] & 0x1) + 2))) {  // same vc and same row
+                vc = ((vc + 1) & 0x1) + 2;
                 break;
             }
         }

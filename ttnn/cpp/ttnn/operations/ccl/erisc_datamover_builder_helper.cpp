@@ -5,7 +5,7 @@
 #include <tt-metalium/erisc_datamover_builder.hpp>
 #include <tt-metalium/host_api.hpp>
 #include <tt-metalium/device.hpp>
-#include <tt-metalium/program_impl.hpp>
+#include <tt-metalium/program.hpp>
 #include <tt-metalium/tt_metal.hpp>
 
 #include "ttnn/operations/ccl/ccl_common.hpp"
@@ -49,7 +49,8 @@ EdmLineFabricOpInterface::EdmLineFabricOpInterface(
     bool enable_persistent_mode,
     std::optional<size_t> desired_num_links,
     bool build_in_worker_connection_mode,
-    Topology topology) :
+    Topology topology,
+    bool is_galaxy) :
     device_sequence(device_sequence), programs(program_sequence) {
     if (topology == Topology::Ring) {
         TT_FATAL(device_sequence.size() > 2, "Ring topology only supports more than 2 devices");
@@ -58,7 +59,7 @@ EdmLineFabricOpInterface::EdmLineFabricOpInterface(
     static constexpr std::size_t edm_buffer_size =
         tt::tt_fabric::FabricEriscDatamoverBuilder::default_packet_payload_size_bytes +
         sizeof(tt::tt_fabric::PacketHeader);
-    const auto config = tt::tt_fabric::FabricEriscDatamoverConfig(edm_buffer_size, 1, 2, topology);
+    const auto config = tt::tt_fabric::FabricEriscDatamoverConfig(edm_buffer_size, topology);
     TT_ASSERT(device_sequence.size() == program_sequence.size());
 
     for (size_t i = 0; i < device_sequence.size(); i++) {
@@ -190,6 +191,100 @@ EdmLineFabricOpInterface::EdmLineFabricOpInterface(
             start_bidirectional_device_index = 0;
             end_bidirectional_device_index = device_sequence.size();
         }
+
+        uint32_t fwd_edm_start_index = 0;
+        uint32_t fwd_edm_end_index = (topology == Topology::Ring) ? device_sequence.size() : device_sequence.size() - 1;
+        uint32_t bwd_edm_start_index = (topology == Topology::Ring) ? 0 : 1;
+        uint32_t bwd_edm_end_index = device_sequence.size();
+
+        auto assign_noc_vc =
+            [](auto& edm_builders_direction, size_t start_index, size_t end_index, const auto& device_sequence) {
+                for (size_t i = start_index; i < end_index; i++) {
+                    const size_t num_links = edm_builders_direction.at(device_sequence[i]->id()).size();
+                    auto& direction_edm = edm_builders_direction.at(device_sequence[i]->id());
+
+                    for (size_t l = 0; l < num_links; l++) {
+                        auto& edm = direction_edm[l];
+                        auto edm_noc_vc = l & edm.config.MAX_EDM_NOC_VC;
+                        edm.config.edm_noc_vc = edm_noc_vc;
+                    }
+                }
+            };
+
+        // Call assign_noc_vc for both forward and backward directions
+        assign_noc_vc(edm_builders_forward_direction, fwd_edm_start_index, fwd_edm_end_index, device_sequence);
+        assign_noc_vc(edm_builders_backward_direction, bwd_edm_start_index, bwd_edm_end_index, device_sequence);
+
+        for (size_t i = start_bidirectional_device_index; i < end_bidirectional_device_index; i++) {
+            const size_t num_links = edm_builders_forward_direction.at(device_sequence[i]->id()).size();
+            auto& forward_direction_edm = edm_builders_forward_direction.at(device_sequence[i]->id());
+            auto& backward_direction_edm = edm_builders_backward_direction.at(device_sequence[i]->id());
+
+            for (size_t l = 0; l < num_links; l++) {
+                auto& edm_fwd = forward_direction_edm[l];
+                auto& edm_bwd = backward_direction_edm[l];
+                // currently is_galaxy is only being passed in through the fabric unit test, once we switch to fabric
+                // device init, will use proper cluster type to decide which machine it is. For the optimzation on noc
+                // selection, we empirically optimize on 3/4 links for linear, and 4 links on ring, as less links caused
+                // perf degradation, potentially caused by sw overhead of checking two nocs.
+                bool enable_core_placement_opt = false;
+                if (is_galaxy) {
+                    if (topology == Topology::Ring) {
+                        enable_core_placement_opt = (num_links > 3) && (edm_fwd.my_noc_y != edm_bwd.my_noc_y);
+                    } else {
+                        enable_core_placement_opt = (num_links > 2) && (edm_fwd.my_noc_y != edm_bwd.my_noc_y);
+                    }
+                }
+                if (enable_core_placement_opt) {
+                    if (edm_fwd.my_noc_x < edm_bwd.my_noc_x) {
+                        log_info(
+                            tt::LogTest,
+                            "device {} edm_fwd {} {} is connecting to edm_bwd {} {} on link {}",
+                            edm_fwd.my_chip_id,
+                            edm_fwd.my_noc_x,
+                            edm_fwd.my_noc_y,
+                            edm_bwd.my_noc_x,
+                            edm_bwd.my_noc_y,
+                            l);
+                        for (uint32_t i = 0; i < edm_fwd.config.num_receiver_channels; i++) {
+                            edm_fwd.config.receiver_channel_forwarding_noc_ids[i] = 0;
+                            edm_bwd.config.receiver_channel_forwarding_noc_ids[i] = 1;
+                        }
+                        for (uint32_t i = 0; i < edm_fwd.config.num_receiver_channels; i++) {
+                            edm_fwd.config.receiver_channel_local_write_noc_ids[i] = 1;
+                            edm_bwd.config.receiver_channel_local_write_noc_ids[i] = 1;
+                        }
+                        for (uint32_t i = 0; i < edm_fwd.config.num_sender_channels; i++) {
+                            edm_fwd.config.sender_channel_ack_noc_ids[i] = 1;
+                            edm_bwd.config.sender_channel_ack_noc_ids[i] = 0;
+                        }
+                    } else if (edm_fwd.my_noc_x > edm_bwd.my_noc_x) {
+                        log_info(
+                            tt::LogTest,
+                            "device {} edm_fwd {} {} is connecting to edm_bwd {} {} on link {}",
+                            edm_fwd.my_chip_id,
+                            edm_fwd.my_noc_x,
+                            edm_fwd.my_noc_y,
+                            edm_bwd.my_noc_x,
+                            edm_bwd.my_noc_y,
+                            l);
+                        for (uint32_t i = 0; i < edm_fwd.config.num_receiver_channels; i++) {
+                            edm_fwd.config.receiver_channel_forwarding_noc_ids[i] = 1;
+                            edm_bwd.config.receiver_channel_forwarding_noc_ids[i] = 0;
+                        }
+                        for (uint32_t i = 0; i < edm_fwd.config.num_receiver_channels; i++) {
+                            edm_fwd.config.receiver_channel_local_write_noc_ids[i] = 1;
+                            edm_bwd.config.receiver_channel_local_write_noc_ids[i] = 1;
+                        }
+                        for (uint32_t i = 0; i < edm_fwd.config.num_sender_channels; i++) {
+                            edm_fwd.config.sender_channel_ack_noc_ids[i] = 0;
+                            edm_bwd.config.sender_channel_ack_noc_ids[i] = 1;
+                        }
+                    }
+                }
+            }
+        }
+
         for (size_t i = start_bidirectional_device_index; i < end_bidirectional_device_index; i++) {
             const size_t num_links = edm_builders_forward_direction.at(device_sequence[i]->id()).size();
             auto& forward_direction_edm = edm_builders_forward_direction.at(device_sequence[i]->id());
@@ -215,18 +310,10 @@ EdmLineFabricOpInterface::EdmLineFabricOpInterface(
     bool build_in_worker_connection_mode,
     Topology topology) :
     device_sequence({local_device}), programs({program}) {
-    if (topology == Topology::Ring) {
-        TT_FATAL(
-            forward_device.has_value() && backward_device.has_value(),
-            "RING topology requires both forward and backward devices to be specified");
-        TT_FATAL(
-            forward_device.value() != backward_device.value(),
-            "Ring topology requires different forward and backward devices");
-    }
     static constexpr std::size_t edm_buffer_size =
         tt::tt_fabric::FabricEriscDatamoverBuilder::default_packet_payload_size_bytes +
         sizeof(tt::tt_fabric::PacketHeader);
-    const auto config = tt::tt_fabric::FabricEriscDatamoverConfig(edm_buffer_size, 1, 2, topology);
+    const auto config = tt::tt_fabric::FabricEriscDatamoverConfig(edm_buffer_size, topology);
 
     log_trace(tt::LogOp, "device id={}", local_device->id());
     log_trace(tt::LogOp, "EDM Fabric Factory ctor on device: {}", local_device->id());
@@ -431,7 +518,7 @@ EdmLineFabricOpInterface::generate_ordered_termination_info_farthest_to_nearest(
     static constexpr std::size_t edm_buffer_size =
         tt::tt_fabric::FabricEriscDatamoverBuilder::default_packet_payload_size_bytes +
         sizeof(tt::tt_fabric::PacketHeader);
-    static const auto config = tt::tt_fabric::FabricEriscDatamoverConfig(edm_buffer_size, 1, 2);
+    static const auto config = tt::tt_fabric::FabricEriscDatamoverConfig(edm_buffer_size);
     TT_ASSERT(device_sequence.size() > 0);
     const size_t num_hops = device_sequence.size() - 1;
     TT_ASSERT(num_hops > 0);
@@ -526,9 +613,8 @@ void initialize_edm_fabric(
         for (size_t i = 0; i < devices.size(); i++) {
             auto* device = devices[i];
             auto* program_ptr = program_ptrs[i];
-            device->push_work([&]() { tt::tt_metal::detail::CompileProgram(device, *program_ptr); }, false);
-            device->push_work(
-                [&]() { tt::tt_metal::EnqueueProgram(device->command_queue(), *program_ptr, false); }, true);
+            tt::tt_metal::detail::CompileProgram(device, *program_ptr);
+            tt::tt_metal::EnqueueProgram(device->command_queue(), *program_ptr, false);
         }
     } else {
         std::vector<EdmLineFabricOpInterface> row_fabric_lines;
@@ -578,9 +664,8 @@ void initialize_edm_fabric(
                 log_info(tt::LogAlways, "Compile EDM program");
                 tt::tt_metal::IDevice* device = mesh_device->get_device(r, c);
                 auto& program = programs.at(r).at(c);
-                device->push_work([&]() { tt::tt_metal::detail::CompileProgram(device, program); }, false);
-                device->push_work(
-                    [&]() { tt::tt_metal::EnqueueProgram(device->command_queue(), program, false); }, true);
+                tt::tt_metal::detail::CompileProgram(device, program);
+                tt::tt_metal::EnqueueProgram(device->command_queue(), program, false);
             }
         }
     }
