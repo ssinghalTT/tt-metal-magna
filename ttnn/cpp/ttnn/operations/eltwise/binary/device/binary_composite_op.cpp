@@ -283,22 +283,23 @@ Tensor ExecuteDiv::invoke(
     tt::stl::Span<const ttnn::operations::unary::UnaryWithParam> lhs_activations,
     tt::stl::Span<const ttnn::operations::unary::UnaryWithParam> rhs_activations,
     const std::optional<bool>& use_legacy) {
-    if (not(use_legacy ? *use_legacy
-                       : binary::is_legacy_only(
-                             input_a, input_b, output_mem_config, output_tensor, lhs_activations, rhs_activations))) {
-        return BinaryOperation<BinaryOpType::DIV>::invoke(
-            queue_id,
-            input_a,
-            input_b,
-            std::nullopt,
-            output_mem_config,
-            output_tensor,
-            post_activations,
-            lhs_activations,
-            rhs_activations,
-            use_legacy);
-    }
-
+    // if (not(use_legacy ? *use_legacy
+    //                    : binary::is_legacy_only(
+    //                          input_a, input_b, output_mem_config, output_tensor, lhs_activations, rhs_activations)))
+    //                          {
+    //     return BinaryOperation<BinaryOpType::DIV>::invoke(
+    //         queue_id,
+    //         input_a,
+    //         input_b,
+    //         std::nullopt,
+    //         output_mem_config,
+    //         output_tensor,
+    //         post_activations,
+    //         lhs_activations,
+    //         rhs_activations,
+    //         use_legacy);
+    // }
+    // tt::log_info(tt::LogOp, " ****** past legacy check");
     TT_FATAL(
         (round_mode == std::nullopt || round_mode == "trunc" || round_mode == "floor"),
         "Incorrect rounding mode (expected None, 'trunc', or 'floor')");
