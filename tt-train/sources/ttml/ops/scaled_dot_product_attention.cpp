@@ -14,7 +14,6 @@
 #include "ttnn_fixed/trivial_ttnn_ops.hpp"
 
 namespace ttml::ops {
-namespace {
 
 // Wrapper around matmul to handle sharing of KV heads across groups of query
 // heads.
@@ -30,10 +29,7 @@ namespace {
 //   - Summary of intermediate shapes:
 //     (B*G, H/G, S, S) x (B*G, 1, S, V) -> (B*G, H/G, S, V) -> (B, H, S, V)
 ttnn::Tensor group_shared_matmul(
-    const ttnn::Tensor& query_tensor,
-    const ttnn::Tensor& kv_tensor,
-    bool transpose_a = false,
-    bool transpose_b = false) {
+    const ttnn::Tensor& query_tensor, const ttnn::Tensor& kv_tensor, bool transpose_a, bool transpose_b) {
     auto [batch_num, heads, seq_len, embedding_dim] = query_tensor.get_logical_shape().to_array_4D();
     auto [batch_num_v, groups, seq_len_v, embedding_dim_v] = kv_tensor.get_logical_shape().to_array_4D();
     if (batch_num != batch_num_v) {
@@ -136,14 +132,12 @@ void validate_qkv_shapes(
     }
 }
 
-}  // namespace
-
 autograd::TensorPtr scaled_dot_product_attention(
     const autograd::TensorPtr& query,
     const autograd::TensorPtr& key,
     const autograd::TensorPtr& value,
     const std::optional<autograd::TensorPtr>& mask,
-    bool is_hf_mode = false) {
+    bool is_hf_mode) {
     validate_qkv_shapes(query, key, value);
 
     auto [batch_num, heads, seq_len, embedding_dim] = query->get_value().get_logical_shape().to_array_4D();

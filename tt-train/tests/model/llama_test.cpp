@@ -4,9 +4,17 @@
 
 #include "models/llama.hpp"
 
+#include <fcntl.h>
 #include <gtest/gtest.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
+#include <boost/archive/binary_iarchive.hpp>
+#include <boost/archive/binary_oarchive.hpp>
+#include <cerrno>
 #include <core/ttnn_all_includes.hpp>
+#include <filesystem>
 #include <xtensor/xnpy.hpp>
 
 #include "autograd/auto_context.hpp"
@@ -148,6 +156,108 @@ std::pair<float, float> suggest_atol_rtol(
     fmt::println("[{}] expected shape: {}", label, expected.shape());
     fmt::println("[{}] actual shape: {}", label, actual.shape());
     return std::make_pair(atol, rtol);
+}
+
+ttml::models::llama::Llama init_llama_cached(uint32_t seq_len = 32) {
+    namespace fs = std::filesystem;
+    using namespace ttml;
+
+    auto yaml_config = YAML::LoadFile("configs/training_shakespeare_tinyllama.yaml");
+    auto training_config = yaml_config["training_config"];
+    auto llama_config = training_config["transformer_config"];
+    auto config = models::llama::read_config(llama_config);
+    config.max_sequence_length = seq_len;
+
+    auto llama_model = models::llama::Llama(config);
+    llama_model.eval();
+
+    auto home_dir = fs::path(std::getenv("HOME"));
+    auto cache_dir = home_dir / ".cache/ttml/llama";
+    if (!fs::exists(cache_dir)) {
+        fs::create_directories(cache_dir);
+    }
+
+    auto cache_file = cache_dir / "tinyllama.msgpack.mmap";
+    bool cache_exists = fs::exists(cache_file);
+    bool cache_is_old = false;
+    if (cache_exists) {
+        auto cache_time = fs::last_write_time(cache_file);
+        auto msgpack_time = fs::last_write_time("/home/j/load_llama/tinyllama.msgpack");
+        cache_is_old = cache_time < msgpack_time;
+    }
+
+    ttml::serialization::MsgPackFile msgpack_file;
+    if (cache_exists && !cache_is_old) {
+        fmt::println("loading tinyllama.msgpack from cache");
+        {  // Scope for the input archive and file stream
+            std::ifstream ifs(cache_file, std::ios::binary);
+            if (!ifs) {
+                // Handle error: file couldn't be opened
+                // For now, let's re-throw or handle appropriately.
+                // Since this is a cache, maybe falling back to non-cached path is better?
+                // However, the original code structure implies we proceed if cache exists.
+                // Let's throw an exception for clarity in the test.
+                throw std::runtime_error("Failed to open cache file for reading: " + cache_file.string());
+            }
+            boost::archive::binary_iarchive ia(ifs);
+            // Deserialize the MsgPackFile object from the archive
+            ia >> msgpack_file;
+        }  // ifs and ia are destroyed here, closing the file
+    } else {
+        fmt::println("loading tinyllama.msgpack");
+        msgpack_file.deserialize("/home/j/load_llama/tinyllama.msgpack");
+        fmt::println("deserialized tinyllama.msgpack");
+
+        // save to cache file
+        {
+            // compute the size of the cache file based on the msgpack_file
+            // Compute the size of the cache file based on the msgpack_file
+            // First, serialize to a temporary buffer to determine size
+            std::ostringstream temp_stream;
+            boost::archive::binary_oarchive temp_archive(temp_stream);
+            temp_archive << msgpack_file;
+
+            // Get the size from the temporary stream
+            std::string temp_data = temp_stream.str();
+            size_t file_size = temp_data.size();
+
+            // Ensure the file has the computed size
+            fmt::println("Creating cache file with size: {} bytes", file_size);
+            int fd = open(cache_file.string().c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (fd == -1) {
+                throw std::runtime_error("Failed to open cache file for writing: " + cache_file.string());
+            }
+            // Ensure the file is the right size before mapping
+            if (ftruncate(fd, file_size) == -1) {
+                close(fd);
+                throw std::runtime_error(
+                    "Failed to resize cache file: " + cache_file.string() + ", error: " + strerror(errno));
+            }
+
+            // mmap it
+            void* mapped_memory = mmap(NULL, file_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+            if (mapped_memory == MAP_FAILED) {
+                close(fd);
+                throw std::runtime_error(
+                    "Failed to mmap cache file: " + cache_file.string() + ", error: " + strerror(errno));
+            }
+
+            // Write the serialized data to the mapped memory
+            std::memcpy(mapped_memory, temp_data.data(), file_size);
+            fmt::println("Successfully wrote {} bytes to cache file", file_size);
+
+            // locking the pages
+            if (mlock(mapped_memory, file_size) == -1) {
+                throw std::runtime_error("Failed to mlock cache file: " + cache_file.string());
+            }
+            close(fd);
+        }
+    }
+
+    fmt::println("loading weights");
+    ttml::serialization::read_module(msgpack_file, /*name=*/"llama", &llama_model);
+    fmt::println("loaded weights");
+    return llama_model;
 }
 
 ttml::models::llama::Llama init_llama(uint32_t seq_len = 32) {
@@ -370,9 +480,6 @@ TEST_F(LlamaTest, GQA_SDPA_Test) {
     xt::xarray<float> expected_sdpa_res = xt::load_npy<float>("/home/j/intermediate_results/random_sdpa_res.npy");
     expected_sdpa_res.reshape({B, S, H, D});
 
-    auto llama_model = init_llama(32);
-    std::shared_ptr<ttml::modules::LlamaBlock> first_block_ptr =
-        std::dynamic_pointer_cast<ttml::modules::LlamaBlock>(llama_model.blocks[0]);
     auto q_tt = core::from_xtensor(test_q, &autograd::ctx().get_device());
     auto k_tt = core::from_xtensor(test_k, &autograd::ctx().get_device());
     auto v_tt = core::from_xtensor(test_v, &autograd::ctx().get_device());
@@ -389,4 +496,133 @@ TEST_F(LlamaTest, GQA_SDPA_Test) {
     sdpa_res = sdpa_res.reshape({B, S, H, D});
     float atol_sdpa = suggest_atol_rtol("sdpa", expected_sdpa_res, sdpa_res, 0).first;
     EXPECT_TRUE(atol_sdpa < .1F);
+}
+
+TEST_F(LlamaTest, Torch_GQA_SDPA_Test) {
+    using namespace ttml;
+    auto B = 1;
+    auto S = 32;
+    auto H = 32;
+    auto G = 4;
+    auto E = 2048;
+    auto D = E / H;
+
+    xt::xarray<float> test_q = xt::load_npy<float>("/home/j/intermediate_results/torch_sdpa_q.npy");
+    test_q.reshape({B, H, S, D});
+    xt::xarray<float> test_k = xt::load_npy<float>("/home/j/intermediate_results/torch_sdpa_k.npy");
+    test_k.reshape({B, G, S, D});
+    xt::xarray<float> test_v = xt::load_npy<float>("/home/j/intermediate_results/torch_sdpa_v.npy");
+    test_v.reshape({B, G, S, D});
+    xt::xarray<float> test_mask = xt::load_npy<float>("/home/j/intermediate_results/torch_sdpa_mask.npy");
+    test_mask.reshape({B, 1, S, S});
+    xt::xarray<float> expected_sdpa_res = xt::load_npy<float>("/home/j/intermediate_results/torch_sdpa_res.npy");
+    expected_sdpa_res.reshape({B, S, H, D});
+
+    auto q_tt = core::from_xtensor(test_q, &autograd::ctx().get_device());
+    auto k_tt = core::from_xtensor(test_k, &autograd::ctx().get_device());
+    auto v_tt = core::from_xtensor(test_v, &autograd::ctx().get_device());
+    auto q_ag = autograd::create_tensor(q_tt);
+    auto k_ag = autograd::create_tensor(k_tt);
+    auto v_ag = autograd::create_tensor(v_tt);
+    auto mask_tt = core::from_xtensor(test_mask, &autograd::ctx().get_device());
+    auto mask_ag = autograd::create_tensor(mask_tt);
+
+    // note: I'm not applying rope here for this test for simplicity, but I'll
+    // be mirroring this choice in the Python test gen code so it is fine.
+    auto attention = ttml::ops::scaled_dot_product_attention(q_ag, k_ag, v_ag, mask_ag, /*is_hf_mode=*/false);
+    xt::xarray<float> sdpa_res = core::to_xtensor(attention->get_value());
+    sdpa_res = sdpa_res.reshape({B, S, H, D});
+    float atol_sdpa = suggest_atol_rtol("torch_sdpa", expected_sdpa_res, sdpa_res, 0).first;
+    EXPECT_TRUE(atol_sdpa < .1F);
+}
+
+TEST_F(LlamaTest, GroupSharedMatmulTest) {
+    using namespace ttml;
+    const std::string data_path = "/home/j/intermediate_results/";
+
+    // --- Test Case 1: MHA (heads == groups) ---
+    {
+        auto B = 2;
+        auto H = 4;
+        auto G = 4;
+        auto S_q = 16;
+        auto S_kv = 16;
+        auto D = 32;
+
+        // Load inputs
+        xt::xarray<float> mha_q = xt::load_npy<float>(data_path + "mha_q.npy");
+        mha_q.reshape({B, H, S_q, D});
+        xt::xarray<float> mha_k = xt::load_npy<float>(data_path + "mha_k.npy");
+        mha_k.reshape({B, G, S_kv, D});
+        xt::xarray<float> mha_v = xt::load_npy<float>(data_path + "mha_v.npy");
+        mha_v.reshape({B, G, S_kv, D});
+
+        // Load expected outputs
+        xt::xarray<float> expected_mha_scores = xt::load_npy<float>(data_path + "mha_scores_qkt.npy");
+        expected_mha_scores.reshape({B, H, S_q, S_kv});
+        xt::xarray<float> expected_mha_result = xt::load_npy<float>(data_path + "mha_result_scoresv.npy");
+        expected_mha_result.reshape({B, H, S_q, D});
+
+        // Convert to ttnn tensors
+        auto q_tt = core::from_xtensor(mha_q, &autograd::ctx().get_device());
+        auto k_tt = core::from_xtensor(mha_k, &autograd::ctx().get_device());
+        auto v_tt = core::from_xtensor(mha_v, &autograd::ctx().get_device());
+
+        // Test 1a: Q @ K^T (transpose_a=False, transpose_b=True)
+        auto mha_scores = ttml::ops::group_shared_matmul(q_tt, k_tt, false, true);
+        xt::xarray<float> mha_scores_res = core::to_xtensor(mha_scores);
+        mha_scores_res.reshape({B, H, S_q, S_kv});
+        float atol_mha_scores = suggest_atol_rtol("mha_scores", expected_mha_scores, mha_scores_res, 0).first;
+        EXPECT_TRUE(atol_mha_scores < 1e-5F);
+
+        // Test 1b: Scores @ V (transpose_a=False, transpose_b=False)
+        auto mha_result = ttml::ops::group_shared_matmul(mha_scores, v_tt, false, false);
+        xt::xarray<float> mha_result_res = core::to_xtensor(mha_result);
+        mha_result_res.reshape({B, H, S_q, D});
+        float atol_mha_result = suggest_atol_rtol("mha_result", expected_mha_result, mha_result_res, 0).first;
+        EXPECT_TRUE(atol_mha_result < 1e-5F);
+    }
+
+    // --- Test Case 2: GQA (heads > groups) ---
+    {
+        auto B = 2;
+        auto H = 8;
+        auto G = 4;
+        auto S_q = 16;
+        auto S_kv = 16;
+        auto D = 32;
+
+        // Load inputs
+        xt::xarray<float> gqa_q = xt::load_npy<float>(data_path + "gqa_q.npy");
+        gqa_q.reshape({B, H, S_q, D});
+        xt::xarray<float> gqa_k = xt::load_npy<float>(data_path + "gqa_k.npy");
+        gqa_k.reshape({B, G, S_kv, D});
+        xt::xarray<float> gqa_v = xt::load_npy<float>(data_path + "gqa_v.npy");
+        gqa_v.reshape({B, G, S_kv, D});
+
+        // Load expected outputs
+        xt::xarray<float> expected_gqa_scores = xt::load_npy<float>(data_path + "gqa_scores_qkt.npy");
+        expected_gqa_scores.reshape({B, H, S_q, S_kv});
+        xt::xarray<float> expected_gqa_result = xt::load_npy<float>(data_path + "gqa_result_scoresv.npy");
+        expected_gqa_result.reshape({B, H, S_q, D});
+
+        // Convert to ttnn tensors
+        auto q_tt = core::from_xtensor(gqa_q, &autograd::ctx().get_device());
+        auto k_tt = core::from_xtensor(gqa_k, &autograd::ctx().get_device());
+        auto v_tt = core::from_xtensor(gqa_v, &autograd::ctx().get_device());
+
+        // Test 2a: Q @ K^T (transpose_a=False, transpose_b=True)
+        auto gqa_scores = ttml::ops::group_shared_matmul(q_tt, k_tt, false, true);
+        xt::xarray<float> gqa_scores_res = core::to_xtensor(gqa_scores);
+        gqa_scores_res.reshape({B, H, S_q, S_kv});
+        float atol_gqa_scores = suggest_atol_rtol("gqa_scores", expected_gqa_scores, gqa_scores_res, 0).first;
+        EXPECT_TRUE(atol_gqa_scores < 1e-5F);
+
+        // Test 2b: Scores @ V (transpose_a=False, transpose_b=False)
+        auto gqa_result = ttml::ops::group_shared_matmul(gqa_scores, v_tt, false, false);
+        xt::xarray<float> gqa_result_res = core::to_xtensor(gqa_result);
+        gqa_result_res.reshape({B, H, S_q, D});
+        float atol_gqa_result = suggest_atol_rtol("gqa_result", expected_gqa_result, gqa_result_res, 0).first;
+        EXPECT_TRUE(atol_gqa_result < 1e-5F);
+    }
 }
