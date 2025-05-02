@@ -242,8 +242,8 @@ void generate(
     float top_p = 1.0F) {
     model_to_eval(model);
 
-    std::string prompt = "hello ";
-    fmt::print("Prompt: hello ");
+    std::string prompt = "The capital of Canada is ";
+    fmt::print("Prompt: {} ", prompt);
     // std::getline(std::cin, prompt);
     // if (prompt.empty()) {
     //     prompt = "\n";
@@ -721,7 +721,7 @@ int main(int argc, char **argv) {
                 *tokenizer,
                 std::visit([](auto &&arg) { return arg.max_sequence_length; }, config.transformer_config),
                 num_heads,
-                sequence_length,
+                /*tokens_to_generate: */ 20,
                 enable_tp,
                 eval_config.temperature,
                 eval_config.repetition_penalty,
