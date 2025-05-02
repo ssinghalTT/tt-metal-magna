@@ -626,3 +626,143 @@ TEST_F(LlamaTest, GroupSharedMatmulTest) {
         EXPECT_TRUE(atol_gqa_result < 1e-5F);
     }
 }
+
+TEST_F(LlamaTest, SDPA_Intermediates_MHATest) {
+    using namespace ttml;
+    const std::string data_path = "/home/j/intermediate_results/";
+
+    auto B = 1;
+    auto H = 4;
+    auto G = 4; // MHA: H == G
+    auto S = 16;
+    auto D = 32;
+    const float scale = 1.0F / std::sqrtf(static_cast<float>(D));
+
+    // Load inputs
+    xt::xarray<float> q_xt = xt::load_npy<float>(data_path + "sdpa_interm_mha_q.npy");
+    q_xt.reshape({B, H, S, D});
+    xt::xarray<float> k_xt = xt::load_npy<float>(data_path + "sdpa_interm_mha_k.npy");
+    k_xt.reshape({B, G, S, D});
+    xt::xarray<float> v_xt = xt::load_npy<float>(data_path + "sdpa_interm_mha_v.npy");
+    v_xt.reshape({B, G, S, D});
+    xt::xarray<float> mask_xt = xt::load_npy<float>(data_path + "sdpa_interm_mha_mask.npy");
+    mask_xt.reshape({B, 1, S, S}); // Additive mask
+
+    // Load expected intermediates
+    xt::xarray<float> expected_q_scaled = xt::load_npy<float>(data_path + "sdpa_interm_mha_q_scaled.npy");
+    expected_q_scaled.reshape({B, H, S, D});
+    xt::xarray<float> expected_qk_masked = xt::load_npy<float>(data_path + "sdpa_interm_mha_qk_masked.npy");
+    expected_qk_masked.reshape({B, H, S, S});
+    xt::xarray<float> expected_attn_weights = xt::load_npy<float>(data_path + "sdpa_interm_mha_attn_weights.npy");
+    expected_attn_weights.reshape({B, H, S, S});
+    xt::xarray<float> expected_attn_qkv = xt::load_npy<float>(data_path + "sdpa_interm_mha_attn_qkv.npy");
+    expected_attn_qkv.reshape({B, H, S, D});
+
+    // Convert inputs to ttnn tensors
+    auto q_tt = core::from_xtensor(q_xt, &autograd::ctx().get_device());
+    auto k_tt = core::from_xtensor(k_xt, &autograd::ctx().get_device());
+    auto v_tt = core::from_xtensor(v_xt, &autograd::ctx().get_device());
+    auto mask_tt = core::from_xtensor(mask_xt, &autograd::ctx().get_device());
+
+    // --- Intermediate Calculation 1: q_scaled ---
+    auto q_scaled = ttnn::experimental::mul(q_tt, scale);
+    xt::xarray<float> actual_q_scaled = core::to_xtensor(q_scaled);
+    actual_q_scaled.reshape({B, H, S, D});
+    float atol_q_scaled = suggest_atol_rtol("mha_q_scaled", expected_q_scaled, actual_q_scaled, 0).first;
+    EXPECT_TRUE(atol_q_scaled < 1e-6F);
+
+    // --- Intermediate Calculation 2: qk_masked ---
+    // QK Matmul
+    ttnn::Tensor qk = ops::group_shared_matmul(q_scaled, k_tt, /*transpose_a=*/false, /*transpose_b=*/true);
+    // Apply additive mask
+    ttnn::Tensor qk_masked = ttnn::add(qk, mask_tt);
+    xt::xarray<float> actual_qk_masked = core::to_xtensor(qk_masked);
+    actual_qk_masked.reshape({B, H, S, S});
+    float atol_qk_masked = suggest_atol_rtol("mha_qk_masked", expected_qk_masked, actual_qk_masked, 0).first;
+    EXPECT_TRUE(atol_qk_masked < 1e-6F); // Matmul might introduce small errors
+
+    // --- Intermediate Calculation 3: attention_weights ---
+    auto attention_weights = ttnn_fixed::softmax(qk_masked, /* axis */ 3);
+    xt::xarray<float> actual_attn_weights = core::to_xtensor(attention_weights);
+    actual_attn_weights.reshape({B, H, S, S});
+    float atol_attn_weights = suggest_atol_rtol("mha_attn_weights", expected_attn_weights, actual_attn_weights, 0).first;
+    EXPECT_TRUE(atol_attn_weights < 1e-6F); // Softmax is generally stable
+
+    // --- Intermediate Calculation 4: attention_qkv ---
+    ttnn::Tensor attention_qkv = ops::group_shared_matmul(attention_weights, v_tt, /*transpose_a=*/false, /*transpose_b=*/false);
+    xt::xarray<float> actual_attn_qkv = core::to_xtensor(attention_qkv);
+    actual_attn_qkv.reshape({B, H, S, D});
+    float atol_attn_qkv = suggest_atol_rtol("mha_attn_qkv", expected_attn_qkv, actual_attn_qkv, 0).first;
+    EXPECT_TRUE(atol_attn_qkv < 1e-5F); // Second matmul
+}
+
+
+TEST_F(LlamaTest, SDPA_Intermediates_GQATest) {
+    using namespace ttml;
+    const std::string data_path = "/home/j/intermediate_results/";
+
+    auto B = 1;
+    auto H = 8;
+    auto G = 2; // GQA: H > G
+    auto S = 16;
+    auto D = 32;
+    const float scale = 1.0F / std::sqrtf(static_cast<float>(D));
+
+    // Load inputs
+    xt::xarray<float> q_xt = xt::load_npy<float>(data_path + "sdpa_interm_gqa_q.npy");
+    q_xt.reshape({B, H, S, D});
+    xt::xarray<float> k_xt = xt::load_npy<float>(data_path + "sdpa_interm_gqa_k.npy");
+    k_xt.reshape({B, G, S, D});
+    xt::xarray<float> v_xt = xt::load_npy<float>(data_path + "sdpa_interm_gqa_v.npy");
+    v_xt.reshape({B, G, S, D});
+    xt::xarray<float> mask_xt = xt::load_npy<float>(data_path + "sdpa_interm_gqa_mask.npy");
+    mask_xt.reshape({B, 1, S, S}); // Additive mask
+
+    // Load expected intermediates
+    xt::xarray<float> expected_q_scaled = xt::load_npy<float>(data_path + "sdpa_interm_gqa_q_scaled.npy");
+    expected_q_scaled.reshape({B, H, S, D});
+    xt::xarray<float> expected_qk_masked = xt::load_npy<float>(data_path + "sdpa_interm_gqa_qk_masked.npy");
+    expected_qk_masked.reshape({B, H, S, S});
+    xt::xarray<float> expected_attn_weights = xt::load_npy<float>(data_path + "sdpa_interm_gqa_attn_weights.npy");
+    expected_attn_weights.reshape({B, H, S, S});
+    xt::xarray<float> expected_attn_qkv = xt::load_npy<float>(data_path + "sdpa_interm_gqa_attn_qkv.npy");
+    expected_attn_qkv.reshape({B, H, S, D});
+
+    // Convert inputs to ttnn tensors
+    auto q_tt = core::from_xtensor(q_xt, &autograd::ctx().get_device());
+    auto k_tt = core::from_xtensor(k_xt, &autograd::ctx().get_device());
+    auto v_tt = core::from_xtensor(v_xt, &autograd::ctx().get_device());
+    auto mask_tt = core::from_xtensor(mask_xt, &autograd::ctx().get_device());
+
+    // --- Intermediate Calculation 1: q_scaled ---
+    auto q_scaled = ttnn::experimental::mul(q_tt, scale);
+    xt::xarray<float> actual_q_scaled = core::to_xtensor(q_scaled);
+    actual_q_scaled.reshape({B, H, S, D});
+    float atol_q_scaled = suggest_atol_rtol("gqa_q_scaled", expected_q_scaled, actual_q_scaled, 0).first;
+    EXPECT_TRUE(atol_q_scaled < 1e-6F);
+
+    // --- Intermediate Calculation 2: qk_masked ---
+    // QK Matmul (uses group_shared_matmul for GQA)
+    ttnn::Tensor qk = ops::group_shared_matmul(q_scaled, k_tt, /*transpose_a=*/false, /*transpose_b=*/true);
+    // Apply additive mask
+    ttnn::Tensor qk_masked = ttnn::add(qk, mask_tt);
+    xt::xarray<float> actual_qk_masked = core::to_xtensor(qk_masked);
+    actual_qk_masked.reshape({B, H, S, S});
+    float atol_qk_masked = suggest_atol_rtol("gqa_qk_masked", expected_qk_masked, actual_qk_masked, 0).first;
+    EXPECT_TRUE(atol_qk_masked < 1e-6F);
+
+    // --- Intermediate Calculation 3: attention_weights ---
+    auto attention_weights = ttnn_fixed::softmax(qk_masked, /* axis */ 3);
+    xt::xarray<float> actual_attn_weights = core::to_xtensor(attention_weights);
+    actual_attn_weights.reshape({B, H, S, S});
+    float atol_attn_weights = suggest_atol_rtol("gqa_attn_weights", expected_attn_weights, actual_attn_weights, 0).first;
+    EXPECT_TRUE(atol_attn_weights < 1e-6F);
+
+    // --- Intermediate Calculation 4: attention_qkv ---
+    // Final Matmul (uses group_shared_matmul for GQA)
+    ttnn::Tensor attention_qkv = ops::group_shared_matmul(attention_weights, v_tt, /*transpose_a=*/false, /*transpose_b=*/false);
+    xt::xarray<float> actual_attn_qkv = core::to_xtensor(attention_qkv);
+    actual_attn_qkv.reshape({B, H, S, D});
+    float atol_attn_qkv = suggest_atol_rtol("gqa_attn_qkv", expected_attn_qkv, actual_attn_qkv, 0).first;
+    EXPECT_TRUE(atol_attn_qkv < 1e-5F);
+}

@@ -629,3 +629,94 @@ np.save(os.path.join(output_dir, "gqa_grad_in.npy"), test2_grad_np)
 np.save(os.path.join(output_dir, "gqa_grad_summed.npy"), test2_sum_result_t.detach().cpu().numpy())
 
 print("Finished saving test data.")
+
+
+## dump sdpa intermediate results
+print("\n--- Generating SDPA Intermediate Test Data ---")
+output_dir = "/home/j/intermediate_results"
+os.makedirs(output_dir, exist_ok=True)
+np.random.seed(44) # Use a different seed
+dtype = np.float32
+scale_factor = 1.0 # Default, will be calculated based on head_dim
+
+# --- MHA Case ---
+print("--- MHA Case ---")
+mha_batch = 1
+mha_heads = 4
+mha_groups = 4 # heads == groups
+mha_seq_len = 16
+mha_head_dim = 32
+mha_scale = 1.0 / np.sqrt(mha_head_dim)
+
+# Generate inputs
+mha_q_np = np.random.randn(mha_batch, mha_heads, mha_seq_len, mha_head_dim).astype(dtype)
+mha_k_np = np.random.randn(mha_batch, mha_groups, mha_seq_len, mha_head_dim).astype(dtype)
+mha_v_np = np.random.randn(mha_batch, mha_groups, mha_seq_len, mha_head_dim).astype(dtype)
+# Additive causal mask (0.0 where allowed, -inf where masked)
+mha_mask_np = np.triu(np.ones((mha_seq_len, mha_seq_len), dtype=dtype) * np.finfo(dtype).min, k=1)
+mha_mask_np = np.broadcast_to(mha_mask_np[None, None, :, :], (mha_batch, 1, mha_seq_len, mha_seq_len))
+
+mha_q_t = torch.tensor(mha_q_np)
+mha_k_t = torch.tensor(mha_k_np)
+mha_v_t = torch.tensor(mha_v_np)
+mha_mask_t = torch.tensor(mha_mask_np)
+
+# Calculate intermediates
+mha_q_scaled_t = mha_q_t * mha_scale
+mha_qk_t = group_shared_matmul(mha_q_scaled_t, mha_k_t, transpose_a=False, transpose_b=True)
+mha_qk_masked_t = mha_qk_t + mha_mask_t # Additive mask
+mha_attn_weights_t = torch.softmax(mha_qk_masked_t, dim=-1)
+mha_attn_qkv_t = group_shared_matmul(mha_attn_weights_t, mha_v_t, transpose_a=False, transpose_b=False)
+
+# Save MHA data
+np.save(os.path.join(output_dir, "sdpa_interm_mha_q.npy"), mha_q_np)
+np.save(os.path.join(output_dir, "sdpa_interm_mha_k.npy"), mha_k_np)
+np.save(os.path.join(output_dir, "sdpa_interm_mha_v.npy"), mha_v_np)
+np.save(os.path.join(output_dir, "sdpa_interm_mha_mask.npy"), mha_mask_np)
+np.save(os.path.join(output_dir, "sdpa_interm_mha_q_scaled.npy"), mha_q_scaled_t.detach().cpu().numpy())
+np.save(os.path.join(output_dir, "sdpa_interm_mha_qk_masked.npy"), mha_qk_masked_t.detach().cpu().numpy())
+np.save(os.path.join(output_dir, "sdpa_interm_mha_attn_weights.npy"), mha_attn_weights_t.detach().cpu().numpy())
+np.save(os.path.join(output_dir, "sdpa_interm_mha_attn_qkv.npy"), mha_attn_qkv_t.detach().cpu().numpy())
+print("Saved MHA intermediate data.")
+
+# --- GQA Case ---
+print("--- GQA Case ---")
+gqa_batch = 1
+gqa_heads = 8
+gqa_groups = 2 # heads > groups
+gqa_seq_len = 16
+gqa_head_dim = 32
+gqa_scale = 1.0 / np.sqrt(gqa_head_dim)
+
+# Generate inputs
+gqa_q_np = np.random.randn(gqa_batch, gqa_heads, gqa_seq_len, gqa_head_dim).astype(dtype)
+gqa_k_np = np.random.randn(gqa_batch, gqa_groups, gqa_seq_len, gqa_head_dim).astype(dtype)
+gqa_v_np = np.random.randn(gqa_batch, gqa_groups, gqa_seq_len, gqa_head_dim).astype(dtype)
+# Additive causal mask
+gqa_mask_np = np.triu(np.ones((gqa_seq_len, gqa_seq_len), dtype=dtype) * np.finfo(dtype).min, k=1)
+gqa_mask_np = np.broadcast_to(gqa_mask_np[None, None, :, :], (gqa_batch, 1, gqa_seq_len, gqa_seq_len))
+
+gqa_q_t = torch.tensor(gqa_q_np)
+gqa_k_t = torch.tensor(gqa_k_np)
+gqa_v_t = torch.tensor(gqa_v_np)
+gqa_mask_t = torch.tensor(gqa_mask_np)
+
+# Calculate intermediates
+gqa_q_scaled_t = gqa_q_t * gqa_scale
+gqa_qk_t = group_shared_matmul(gqa_q_scaled_t, gqa_k_t, transpose_a=False, transpose_b=True)
+gqa_qk_masked_t = gqa_qk_t + gqa_mask_t # Additive mask
+gqa_attn_weights_t = torch.softmax(gqa_qk_masked_t, dim=-1)
+gqa_attn_qkv_t = group_shared_matmul(gqa_attn_weights_t, gqa_v_t, transpose_a=False, transpose_b=False)
+
+# Save GQA data
+np.save(os.path.join(output_dir, "sdpa_interm_gqa_q.npy"), gqa_q_np)
+np.save(os.path.join(output_dir, "sdpa_interm_gqa_k.npy"), gqa_k_np)
+np.save(os.path.join(output_dir, "sdpa_interm_gqa_v.npy"), gqa_v_np)
+np.save(os.path.join(output_dir, "sdpa_interm_gqa_mask.npy"), gqa_mask_np)
+np.save(os.path.join(output_dir, "sdpa_interm_gqa_q_scaled.npy"), gqa_q_scaled_t.detach().cpu().numpy())
+np.save(os.path.join(output_dir, "sdpa_interm_gqa_qk_masked.npy"), gqa_qk_masked_t.detach().cpu().numpy())
+np.save(os.path.join(output_dir, "sdpa_interm_gqa_attn_weights.npy"), gqa_attn_weights_t.detach().cpu().numpy())
+np.save(os.path.join(output_dir, "sdpa_interm_gqa_attn_qkv.npy"), gqa_attn_qkv_t.detach().cpu().numpy())
+print("Saved GQA intermediate data.")
+
+print("Finished generating SDPA intermediate test data.")
