@@ -290,7 +290,14 @@ TEST_F(LlamaTest, ForwardPhases) {
     // Convert the float xtensor to an int xtensor
     xt::xarray<uint32_t> input_ids_xt = xt::cast<uint32_t>(input_ids_float_xt.reshape({1U, 1U, 1U, 32U}));
     fmt::println("input_ids_xt: {}", input_ids_xt);
-    xt::xarray<float> attention_mask_xt = xt::load_npy<float>("/home/j/intermediate_results/test_attention_mask.npy");
+    xt::xarray<float> attention_mask_xt = xt::ones<float>({1, 1, 32, 32});
+    for (int i = 0; i < 32; ++i) {
+        for (int j = 0; j < 32; ++j) {
+            if (j > i) {  // Mask out attention to future positions
+                attention_mask_xt(0, 0, i, j) = 0.0F;
+            }
+        }
+    }
     ttnn::Tensor input_ids_tt = core::from_xtensor<uint32_t, ttnn::DataType::UINT32>(
         input_ids_xt, &autograd::ctx().get_device(), /*layout=*/ttnn::Layout::ROW_MAJOR);
     auto x = autograd::create_tensor(input_ids_tt);
@@ -516,6 +523,16 @@ TEST_F(LlamaTest, Torch_GQA_SDPA_Test) {
     test_v.reshape({B, G, S, D});
     xt::xarray<float> test_mask = xt::load_npy<float>("/home/j/intermediate_results/torch_sdpa_mask.npy");
     test_mask.reshape({B, 1, S, S});
+    // Generate a causal non-additive mask instead of loading from file
+    test_mask = xt::ones<float>({B, 1, S, S});
+
+    for (int i = 0; i < S; ++i) {
+        for (int j = 0; j < S; ++j) {
+            if (j > i) {  // Mask out attention to future positions
+                test_mask(0, 0, i, j) = 0.0F;
+            }
+        }
+    }
     xt::xarray<float> expected_sdpa_res = xt::load_npy<float>("/home/j/intermediate_results/torch_sdpa_res.npy");
     expected_sdpa_res.reshape({B, S, H, D});
 
