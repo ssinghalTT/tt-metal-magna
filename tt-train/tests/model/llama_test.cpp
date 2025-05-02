@@ -46,36 +46,13 @@ TEST_F(LlamaTest, RopeFreqs) {
     auto theta = 10000.0F;
     auto rope_params = ttml::ops::build_rope_params(seq_len, head_dim, theta);
 
-    // fmt::println("First 64 actual cos freqs:");
-    // for (size_t i = 0; i < 64 && i < actual_cos_freqs.shape()[2]; ++i) {
-    //     fmt::print("{} ", actual_cos_freqs(0, 1, i));
-    // }
-    // fmt::println("");
-
-    // fmt::println("First 64 expected sin freqs:");
-    // for (size_t i = 0; i < 64 && i < expected_sin_freqs.shape()[2]; ++i) {
-    //     fmt::print("{} ", expected_sin_freqs(0, 1, i));
-    // }
-    // fmt::println("");
-
-    // fmt::println("First 64 actual sin freqs:");
-    // for (size_t i = 0; i < 64 && i < actual_sin_freqs.shape()[2]; ++i) {
-    //     fmt::print("{} ", actual_sin_freqs(0, 1, i));
-    // }
-    // fmt::println("");
-
-    // EXPECT_TRUE(average_diff_cos < 2e-2F);
-    // EXPECT_TRUE(average_diff_sin < 2e-2F);
     fmt::println("testing overall rope");
     xt::xarray<float> rope_input_xt = xt::load_npy<float>("/home/j/intermediate_results/query_states_before_rope.npy");
-    auto interleave_halves = [&](const xt::xarray<float>& x, int dim = -1) {
-        fmt::println("interleave halves 1");
+    auto interleave_halves = [&](const xt::xarray<float>& x, int dim = -1) -> xt::xarray<float> {
         // Normalize dim to positive
         if (dim < 0) {
             dim += x.dimension();
         }
-        fmt::println("interleave halves 2: dim = {}", dim);
-        fmt::println("interleave halves 3: input shape = {}", x.shape());
 
         size_t d = x.shape()[dim];
         assert(d % 2 == 0 && "hidden dim must be even");
@@ -83,15 +60,11 @@ TEST_F(LlamaTest, RopeFreqs) {
         // Split the array along the specified dimension
         auto a = xt::view(x, xt::all(), xt::all(), xt::all(), xt::range(0, d / 2));
         auto b = xt::view(x, xt::all(), xt::all(), xt::all(), xt::range(d / 2, d));
-        fmt::println("interleave halves 4: shape a = {}, shape b = {}", a.shape(), b.shape());
 
         // Stack and reshape to get interleaved result
         auto stacked = xt::stack(xtuple(a, b), dim + 1);
-        fmt::println("interleave halves 5: stacked shape = {}", stacked.shape());
         auto result_shape = x.shape();
-        fmt::println("interleave halves 6: result shape = {}", result_shape);
         xt::xarray<float> reshaped = xt::reshape_view(stacked, result_shape);
-        fmt::println("interleave halves 7: reshaped shape = {}", reshaped.shape());
         return reshaped;
     };
     fmt::println("interleaving rope input");
@@ -106,22 +79,10 @@ TEST_F(LlamaTest, RopeFreqs) {
     rope_res_xt = rope_res_xt.reshape({1, 32, 32, head_dim});
     auto expected_rope_res = xt::load_npy<float>("/home/j/intermediate_results/query_states_after_rope.npy");
     expected_rope_res = interleave_halves(expected_rope_res, -1);
-    auto average_diff_rope = xt::mean(xt::abs(expected_rope_res - rope_res_xt))();
-    fmt::println("average diff for rope: {}", average_diff_rope);
+    auto max_diff_rope = xt::amax(xt::abs(expected_rope_res - rope_res_xt))();
+    fmt::println("max diff for rope: {}", max_diff_rope);
 
-    for (size_t tok = 0; tok < 32; ++tok) {
-        fmt::print("rope act: ");
-        for (size_t i = 32; i < 64; ++i) {
-            fmt::print("{:8.4f} ", rope_res_xt(0, 0, tok, i));
-        }
-        fmt::print("\n");
-
-        fmt::print("rope exp: ");
-        for (size_t i = 32; i < 64; ++i) {
-            fmt::print("{:8.4f} ", expected_rope_res(0, 0, tok, i));
-        }
-        fmt::print("\n");
-    }
+    EXPECT_TRUE(max_diff_rope < .5F);
 }
 
 template <class E1, class E2>
