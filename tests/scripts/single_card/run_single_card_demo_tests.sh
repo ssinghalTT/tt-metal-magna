@@ -29,6 +29,11 @@ run_segformer_func() {
 
 }
 
+run_sentence_bert_func() {
+  #sentenceBERT
+  WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest -n models/experimental/sentence_bert/demo/demo.py --timeout 600
+}
+
 run_llama3_func() {
   fail=0
 
