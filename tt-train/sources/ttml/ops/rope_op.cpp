@@ -81,6 +81,29 @@ autograd::TensorPtr rope(const autograd::TensorPtr& input, const RotaryEmbedding
     auto num_heads = input_logical_shape[1];
     auto seq_len = input_logical_shape[2];
     auto head_dim = input_logical_shape[3];
+    auto device = &autograd::ctx().get_device();
+
+    auto interleave_halves = [&](const xt::xarray<float>& x, int dim = -1) -> xt::xarray<float> {
+        // Normalize dim to positive
+        if (dim < 0) {
+            dim += x.dimension();
+        }
+
+        size_t d = x.shape()[dim];
+        assert(d % 2 == 0 && "hidden dim must be even");
+
+        // Split the array along the specified dimension
+        auto a = xt::view(x, xt::all(), xt::all(), xt::all(), xt::range(0, d / 2));
+        auto b = xt::view(x, xt::all(), xt::all(), xt::all(), xt::range(d / 2, d));
+
+        // Stack and reshape to get interleaved result
+        auto stacked = xt::stack(xtuple(a, b), dim + 1);
+        auto result_shape = x.shape();
+        xt::xarray<float> reshaped = xt::reshape_view(stacked, result_shape);
+        return reshaped;
+    };
+    xt::xarray<float> input_xt = core::to_xtensor(input_tensor);
+    input_tensor = core::from_xtensor(interleave_halves(input_xt), device);
 
     auto squish_batch = [num_batch, num_heads, seq_len, head_dim](const ttnn::Tensor& input) {
         auto shape = input.get_logical_shape();
@@ -104,6 +127,47 @@ autograd::TensorPtr rope(const autograd::TensorPtr& input, const RotaryEmbedding
         /*memory_config=*/std::nullopt,
         /*compute_kernel_config=*/core::ComputeKernelConfig::precise());
     auto batched_output = unsquish_batch(out_tensor);
+
+    auto deinterleave_halves = [&](const xt::xarray<float>& x, int dim = -1) -> xt::xarray<float> {
+        // Normalize dim to positive index
+        size_t positive_dim = xt::normalize_axis(x.dimension(), dim);
+
+        size_t d = x.shape()[positive_dim];
+        if (d % 2 != 0) {
+            throw std::invalid_argument(
+                fmt::format("Dimension size must be even for deinterleaving. Got {} for dim {}", d, dim));
+        }
+        size_t half_d = d / 2;
+
+        // Create slice vectors for even and odd indices
+        xt::xstrided_slice_vector even_slice(x.dimension());
+        xt::xstrided_slice_vector odd_slice(x.dimension());
+        for (size_t i = 0; i < x.dimension(); ++i) {
+            if (i == positive_dim) {
+                // Even indices: 0, 2, ..., d-2
+                even_slice[i] = xt::range(0, std::ptrdiff_t(d), 2);
+                // Odd indices:  1, 3, ..., d-1
+                odd_slice[i] = xt::range(1, std::ptrdiff_t(d), 2);
+            } else {
+                even_slice[i] = xt::all();
+                odd_slice[i] = xt::all();
+            }
+        }
+
+        // Extract the two halves using views
+        // These views have shape (..., d/2, ...)
+        auto a = xt::eval(xt::strided_view(x, even_slice));  // Elements at even indices
+        auto b = xt::eval(xt::strided_view(x, odd_slice));   // Elements at odd indices
+
+        // Concatenate the halves along the specified dimension
+        // Result shape will be (..., d/2 + d/2, ...) = (..., d, ...)
+        xt::xarray<float> result = xt::concatenate(xtuple(a, b), positive_dim);
+        return result;
+    };
+    xt::xarray<float> out_xt = core::to_xtensor(batched_output);
+    out_xt = deinterleave_halves(out_xt);
+
+    batched_output = core::from_xtensor(out_xt, device);
     auto out = autograd::create_tensor(batched_output);
 
     // In the backward pass we rotate by -θ, so we need negated cos and sin

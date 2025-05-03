@@ -39,6 +39,13 @@ tok_emb_res = tok_emb_res.detach().cpu().numpy()
 
 np.save("/home/j/intermediate_results/test_embedded_tokens_new.npy", tok_emb_res)
 
+# dump first block result
+first_block = hf_model.get_submodule("model.layers.0")
+first_block_res = first_block(torch.tensor(tok_emb_res))
+first_block_res = first_block_res.detach().cpu().numpy()
+
+np.save("/home/j/intermediate_results/expected_first_block_res_new.npy")
+
 
 # testing first qkv projections
 def interleave_halves(x, dim: int = -1) -> torch.Tensor:
@@ -635,15 +642,15 @@ print("Finished saving test data.")
 print("\n--- Generating SDPA Intermediate Test Data ---")
 output_dir = "/home/j/intermediate_results"
 os.makedirs(output_dir, exist_ok=True)
-np.random.seed(44) # Use a different seed
+np.random.seed(44)  # Use a different seed
 dtype = np.float32
-scale_factor = 1.0 # Default, will be calculated based on head_dim
+scale_factor = 1.0  # Default, will be calculated based on head_dim
 
 # --- MHA Case ---
 print("--- MHA Case ---")
 mha_batch = 1
 mha_heads = 4
-mha_groups = 4 # heads == groups
+mha_groups = 4  # heads == groups
 mha_seq_len = 16
 mha_head_dim = 32
 mha_scale = 1.0 / np.sqrt(mha_head_dim)
@@ -664,7 +671,7 @@ mha_mask_t = torch.tensor(mha_mask_np)
 # Calculate intermediates
 mha_q_scaled_t = mha_q_t * mha_scale
 mha_qk_t = group_shared_matmul(mha_q_scaled_t, mha_k_t, transpose_a=False, transpose_b=True)
-mha_qk_masked_t = mha_qk_t + mha_mask_t # Additive mask
+mha_qk_masked_t = mha_qk_t + mha_mask_t  # Additive mask
 mha_attn_weights_t = torch.softmax(mha_qk_masked_t, dim=-1)
 mha_attn_qkv_t = group_shared_matmul(mha_attn_weights_t, mha_v_t, transpose_a=False, transpose_b=False)
 
@@ -683,7 +690,7 @@ print("Saved MHA intermediate data.")
 print("--- GQA Case ---")
 gqa_batch = 1
 gqa_heads = 8
-gqa_groups = 2 # heads > groups
+gqa_groups = 2  # heads > groups
 gqa_seq_len = 16
 gqa_head_dim = 32
 gqa_scale = 1.0 / np.sqrt(gqa_head_dim)
@@ -704,7 +711,7 @@ gqa_mask_t = torch.tensor(gqa_mask_np)
 # Calculate intermediates
 gqa_q_scaled_t = gqa_q_t * gqa_scale
 gqa_qk_t = group_shared_matmul(gqa_q_scaled_t, gqa_k_t, transpose_a=False, transpose_b=True)
-gqa_qk_masked_t = gqa_qk_t + gqa_mask_t # Additive mask
+gqa_qk_masked_t = gqa_qk_t + gqa_mask_t  # Additive mask
 gqa_attn_weights_t = torch.softmax(gqa_qk_masked_t, dim=-1)
 gqa_attn_qkv_t = group_shared_matmul(gqa_attn_weights_t, gqa_v_t, transpose_a=False, transpose_b=False)
 

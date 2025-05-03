@@ -49,66 +49,6 @@ TEST_F(LlamaTest, RopeFreqs) {
 
     fmt::println("testing overall rope");
     xt::xarray<float> rope_input_xt = xt::load_npy<float>("/home/j/intermediate_results/query_states_before_rope.npy");
-    auto interleave_halves = [&](const xt::xarray<float>& x, int dim = -1) -> xt::xarray<float> {
-        // Normalize dim to positive
-        if (dim < 0) {
-            dim += x.dimension();
-        }
-
-        size_t d = x.shape()[dim];
-        assert(d % 2 == 0 && "hidden dim must be even");
-
-        // Split the array along the specified dimension
-        auto a = xt::view(x, xt::all(), xt::all(), xt::all(), xt::range(0, d / 2));
-        auto b = xt::view(x, xt::all(), xt::all(), xt::all(), xt::range(d / 2, d));
-
-        // Stack and reshape to get interleaved result
-        auto stacked = xt::stack(xtuple(a, b), dim + 1);
-        auto result_shape = x.shape();
-        xt::xarray<float> reshaped = xt::reshape_view(stacked, result_shape);
-        return reshaped;
-    };
-    auto deinterleave_halves = [&](const xt::xarray<float>& x, int dim = -1) -> xt::xarray<float> {
-        // Normalize dim to positive index
-        size_t positive_dim = xt::normalize_axis(x.dimension(), dim);
-
-        size_t d = x.shape()[positive_dim];
-        if (d % 2 != 0) {
-            throw std::invalid_argument(
-                fmt::format("Dimension size must be even for deinterleaving. Got {} for dim {}", d, dim));
-        }
-        size_t half_d = d / 2;
-
-        // Create slice vectors for even and odd indices
-        xt::xstrided_slice_vector even_slice(x.dimension());
-        xt::xstrided_slice_vector odd_slice(x.dimension());
-        for (size_t i = 0; i < x.dimension(); ++i) {
-            if (i == positive_dim) {
-                // Even indices: 0, 2, ..., d-2
-                even_slice[i] = xt::range(0, std::ptrdiff_t(d), 2);
-                // Odd indices:  1, 3, ..., d-1
-                odd_slice[i] = xt::range(1, std::ptrdiff_t(d), 2);
-            } else {
-                even_slice[i] = xt::all();
-                odd_slice[i] = xt::all();
-            }
-        }
-
-        // Extract the two halves using views
-        // These views have shape (..., d/2, ...)
-        auto a = xt::eval(xt::strided_view(x, even_slice));  // Elements at even indices
-        auto b = xt::eval(xt::strided_view(x, odd_slice));   // Elements at odd indices
-
-        // Concatenate the halves along the specified dimension
-        // Result shape will be (..., d/2 + d/2, ...) = (..., d, ...)
-        xt::xarray<float> result = xt::concatenate(xtuple(a, b), positive_dim);
-        return result;
-    };
-
-    fmt::println("interleaving rope input");
-    rope_input_xt = interleave_halves(rope_input_xt, -1);
-    fmt::println("interleaved rope input.");
-    fmt::println("rope input shape: {}", rope_input_xt.shape());
     rope_input_xt = rope_input_xt.reshape({1, 32, 32, head_dim});
     auto rope_input =
         autograd::create_tensor(core::from_xtensor(rope_input_xt, &autograd::ctx().get_device(), ttnn::TILE_LAYOUT));
@@ -116,9 +56,7 @@ TEST_F(LlamaTest, RopeFreqs) {
     auto rope_res_xt = core::to_xtensor(rope_res->get_value());
     fmt::println("rope res shape: {}", rope_res_xt.shape());
     rope_res_xt = rope_res_xt.reshape({1, 32, 32, head_dim});
-    rope_res_xt = deinterleave_halves(rope_res_xt, -1);
     auto expected_rope_res = xt::load_npy<float>("/home/j/intermediate_results/query_states_after_rope.npy");
-    // expected_rope_res = interleave_halves(expected_rope_res, -1);
     auto max_diff_rope = xt::amax(xt::abs(expected_rope_res - rope_res_xt))();
     fmt::println("max diff for rope: {}", max_diff_rope);
 
