@@ -39,13 +39,6 @@ tok_emb_res = tok_emb_res.detach().cpu().numpy()
 
 np.save("/home/j/intermediate_results/test_embedded_tokens_new.npy", tok_emb_res)
 
-# dump first block result
-first_block = hf_model.get_submodule("model.layers.0")
-first_block_res = first_block(torch.tensor(tok_emb_res))
-first_block_res = first_block_res.detach().cpu().numpy()
-
-np.save("/home/j/intermediate_results/expected_first_block_res_new.npy")
-
 
 # testing first qkv projections
 def interleave_halves(x, dim: int = -1) -> torch.Tensor:
@@ -173,7 +166,6 @@ class ReturnDebugger(bdb.Bdb):
 def run_and_capture(target_func, entry_callable):
     _, start = inspect.getsourcelines(target_func)
     dbg = ReturnDebugger(target_func)
-    dbg.set_break(target_func.__code__.co_filename, start + 37 - 1)
     dbg.run(entry_callable.__code__, globals(), locals())
     return dbg.results
 
@@ -727,3 +719,52 @@ np.save(os.path.join(output_dir, "sdpa_interm_gqa_attn_qkv.npy"), gqa_attn_qkv_t
 print("Saved GQA intermediate data.")
 
 print("Finished generating SDPA intermediate test data.")
+
+
+input_text = "The capital of Canada is "
+tokenizer = AutoTokenizer.from_pretrained("TinyLlama/TinyLlama_v1.1")
+input_ids = tokenizer.encode(input_text, return_tensors="pt")
+target_length = 32
+current_length = input_ids.shape[1]
+pad_len = target_length - current_length
+if tokenizer.pad_token_id is None:
+    # Common practice for models without a specific pad token
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+    print(f"Tokenizer does not have a pad token, using EOS token ID: {tokenizer.pad_token_id}")
+
+if pad_len > 0:
+    print(f"Padding input_ids from {current_length} to {target_length}")
+    # Assuming padding on the right, which is standard for decoder models
+    padding = torch.full(
+        (input_ids.shape[0], pad_len), tokenizer.pad_token_id, dtype=input_ids.dtype, device=input_ids.device
+    )
+    input_ids = torch.cat([input_ids, padding], dim=1)
+elif pad_len < 0:
+    print(f"Warning: input_ids length ({current_length}) is greater than target length ({target_length}). Truncating.")
+    input_ids = input_ids[:, :target_length]
+
+print("saving first block input ids")
+np.save(os.path.join(output_dir, "first_block_input_embs.npy"), input_ids.detach().cpu().numpy().astype(np.float32))
+
+print(f"Shape of input_ids after padding/truncation: {input_ids.shape}")
+
+target_module = hf_model.get_submodule("model.layers.0")
+target_func = target_module.forward
+
+
+def run_fwd():
+    # Run the model forward pass. Ensure inputs are on the correct device if using GPU.
+    # Assuming hf_model is already on the desired device (e.g., CPU for this example)
+    with torch.no_grad():  # Disable gradient calculation for inference
+        _ = hf_model(input_ids=input_ids)
+
+
+print("Running inference to capture first block state...")
+captured_data = run_and_capture(target_func, run_fwd)
+print("Capture complete.")
+
+first_block_output = captured_data["returns"][0]["locals"]["hidden_states"]
+np.save(
+    os.path.join(output_dir, "expected_first_block_output.npy"),
+    first_block_output.detach().cpu().numpy().astype(np.float32),
+)

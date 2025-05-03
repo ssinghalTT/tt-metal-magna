@@ -268,6 +268,8 @@ TEST_F(LlamaTest, ForwardPhases) {
     EXPECT_TRUE(atol_emb < .25F);
 
     fmt::println("checking first block");
+    xt::xarray<float> first_block_input =
+        xt::load_npy<float>("/home/j/intermediate_results/first_block_input_embs.npy");
     xt::xarray<float> expected_first_block_res =
         xt::load_npy<float>("/home/j/intermediate_results/expected_first_block_output.npy");
     auto first_block = llama_model.blocks[0];
