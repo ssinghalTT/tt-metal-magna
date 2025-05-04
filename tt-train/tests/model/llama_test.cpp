@@ -40,7 +40,7 @@ protected:
     }
 };
 
-TEST_F(LlamaTest, RopeFreqs) {
+TEST_F(LlamaTest, RopeE2E) {
     using namespace ttml;
     auto seq_len = 32;
     auto head_dim = 64;
@@ -50,6 +50,29 @@ TEST_F(LlamaTest, RopeFreqs) {
     fmt::println("testing overall rope");
     xt::xarray<float> rope_input_xt = xt::load_npy<float>("/home/j/intermediate_results/query_states_before_rope.npy");
     rope_input_xt = rope_input_xt.reshape({1, 32, 32, head_dim});
+
+    auto interleave_halves = [&](const xt::xarray<float>& x, int dim = -1) -> xt::xarray<float> {
+        // Normalize dim to positive
+        if (dim < 0) {
+            dim += x.dimension();
+        }
+
+        size_t d = x.shape()[dim];
+        assert(d % 2 == 0 && "hidden dim must be even");
+
+        // Split the array along the specified dimension
+        auto a = xt::view(x, xt::all(), xt::all(), xt::all(), xt::range(0, d / 2));
+        auto b = xt::view(x, xt::all(), xt::all(), xt::all(), xt::range(d / 2, d));
+
+        // Stack and reshape to get interleaved result
+        auto stacked = xt::stack(xtuple(a, b), dim + 1);
+        auto result_shape = x.shape();
+        xt::xarray<float> reshaped = xt::reshape_view(stacked, result_shape);
+        return reshaped;
+    };
+
+    rope_input_xt = interleave_halves(rope_input_xt);
+
     auto rope_input =
         autograd::create_tensor(core::from_xtensor(rope_input_xt, &autograd::ctx().get_device(), ttnn::TILE_LAYOUT));
     auto rope_res = ttml::ops::rope(rope_input, rope_params);
@@ -57,6 +80,8 @@ TEST_F(LlamaTest, RopeFreqs) {
     fmt::println("rope res shape: {}", rope_res_xt.shape());
     rope_res_xt = rope_res_xt.reshape({1, 32, 32, head_dim});
     auto expected_rope_res = xt::load_npy<float>("/home/j/intermediate_results/query_states_after_rope.npy");
+
+    expected_rope_res = interleave_halves(expected_rope_res);
     auto max_diff_rope = xt::amax(xt::abs(expected_rope_res - rope_res_xt))();
     fmt::println("max diff for rope: {}", max_diff_rope);
 
@@ -222,7 +247,7 @@ ttml::models::llama::Llama init_llama(uint32_t seq_len = 32) {
     return llama_model;
 }
 
-TEST_F(LlamaTest, ForwardPhases) {
+TEST_F(LlamaTest, TokenEmbedding) {
     using namespace ttml;
     // Load the float version first
     xt::xarray<float> input_ids_float_xt = xt::load_npy<float>("/home/j/intermediate_results/test_input_tokens.npy");
@@ -252,13 +277,7 @@ TEST_F(LlamaTest, ForwardPhases) {
     if (!tok_emb_casted) {
         throw std::runtime_error("Failed to cast tok_emb to Embedding type.");
     }
-    // Access the m_weight member through the casted pointer
-    auto emb_weight = tok_emb_casted->m_weight->get_value();
-    auto emb_weight_xt = core::to_xtensor(emb_weight);
-    xt::dump_npy("/home/j/intermediate_results/embedding_weight_tt.npy", emb_weight_xt);
-
     auto tok_emb_res = (*tok_emb)(x);
-
     fmt::println("checking tok_emb_res");
     xt::xarray<float> actual_tok_emb_res = core::to_xtensor(tok_emb_res->get_value());
     xt::xarray<float> expected_tok_emb_res =
@@ -266,25 +285,14 @@ TEST_F(LlamaTest, ForwardPhases) {
     expected_tok_emb_res = expected_tok_emb_res.reshape({1U, 1U, 32U, 2048U});
     float atol_emb = suggest_atol_rtol("tok_emb", expected_tok_emb_res, actual_tok_emb_res).first;
     EXPECT_TRUE(atol_emb < .25F);
+}
 
-    fmt::println("checking first block");
-    xt::xarray<float> first_block_input =
-        xt::load_npy<float>("/home/j/intermediate_results/first_block_input_embs.npy");
-    xt::xarray<float> expected_first_block_res =
-        xt::load_npy<float>("/home/j/intermediate_results/expected_first_block_output.npy");
-    auto first_block = llama_model.blocks[0];
-    expected_tok_emb_res = expected_tok_emb_res.reshape({1U, 1U, 32U, 2048U});
-    auto tok_emb_tt = core::from_xtensor(expected_tok_emb_res, &autograd::ctx().get_device());
-    auto tok_emb_ag = autograd::create_tensor(tok_emb_tt);
-    auto actual_first_block_res_tensor = (*first_block)(tok_emb_ag, mask);
-    xt::xarray<float> actual_first_block_res = core::to_xtensor(actual_first_block_res_tensor->get_value());
-    actual_first_block_res = actual_first_block_res.reshape({1U, 32U, 2048U});
-    float atol_first_block = suggest_atol_rtol("first_block", expected_first_block_res, actual_first_block_res).first;
-    EXPECT_TRUE(atol_first_block < .25F);
-
+TEST_F(LlamaTest, MLP) {
+    using namespace ttml;
+    auto llama_model = init_llama(32);
     fmt::println("checking the mlp");
     std::shared_ptr<ttml::modules::LlamaBlock> first_block_ptr =
-        std::dynamic_pointer_cast<ttml::modules::LlamaBlock>(first_block);
+        std::dynamic_pointer_cast<ttml::modules::LlamaBlock>(llama_model.blocks[0]);
     auto mlp = first_block_ptr->m_mlp;
 
     xt::xarray<float> mlp_input_xt = xt::load_npy<float>("/home/j/intermediate_results/mlp_test_input.npy");
@@ -296,16 +304,6 @@ TEST_F(LlamaTest, ForwardPhases) {
     mlp_res_xt = mlp_res_xt.reshape({2048});
     float atol_mlp = suggest_atol_rtol("mlp", expected_mlp_res, mlp_res_xt).first;
     EXPECT_TRUE(atol_mlp < .25F);
-
-    // now checking the self attention module
-    auto attention_norm = first_block_ptr->m_attention_norm;
-    auto attention = first_block_ptr->m_attention;
-    auto attention_res = (*attention_norm)(tok_emb_ag);
-    attention_res = (*attention)(attention_res, mask);
-    xt::xarray<float> attention_res_xt = core::to_xtensor(attention_res->get_value());
-    xt::xarray<float> expected_attention_res = xt::load_npy<float>("/home/j/intermediate_results/self_attn_output.npy");
-    float atol_attention = suggest_atol_rtol("self_attention", expected_attention_res, attention_res_xt).first;
-    EXPECT_TRUE(atol_attention < .25F);
 }
 
 TEST_F(LlamaTest, QProjTest) {
@@ -379,7 +377,7 @@ TEST_F(LlamaTest, AttnNormTest) {
     EXPECT_TRUE(atol_attention_norm < .25F);
 }
 
-TEST_F(LlamaTest, AttnTest) {
+TEST_F(LlamaTest, E2E_AttnTest) {
     using namespace ttml;
     xt::xarray<float> attn_input = xt::load_npy<float>("/home/j/intermediate_results/expected_first_attn_input.npy");
     xt::xarray<float> expected_attention_res =
@@ -388,6 +386,8 @@ TEST_F(LlamaTest, AttnTest) {
     int B = attn_input.shape()[0];
     int S = attn_input.shape()[1];
     int E = attn_input.shape()[2];
+
+    assert(S == 32);
     xt::xarray<float> attn_mask = xt::ones<float>({B, 1, S, S});
     for (int b = 0; b < B; ++b) {
         for (int i = 0; i < 32; ++i) {
@@ -413,7 +413,9 @@ TEST_F(LlamaTest, AttnTest) {
     auto attention_mask_ag = autograd::create_tensor(attention_mask_tt);
     auto attention_res = (*attention)(attention_input_ag, attention_mask_ag);
     xt::xarray<float> attention_res_xt = core::to_xtensor(attention_res->get_value());
-    attention_res_xt = attention_res_xt.reshape({B, S, E});
+
+    // We need to preserve the same shape as the expected result to compare correctly
+    attention_res_xt = attention_res_xt.reshape({B, 1, S, E});
     float atol_attention = suggest_atol_rtol("attention", expected_attention_res, attention_res_xt, 0).first;
     // attention results are very small, so we need to be stricter with the atol.
     EXPECT_TRUE(atol_attention < .1F);

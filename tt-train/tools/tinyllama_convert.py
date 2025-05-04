@@ -266,8 +266,7 @@ def fix_hf_state_dict_for_rope(head_dim=64):
         for key, tensor in loaded_weights.items():
             if any(f"{pfx}.weight" in key or f"{pfx}.bias" in key for pfx in ["q_proj", "k_proj", "v_proj"]):
                 n_heads = tensor.shape[0] // head_dim
-                permuted = tensor  # FIXME: add back in permutes
-                # permuted = unpermute_proj(tensor, n_heads)
+                permuted = unpermute_proj(tensor, n_heads)
                 assert permuted.shape == tensor.shape, "permuted shape doesn't match original projection shape!"
                 converted_dict[key] = permuted
             else:
