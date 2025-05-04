@@ -35,6 +35,13 @@ constexpr uint32_t to_sender_1_pkts_completed_id = 6;
 // receivers updates the reg on this stream
 constexpr uint32_t to_sender_2_pkts_completed_id = 7;
 
+constexpr uint32_t receiver_channel_0_free_slots_stream_id = 12;
+constexpr uint32_t receiver_channel_1_free_slots_stream_id = 14;
+
+// sender_channel_0_slots_written_stream_id defined in edm_fabric_worker_adapters.hpp
+constexpr uint32_t sender_channel_1_free_slots_stream_id = 17;
+constexpr uint32_t sender_channel_2_free_slots_stream_id = 18;
+
 constexpr size_t MAX_NUM_RECEIVER_CHANNELS = 2;
 constexpr size_t MAX_NUM_SENDER_CHANNELS = 3;
 
