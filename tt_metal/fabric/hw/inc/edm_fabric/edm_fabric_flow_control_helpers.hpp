@@ -7,25 +7,12 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "tt_metal/fabric/hw/inc/edm_fabric/named_types.hpp"
+
 #include "tt_metal/hw/inc/utils/utils.h"
 #include "risc_attribs.h"
 
 namespace tt::tt_fabric {
-
-template <typename T, typename Parameter>
-class NamedType {
-public:
-    FORCE_INLINE explicit NamedType(const T& value) : value_(value) {}
-    FORCE_INLINE explicit NamedType(T&& value) : value_(std::move(value)) {}
-    FORCE_INLINE NamedType<T, Parameter>& operator=(const NamedType<T, Parameter>& rhs) = default;
-    FORCE_INLINE T& get() { return value_; }
-    FORCE_INLINE const T& get() const { return value_; }
-    FORCE_INLINE operator T() const { return value_; }
-    FORCE_INLINE operator T&() { return value_; }
-
-private:
-    T value_;
-};
 
 using BufferIndex = NamedType<uint8_t, struct BufferIndexType>;
 using BufferPtr = NamedType<uint8_t, struct BufferPtrType>;
@@ -172,25 +159,27 @@ struct ChannelCounter {
     BufferIndex index{0};
 
     FORCE_INLINE BufferIndex get_buffer_index() const {
-        if constexpr (IS_POW2_NUM_BUFFERS) {
-            return BufferIndex{static_cast<uint8_t>(counter & (NUM_BUFFERS - 1))};
-        } else {
+        // if constexpr (IS_POW2_NUM_BUFFERS) {
+        //     return BufferIndex{static_cast<uint8_t>(counter & (NUM_BUFFERS - 1))};
+        // } else {
             return index;
-        }
+        // }
     }
 
     FORCE_INLINE void increment() {
         counter++;
-        if constexpr (!IS_POW2_NUM_BUFFERS) {
+        // if constexpr (IS_POW2_NUM_BUFFERS) {
             index = BufferIndex{wrap_increment<NUM_BUFFERS>(index.get())};
-        }
+        // } else {
+        //     index = BufferIndex{wrap_increment(index.get(), )};
+        // }
     }
 
     FORCE_INLINE void increment_n(uint32_t n) {
         counter += n;
-        if constexpr (!IS_POW2_NUM_BUFFERS) {
+        // if constexpr (!IS_POW2_NUM_BUFFERS) {
             index = BufferIndex{wrap_increment_n<NUM_BUFFERS>(index.get(), n)};
-        }
+        // }
     }
 
     FORCE_INLINE bool is_caught_up_to(const ChannelCounter& leading_counter) const {
