@@ -382,13 +382,22 @@ TEST_F(LlamaTest, AttnNormTest) {
 TEST_F(LlamaTest, AttnTest) {
     using namespace ttml;
     xt::xarray<float> attn_input = xt::load_npy<float>("/home/j/intermediate_results/expected_first_attn_input.npy");
-    xt::xarray<float> attn_mask = xt::load_npy<float>("/home/j/intermediate_results/expected_first_attn_mask.npy");
     xt::xarray<float> expected_attention_res =
         xt::load_npy<float>("/home/j/intermediate_results/expected_first_attn_output.npy");
 
-    auto B = attn_input.shape()[0];
-    auto S = attn_input.shape()[1];
-    auto E = attn_input.shape()[2];
+    int B = attn_input.shape()[0];
+    int S = attn_input.shape()[1];
+    int E = attn_input.shape()[2];
+    xt::xarray<float> attn_mask = xt::ones<float>({B, 1, S, S});
+    for (int b = 0; b < B; ++b) {
+        for (int i = 0; i < 32; ++i) {
+            for (int j = 0; j < 32; ++j) {
+                if (j > i) {  // Mask out attention to future positions
+                    attn_mask(b, 0, i, j) = 0.0F;
+                }
+            }
+        }
+    }
     attn_input = attn_input.reshape({B, 1, S, E});
     attn_mask = attn_mask.reshape({B, 1, S, S});
     expected_attention_res = expected_attention_res.reshape({B, 1, S, E});
@@ -735,4 +744,32 @@ TEST_F(LlamaTest, SDPA_Intermediates_GQATest) {
     fmt::println("qk_masked_ok: {}", qk_masked_ok);
     fmt::println("attn_weights_ok: {}", attn_weights_ok);
     fmt::println("attn_qkv_ok: {}", attn_qkv_ok);
+}
+
+TEST_F(LlamaTest, FirstBlock) {
+    using namespace ttml;
+    auto llama_model = init_llama();
+    auto device = &autograd::ctx().get_device();
+    xt::xarray<float> attention_mask_xt = xt::ones<float>({1, 1, 32, 32});
+    for (int i = 0; i < 32; ++i) {
+        for (int j = 0; j < 32; ++j) {
+            if (j > i) {  // Mask out attention to future positions
+                attention_mask_xt(0, 0, i, j) = 0.0F;
+            }
+        }
+    }
+    auto attention_mask_ag = autograd::create_tensor(core::from_xtensor(attention_mask_xt, device));
+    xt::xarray<float> first_block_input =
+        xt::load_npy<float>("/home/j/intermediate_results/first_block_input_embs.npy");
+    first_block_input.reshape({1, 1, 32, 2048});
+    xt::xarray<float> expected_first_block_res =
+        xt::load_npy<float>("/home/j/intermediate_results/expected_first_block_output.npy");
+    auto first_block = llama_model.blocks[0];
+    auto input_tt = core::from_xtensor(first_block_input, device);
+    auto tok_emb_ag = autograd::create_tensor(input_tt);
+    auto actual_first_block_res_tensor = (*first_block)(tok_emb_ag, attention_mask_ag);
+    xt::xarray<float> actual_first_block_res = core::to_xtensor(actual_first_block_res_tensor->get_value());
+    actual_first_block_res = actual_first_block_res.reshape({1U, 32U, 2048U});
+    float atol_first_block = suggest_atol_rtol("first_block", expected_first_block_res, actual_first_block_res).first;
+    EXPECT_TRUE(atol_first_block < .25F);
 }

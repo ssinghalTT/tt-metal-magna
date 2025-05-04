@@ -743,8 +743,9 @@ elif pad_len < 0:
     print(f"Warning: input_ids length ({current_length}) is greater than target length ({target_length}). Truncating.")
     input_ids = input_ids[:, :target_length]
 
-print("saving first block input ids")
-np.save(os.path.join(output_dir, "first_block_input_embs.npy"), input_ids.detach().cpu().numpy().astype(np.float32))
+print("saving first block input embs")
+input_embs = emb(input_ids).detach().cpu().numpy().astype(np.float32)
+np.save(os.path.join(output_dir, "first_block_input_embs.npy"), input_embs)
 
 print(f"Shape of input_ids after padding/truncation: {input_ids.shape}")
 
