@@ -332,6 +332,20 @@ void ElfFile::Impl::LoadImage() {
                 TT_THROW("{}: {} section has contents (namespace-scope constructor present?)", path_, name);
             }
         }
+        if ( !(section.sh_flags & SHF_ALLOC) && section.sh_type == SHT_PROGBITS &&
+             std::strcmp(GetName(section), ".phdrs") == 0) {
+            // Specifies phdr size limits
+            auto bytes = GetContents(section);
+            for (unsigned ix = 0, jx = 0; jx != bytes.size(); ix++, jx += sizeof(offset_t)) {
+                offset_t size = 0;
+                for (unsigned kx = sizeof(offset_t); kx--;) {
+                    size = (size << 8) | unsigned(bytes[jx + kx]);
+                }
+                if (ix >= GetSegments().size() || GetSegments()[ix].membytes > size) {
+                    TT_THROW("{}: phdr {} overflows limit of {} bytes", path_, ix, size);
+                }
+            }   
+        }
     }
     if (haveStack) {
         // Remove the stack segment, now we used it for checking the sections.

@@ -19,16 +19,6 @@
 #endif
 
 #if defined(TYPE_FIRMWARE)
-/* Start of the appropriate region. */
-#define DATA_START ORIGIN(REGION_DATA)
-#elif defined(TYPE_KERNEL)
-/* Where firmware ended. */
-#define DATA_START __fw_export_ldm_end
-#else
-#error "Neither TYPE_FIRMARE nor TYPE_KERNEL defined, what am I to be?"
-#endif
-
-#if defined(TYPE_FIRMWARE)
 /* Need separation beteen end of firmware and start of kernel, so that
    they don't share unflushable i$ cache lines.  */
 #if defined(COMPILE_FOR_IERISC) || defined(COMPILE_FOR_SLAVE_IERISC) || defined(COMPILE_FOR_AERISC)
@@ -97,24 +87,19 @@ SECTIONS
 #if defined(TYPE_FIRMWARE)
   __fw_export_end_text = ABSOLUTE(.);
 #if defined(COMPILE_FOR_NCRISC)
+#define KERNEL_ENTRY_SYMBOL _Z11kernel_initm
 #if !defined(NCRISC_FIRMWARE_KERNEL_SPLIT)
   PROVIDE (KERNEL_ENTRY_SYMBOL = ABSOLUTE(__fw_export_end_text));
 #else
   PROVIDE (KERNEL_ENTRY_SYMBOL = MEM_NCRISC_KERNEL_BASE);
 #endif
 #endif
-#endif
-
-#if defined(TYPE_KERNEL)
-  __kernel_init_local_l1_base = ABSOLUTE(.);
-#endif
-
-#if defined(TYPE_FIRMWARE)
-  PROVIDE(__global_pointer$ = ORIGIN(REGION_DATA) + 0x7f0);
-#endif
+  PROVIDE(__global_pointer$ = DATA_START + 0x7f0);
   .data DATA_START :
-#if defined (TYPE_KERNEL)
-        AT(__kernel_data_lma)
+#elif defined(TYPE_KERNEL)
+  __kernel_init_local_l1_base = ABSOLUTE(.);
+  /* Where firmware ended. */
+  .data __fw_export_ldm_end : AT(__kernel_data_lma)
 #endif
 	ALIGN(4)
   {
@@ -136,12 +121,12 @@ SECTIONS
     *(.got.plt) *(.igot.plt) *(.got) *(.igot)
     . = ALIGN(4);
     __ldm_data_end = .;
-  } > REGION_DATA :data
+  } :data
   .empty.ctors.dtors :
   {
     /* We don't use .ctors/.dtors either (this still isn't the '90s), make sure there aren't any.  */
     KEEP (*(.ctors .ctors.* .dtors .dtors.*))
-  } > REGION_DATA :data
+  } :data
   .empty.init_array.fini_array :
   {
     /* We don't support global static constructors or destructors. make sure there aren't any.  */
@@ -150,7 +135,7 @@ SECTIONS
     KEEP (*(.init_array))
     KEEP (*(SORT_BY_INIT_PRIORITY(.fini_array.*)))
     KEEP (*(.fini_array))
-  } > REGION_DATA :data
+  } :data
   .bss : ALIGN(4)
   {
     __ldm_bss_start = .;
@@ -163,7 +148,7 @@ SECTIONS
     *(COMMON)
     . = ALIGN(4);
     __ldm_bss_end = .;
-  } > REGION_DATA :data
+  } :data
 
 #ifdef TYPE_FIRMWARE
   . = ALIGN(ABSOLUTE(.), MEM_ALIGN);
@@ -171,12 +156,28 @@ SECTIONS
 #endif
 
 #ifdef TYPE_FIRMWARE
-  .stack :
+  .stack STACK_TOP - STACK_SIZE :
   {
-   . += FIRMWARE_STACK_SIZE;
+   . += STACK_SIZE;
     __stack_top = .;
-  } > REGION_STACK :stack
+  } :stack
 #endif
+
+  /* The loader uses this data to check for size overflows.
+     We don't do it here, as the failure mode would be bad.  */
+  .phdrs 0 (INFO) :
+  {
+    LONG(LENGTH(REGION_CODE)
+#if defined(TYPE_KERNEL)
+         - (__fw_export_end_text - ORIGIN(REGION_CODE))
+#endif
+         )
+    LONG(DATA_START
+#if defined(TYPE_KERNEL)
+         - (__fw_export_ldm_end - DATA_START)
+#endif
+         )
+  }
 
   .riscv.attributes 0 : { *(.riscv.attributes) } :attributes
 
