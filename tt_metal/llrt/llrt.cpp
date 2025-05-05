@@ -277,6 +277,48 @@ void wait_until_cores_done(
     }
 }
 
+void send_msg_to_eth_mailbox(
+    chip_id_t device_id, const CoreCoord& core, uint32_t msg_type, uint32_t msg_value, bool wait_for_ack) {
+    bool is_eth_core = tt::tt_metal::MetalContext::instance().get_cluster().is_ethernet_core(core, device_id);
+    TT_ASSERT(is_eth_core, "target core for send_msg_to_eth_mailbox must be an ethernet core");
+    const auto& hal = tt::tt_metal::MetalContext::instance().hal();
+    uint32_t mailbox_addr =
+        hal.get_dev_addr(tt_metal::HalProgrammableCoreType::ACTIVE_ETH, tt_metal::HalL1MemAddrType::ETH_FW_MAILBOX_MSG);
+    uint32_t arg0 = hal.get_dev_addr(
+        tt_metal::HalProgrammableCoreType::ACTIVE_ETH, tt_metal::HalL1MemAddrType::ETH_FW_MAILBOX_ARG0);
+    // Noop
+    if (mailbox_addr == 0) {
+        return;
+    }
+
+    // Check mailbox is free
+    // It's free if the message is 0 or ETH_MSG_DONE
+    constexpr uint32_t no_message = 0;
+    uint32_t done_message =
+        hal.get_fw_mailbox_msg(tt_metal::HalProgrammableCoreType::ACTIVE_ETH, tt_metal::FWMailboxMsg::ETH_MSG_DONE);
+
+    std::cout << "Checking mailbox is free" << std::endl;
+    auto wait_for_mailbox_done = [&]() {
+        while (true) {
+            uint32_t mailbox_msg_val = read_hex_vec_from_core(device_id, core, mailbox_addr, sizeof(uint32_t))[0];
+            if (mailbox_msg_val == no_message || mailbox_msg_val == done_message) {
+                break;
+            }
+        }
+    };
+    wait_for_mailbox_done();
+    std::cout << "Mailbox is free. Now writing to mailbox" << std::endl;
+
+    // Write to mailbox
+    // Args need to be written first
+    write_hex_vec_to_core(device_id, core, {msg_value}, arg0, true);
+    write_hex_vec_to_core(device_id, core, {msg_type}, mailbox_addr, true);
+
+    // Wait for ack
+    wait_for_mailbox_done();
+    std::cout << "Mailbox ack received" << std::endl;
+}
+
 }  // namespace internal_
 
 }  // namespace llrt

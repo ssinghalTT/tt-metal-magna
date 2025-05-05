@@ -29,6 +29,22 @@ enum class ARCH;
 
 namespace tt_metal {
 
+// Firmware mailbox messages
+enum class FWMailboxMsg : uint8_t {
+    // Execute message
+    ETH_MSG_CALL,
+    // Indicates message processed
+    ETH_MSG_DONE,
+    // Run link status check
+    // arg0: copy_addr, arg1: unused, arg2: unused
+    ETH_MSG_LINK_STATUS_CHECK,
+    // Execute function from the core
+    // arg0: L1 addr of function, arg1: unused, arg2: unused
+    ETH_MSG_RELEASE_CORE,
+    // Number of mailbox message types
+    COUNT,
+};
+
 // Note: nsidwell will be removing need for fw_base_addr and local_init_addr
 // fw_launch_addr is programmed with fw_launch_addr_value on the master risc
 // of a given progammable core to start FW.
@@ -53,6 +69,7 @@ private:
     std::vector<std::vector<HalJitBuildConfig>> processor_classes_;
     std::vector<DeviceAddr> mem_map_bases_;
     std::vector<uint32_t> mem_map_sizes_;
+    std::vector<uint32_t> fw_mailbox_msgs_;
     bool supports_cbs_ = false;
     bool supports_receiving_multicast_cmds_ = false;
 
@@ -63,6 +80,7 @@ public:
         const std::vector<std::vector<HalJitBuildConfig>>& processor_classes,
         const std::vector<DeviceAddr>& mem_map_bases,
         const std::vector<uint32_t>& mem_map_sizes,
+        const std::vector<uint32_t>& fw_mailbox_msgs,
         bool supports_cbs,
         bool supports_receiving_multicast_cmds);
 
@@ -207,6 +225,7 @@ public:
     std::uint32_t get_virtual_worker_start_x() const { return this->virtual_worker_start_x_; }
     std::uint32_t get_virtual_worker_start_y() const { return this->virtual_worker_start_y_; }
     bool get_eth_fw_is_cooperative() const { return this->eth_fw_is_cooperative_; }
+    uint32_t get_fw_mailbox_msg(HalProgrammableCoreType programmable_core_type, FWMailboxMsg msg) const;
     const std::unordered_set<AddressableCoreType>& get_virtualized_core_types() const {
         return this->virtualized_core_types_;
     }
@@ -314,6 +333,13 @@ inline T Hal::get_dev_addr(uint32_t programmable_core_type_index, HalL1MemAddrTy
           addr_type == HalL1MemAddrType::UNRESERVED),
         "Attempting to read addr of unreserved memory");
     return this->core_info_[programmable_core_type_index].get_dev_addr<T>(addr_type);
+}
+
+inline uint32_t Hal::get_fw_mailbox_msg(HalProgrammableCoreType programmable_core_type, FWMailboxMsg msg) const {
+    uint32_t index = utils::underlying_type<HalProgrammableCoreType>(programmable_core_type);
+    TT_ASSERT(index < this->core_info_.size());
+    TT_ASSERT(msg < FWMailboxMsg::COUNT);
+    return this->core_info_[index].fw_mailbox_msgs_[utils::underlying_type<FWMailboxMsg>(msg)];
 }
 
 inline uint32_t Hal::get_dev_size(HalProgrammableCoreType programmable_core_type, HalL1MemAddrType addr_type) const {

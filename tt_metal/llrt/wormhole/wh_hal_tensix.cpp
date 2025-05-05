@@ -26,7 +26,7 @@ HalCoreInfoType create_tensix_mem_map() {
     std::vector<DeviceAddr> mem_map_bases;
     const uint32_t default_l1_kernel_config_size = 69 * 1024;
 
-    mem_map_bases.resize(static_cast<std::size_t>(HalL1MemAddrType::COUNT));
+    mem_map_bases.resize(static_cast<std::size_t>(HalL1MemAddrType::COUNT), 0);
     mem_map_bases[static_cast<std::size_t>(HalL1MemAddrType::BASE)] = MEM_L1_BASE;
     mem_map_bases[static_cast<std::size_t>(HalL1MemAddrType::BARRIER)] = MEM_L1_BARRIER;
     mem_map_bases[static_cast<std::size_t>(HalL1MemAddrType::MAILBOX)] = MEM_MAILBOX_BASE;
@@ -45,7 +45,7 @@ HalCoreInfoType create_tensix_mem_map() {
         ((MEM_MAP_END + default_l1_kernel_config_size - 1) | (max_alignment - 1)) + 1;
 
     std::vector<uint32_t> mem_map_sizes;
-    mem_map_sizes.resize(static_cast<std::size_t>(HalL1MemAddrType::COUNT));
+    mem_map_sizes.resize(static_cast<std::size_t>(HalL1MemAddrType::COUNT), 0);
     mem_map_sizes[static_cast<std::size_t>(HalL1MemAddrType::BASE)] = MEM_L1_SIZE;
     mem_map_sizes[static_cast<std::size_t>(HalL1MemAddrType::BARRIER)] = sizeof(std::uint32_t);
     mem_map_sizes[static_cast<std::size_t>(HalL1MemAddrType::MAILBOX)] = MEM_MAILBOX_SIZE;
@@ -120,6 +120,9 @@ HalCoreInfoType create_tensix_mem_map() {
         }
         processor_classes[processor_class_idx] = processor_types;
     }
+
+    std::vector<uint32_t> fw_mailbox_addr(static_cast<std::size_t>(FWMailboxMsg::COUNT), 0);
+
     constexpr uint32_t mailbox_size =
         sizeof(mailboxes_t) - sizeof(profiler_msg_t::buffer) +
         sizeof(profiler_msg_t::buffer) / PROFILER_RISC_COUNT * static_cast<uint8_t>(TensixProcessorTypes::COUNT);
@@ -130,6 +133,7 @@ HalCoreInfoType create_tensix_mem_map() {
         processor_classes,
         mem_map_bases,
         mem_map_sizes,
+        fw_mailbox_addr,
         true /*supports_cbs*/,
         true /*supports_receiving_multicast_cmds*/};
 }

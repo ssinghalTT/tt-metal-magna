@@ -111,6 +111,9 @@ namespace internal_ {
 void wait_until_cores_done(
     chip_id_t device_id, int run_state, std::unordered_set<CoreCoord>& not_done_phys_cores, int timeout_ms = 0);
 
+void send_msg_to_eth_mailbox(
+    chip_id_t device_id, const CoreCoord& core, uint32_t msg_type, uint32_t msg_value, bool wait_for_ack = true);
+
 }  // namespace internal_
 
 }  // namespace llrt

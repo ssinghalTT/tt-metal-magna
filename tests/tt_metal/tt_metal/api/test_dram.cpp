@@ -268,7 +268,7 @@ TEST_F(DispatchFixture, TensixDRAMLoopbackSingleCoreDB) {
     }
 }
 
-TEST_F(DispatchFixture, ActiveEthDRAMLoopbackSingleCore) {
+TEST_F(DispatchFixture, ActiveEthDM0DRAMLoopbackSingleCore) {
     constexpr uint32_t buffer_size = 2 * 1024 * 25;
 
     if (!this->IsSlowDispatch()) {
@@ -288,14 +288,45 @@ TEST_F(DispatchFixture, ActiveEthDRAMLoopbackSingleCore) {
 
     for (unsigned int id = 0; id < devices_.size(); id++) {
         for (auto active_eth_core : devices_.at(id)->get_active_ethernet_cores(true)) {
-            tt::log_info("Active Eth Loopback. Logical core {}", active_eth_core.str());
+            tt::log_info("Active Eth Loopback (DM0). Logical core {}", active_eth_core.str());
             dram_test_config.core_range = {active_eth_core, active_eth_core};
             ASSERT_TRUE(unit_tests_common::dram::test_dram::dram_single_core(this, devices_.at(id), dram_test_config));
         }
     }
 }
 
-TEST_F(DispatchFixture, IdleEthDRAMLoopbackSingleCore) {
+TEST_F(DispatchFixture, ActiveEthDM1DRAMLoopbackSingleCore) {
+    constexpr uint32_t buffer_size = 2 * 1024 * 25;
+
+    if (!this->IsSlowDispatch()) {
+        tt::log_info(tt::LogTest, "This test is only supported in slow dispatch mode");
+        GTEST_SKIP();
+    }
+
+    unit_tests_common::dram::test_dram::DRAMConfig dram_test_config = {
+        .core_range = {{0, 0}, {0, 0}},
+        .kernel_file = "tests/tt_metal/tt_metal/test_kernels/dataflow/dram_copy.cpp",
+        .dram_buffer_size = buffer_size,
+        .l1_buffer_addr = tt::align(
+            tt::tt_metal::hal::get_erisc_l1_unreserved_base(),
+            MetalContext::instance().hal().get_alignment(HalMemType::DRAM)),
+        .kernel_cfg =
+            tt_metal::EthernetConfig{
+                .eth_mode = Eth::RECEIVER,
+                .noc = tt_metal::NOC::NOC_0,
+                .processor = tt::tt_metal::DataMovementProcessor::RISCV_1},
+    };
+
+    for (unsigned int id = 0; id < devices_.size(); id++) {
+        for (auto active_eth_core : devices_.at(id)->get_active_ethernet_cores(true)) {
+            tt::log_info("Active Eth Loopback (DM1). Logical core {}", active_eth_core.str());
+            dram_test_config.core_range = {active_eth_core, active_eth_core};
+            ASSERT_TRUE(unit_tests_common::dram::test_dram::dram_single_core(this, devices_.at(id), dram_test_config));
+        }
+    }
+}
+
+TEST_F(DispatchFixture, IdleEthDM0DRAMLoopbackSingleCore) {
     constexpr uint32_t buffer_size = 2 * 1024 * 25;
 
     if (!this->IsSlowDispatch()) {
@@ -310,12 +341,43 @@ TEST_F(DispatchFixture, IdleEthDRAMLoopbackSingleCore) {
         .l1_buffer_addr = tt::align(
             tt::tt_metal::hal::get_erisc_l1_unreserved_base(),
             MetalContext::instance().hal().get_alignment(HalMemType::DRAM)),
-        .kernel_cfg = tt_metal::EthernetConfig{.eth_mode = Eth::IDLE, .noc = tt_metal::NOC::NOC_0},
+        .kernel_cfg =
+            tt_metal::EthernetConfig{
+                .eth_mode = Eth::IDLE, .noc = tt_metal::NOC::NOC_0, .processor = DataMovementProcessor::RISCV_1},
     };
 
     for (unsigned int id = 0; id < devices_.size(); id++) {
         for (auto idle_eth_core : devices_.at(id)->get_inactive_ethernet_cores()) {
-            tt::log_info("Single Idle Eth Loopback. Logical core {}", idle_eth_core.str());
+            tt::log_info("Single Idle Eth Loopback (DM0). Logical core {}", idle_eth_core.str());
+            dram_test_config.core_range = {idle_eth_core, idle_eth_core};
+            unit_tests_common::dram::test_dram::dram_single_core(this, devices_.at(id), dram_test_config);
+        }
+    }
+}
+
+TEST_F(DispatchFixture, IdleEthDM1DRAMLoopbackSingleCore) {
+    constexpr uint32_t buffer_size = 2 * 1024 * 25;
+
+    if (!this->IsSlowDispatch()) {
+        tt::log_info(tt::LogTest, "This test is only supported in slow dispatch mode");
+        GTEST_SKIP();
+    }
+
+    unit_tests_common::dram::test_dram::DRAMConfig dram_test_config = {
+        .core_range = {{0, 0}, {0, 0}},  // Set below
+        .kernel_file = "tests/tt_metal/tt_metal/test_kernels/dataflow/dram_copy.cpp",
+        .dram_buffer_size = buffer_size,
+        .l1_buffer_addr = tt::align(
+            tt::tt_metal::hal::get_erisc_l1_unreserved_base(),
+            MetalContext::instance().hal().get_alignment(HalMemType::DRAM)),
+        .kernel_cfg =
+            tt_metal::EthernetConfig{
+                .eth_mode = Eth::IDLE, .noc = tt_metal::NOC::NOC_0, .processor = DataMovementProcessor::RISCV_1},
+    };
+
+    for (unsigned int id = 0; id < devices_.size(); id++) {
+        for (auto idle_eth_core : devices_.at(id)->get_inactive_ethernet_cores()) {
+            tt::log_info("Single Idle Eth Loopback (DM1). Logical core {}", idle_eth_core.str());
             dram_test_config.core_range = {idle_eth_core, idle_eth_core};
             unit_tests_common::dram::test_dram::dram_single_core(this, devices_.at(id), dram_test_config);
         }

@@ -536,16 +536,6 @@ void Device::initialize_firmware(const HalProgrammableCoreType &core_type, CoreC
         case HalProgrammableCoreType::ACTIVE_ETH:
         case HalProgrammableCoreType::IDLE_ETH: {
             bool is_idle_eth = core_type == HalProgrammableCoreType::IDLE_ETH;
-            TensixSoftResetOptions reset_val = TENSIX_ASSERT_SOFT_RESET;
-            if (not is_idle_eth) {
-                reset_val =
-                    reset_val & static_cast<TensixSoftResetOptions>(
-                                    ~std::underlying_type<TensixSoftResetOptions>::type(TensixSoftResetOptions::BRISC));
-            }
-            if (is_idle_eth or !hal.get_eth_fw_is_cooperative()) {
-                tt::tt_metal::MetalContext::instance().get_cluster().assert_risc_reset_at_core(
-                    tt_cxy_pair(this->id(), virtual_core), reset_val);
-            }
             if (not rtoptions.get_skip_loading_fw()) {
                 for (uint32_t processor_class = 0; processor_class < processor_class_count; processor_class++) {
                     auto num_build_states = hal.get_processor_types_count(core_type_idx, processor_class);
@@ -928,8 +918,7 @@ void Device::initialize_and_launch_firmware() {
             hal.get_dev_addr(HalProgrammableCoreType::ACTIVE_ETH, HalL1MemAddrType::APP_SYNC_INFO));
     }
 
-    // Load erisc app base FW to eth cores on WH and active_erisc FW on second risc of BH active eth cores
-    std::unordered_set<CoreCoord> active_eth_cores;
+    // Load erisc app base FW to eth cores on WH and active_erisc + slave_active_erisc FW on DM0 of BH active eth cores
     for (const auto &eth_core : this->get_active_ethernet_cores()) {
         CoreCoord phys_eth_core = this->ethernet_core_from_logical_core(eth_core);
         core_info->absolute_logical_x = eth_core.x;
@@ -938,11 +927,11 @@ void Device::initialize_and_launch_firmware() {
             this->id(), phys_eth_core, core_info_vec, this->get_dev_addr(phys_eth_core, HalL1MemAddrType::CORE_INFO));
         this->initialize_firmware(HalProgrammableCoreType::ACTIVE_ETH, phys_eth_core, &launch_msg, &go_msg);
         if (!hal.get_eth_fw_is_cooperative()) {
-            active_eth_cores.insert(phys_eth_core);
             not_done_cores.insert(phys_eth_core);
         }
     }
 
+    // Similar to above, but for idle_erisc
     for (const auto &eth_core : this->get_inactive_ethernet_cores()) {
         CoreCoord phys_eth_core = this->ethernet_core_from_logical_core(eth_core);
         core_info->absolute_logical_x = eth_core.x;
@@ -957,18 +946,9 @@ void Device::initialize_and_launch_firmware() {
     tt::tt_metal::MetalContext::instance().get_cluster().l1_barrier(this->id());
 
     // Deassert worker cores
-    TensixSoftResetOptions reset_val;
     for (const auto& worker_core : not_done_cores) {
-        if (active_eth_cores.find(worker_core) != active_eth_cores.end()) {
-            // bit 12 needs to be deasserted to run second erisc on BH
-            reset_val = TENSIX_DEASSERT_SOFT_RESET &
-                        static_cast<TensixSoftResetOptions>(
-                            ~std::underlying_type<TensixSoftResetOptions>::type(TensixSoftResetOptions::TRISC0));
-        } else {
-            reset_val = TENSIX_DEASSERT_SOFT_RESET;
-        }
         tt::tt_metal::MetalContext::instance().get_cluster().deassert_risc_reset_at_core(
-            tt_cxy_pair(this->id(), worker_core), reset_val);
+            tt_cxy_pair(this->id(), worker_core));
     }
 
     // Wait until fw init is done, ensures the next launch msg doesn't get
@@ -1302,12 +1282,8 @@ bool Device::close() {
     if (!MetalContext::instance().hal().get_eth_fw_is_cooperative()) {
         for (const auto& eth_core : this->get_active_ethernet_cores()) {
             CoreCoord virtual_eth_core = this->ethernet_core_from_logical_core(eth_core);
-            TensixSoftResetOptions reset_val =
-                TENSIX_ASSERT_SOFT_RESET &
-                static_cast<TensixSoftResetOptions>(
-                    ~std::underlying_type<TensixSoftResetOptions>::type(TensixSoftResetOptions::BRISC));
             tt::tt_metal::MetalContext::instance().get_cluster().assert_risc_reset_at_core(
-                tt_cxy_pair(this->id(), virtual_eth_core), reset_val);
+                tt_cxy_pair(this->id(), virtual_eth_core));
         }
     }
 
