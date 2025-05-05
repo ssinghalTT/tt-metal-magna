@@ -101,15 +101,6 @@ TEST_F(ControlPlaneFixture, TestQuantaGalaxyControlPlaneInit) {
     control_plane->configure_routing_tables_for_fabric_ethernet_channels();
 }
 
-TEST_F(ControlPlaneFixture, TestDualGalaxyControlPlaneInit) {
-    tt::tt_metal::detail::InitializeFabricConfig(tt::tt_metal::FabricConfig::FABRIC_2D);
-    const std::filesystem::path dual_galaxy_mesh_graph_desc_path =
-        std::filesystem::path(tt::tt_metal::MetalContext::instance().rtoptions().get_root_dir()) /
-        "tt_metal/fabric/mesh_graph_descriptors/dual_galaxy_mesh_graph_descriptor.yaml";
-    auto control_plane = std::make_unique<ControlPlane>(dual_galaxy_mesh_graph_desc_path.string());
-    control_plane->configure_routing_tables_for_fabric_ethernet_channels();
-}
-
 TEST_F(ControlPlaneFixture, TestQuantaGalaxyMeshAPIs) {
     const auto control_plane = tt::tt_metal::MetalContext::instance().get_cluster().get_control_plane();
     auto user_meshes = control_plane->get_user_physical_mesh_ids();

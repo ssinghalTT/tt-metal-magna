@@ -205,8 +205,8 @@ void MeshGraph::initialize_from_yaml(const std::string& mesh_graph_desc_file_pat
         this->mesh_shapes_[mesh_id] = {mesh_ns_size, mesh_ew_size};
 
         // Fill in host mapping for Mesh
-        this->mesh_host_shapes_[mesh_id] =
-            tt_metal::distributed::MeshShape(mesh["host"][1].as<std::uint32_t>(), mesh["host"][0].as<std::uint32_t>());
+        this->mesh_host_shapes_[mesh_id] = tt_metal::distributed::MeshShape(
+            mesh["host_mapping"][1].as<std::uint32_t>(), mesh["host_mapping"][0].as<std::uint32_t>());
 
         // Fill in connectivity for Mesh
         this->intra_mesh_connectivity_[mesh_id].resize(mesh_size);

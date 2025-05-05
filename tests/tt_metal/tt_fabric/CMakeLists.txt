@@ -1,10 +1,13 @@
 set(UNIT_TESTS_FABRIC_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/fabric_router/test_routing_tables.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/fabric_router/test_multi_host.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/fabric_data_movement/test_basic_fabric_apis.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/fabric_data_movement/test_basic_1d_fabric.cpp
 )
 
 add_executable(fabric_unit_tests ${UNIT_TESTS_FABRIC_SRC})
+
+find_package(MPI REQUIRED)
 
 target_link_libraries(
     fabric_unit_tests
@@ -12,6 +15,7 @@ target_link_libraries(
         tt_metal
         fabric
         test_common_libs
+        MPI::MPI_CXX
 )
 
 target_include_directories(

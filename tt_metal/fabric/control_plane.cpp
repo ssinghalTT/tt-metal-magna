@@ -13,6 +13,7 @@
 #include <map>
 #include <memory>
 #include <ostream>
+#include <mpi.h>
 #include <queue>
 #include <set>
 #include <string>

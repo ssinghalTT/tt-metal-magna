@@ -35,6 +35,8 @@ target_sources(
 
 target_include_directories(fabric PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
+find_package(MPI REQUIRED)
+
 target_link_libraries(
     fabric
     PRIVATE
@@ -46,6 +48,7 @@ target_link_libraries(
         yaml-cpp::yaml-cpp
         Metalium::Metal::Impl
         TT::Metalium::HostDevCommon
+        MPI::MPI_CXX
 )
 
 target_precompile_headers(
