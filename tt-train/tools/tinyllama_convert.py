@@ -22,6 +22,102 @@ import re
 
 msgpack_numpy.patch()
 
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "-i",
+    "--input_path",
+    type=str,
+    default="data/tinyllama_init.msgpack",
+    help="Path to the dumped original weights file",
+)
+parser.add_argument(
+    "-o", "--output_path", type=str, default="data/tinyllama_exported.msgpack", help="Path to the output weights file"
+)
+parser.add_argument("--hf_model", type=str, default="TinyLlama/TinyLlama_v1.1", help="name of the HF model")
+parser.add_argument(
+    "--meta_style", action="store_true", help="The model is in the Meta style (QKV projections have dims interleaved.)"
+)
+parser.set_defaults(meta_style=False)
+
+hf_model = AutoModelForCausalLM.from_pretrained(parser.parse_args().hf_model)
+args = parser.parse_args()
+
+
+def fix_hf_state_dict_for_rope(head_dim=64):
+    def unpermute_proj(w: np.ndarray, n_heads: int = 32) -> np.ndarray:
+        """
+        Permutes the rows of the weight matrix `w` based on head structure using NumPy.
+        Assuming `w` has `R` rows and `n_heads`, it divides the rows into `n_heads`
+        chunks of size `D = R // n_heads`. Within each chunk, it interleaves the
+        first `D // 2` rows with the second `D // 2` rows.
+
+        Example: If a chunk has rows [r0, r1, r2, r3] (D=4), the output order for
+        that chunk will be [r0, r2, r1, r3].
+
+        This is intended to convert Hugging Face projection weights (Q/K) to a
+        layout compatible with Meta-style interleaved RoPE application.
+
+        Args:
+            w: Input weight matrix (NumPy array), shape [R, C]. Typically [dim, dim].
+            n_heads: Number of heads corresponding to the rows R.
+
+        Returns:
+            np.ndarray: The permuted weight matrix with the same shape as `w`.
+        """
+        if type(w) is not np.ndarray:
+            w = w.cpu().numpy()
+        R, C = w.shape  # R = dim (e.g., hidden_size)
+        D = R // n_heads  # D = head_dim
+        assert R % n_heads == 0, "Number of rows R must be divisible by n_heads."
+        assert D % 2 == 0, "Rows per head (D) must be even."
+
+        # Reshape the row dimension R into (n_heads, 2, D // 2).
+        # The dimension of size 2 separates the first half of rows (index 0)
+        # and the second half of rows (index 1) within each D-sized chunk.
+        # Shape becomes: [n_heads, 2, D // 2, C]
+        w_reshaped = w.reshape(n_heads, 2, D // 2, C)
+
+        # Transpose the 'half' dimension (axis 1) and the 'index within half'
+        # dimension (axis 2).
+        # Shape becomes: [n_heads, D // 2, 2, C]
+        # For head `h` and index `i` (0..D//2-1):
+        # - w_transposed[h, i, 0, :] contains original row `h*D + i` (from 1st half)
+        # - w_transposed[h, i, 1, :] contains original row `h*D + D//2 + i` (from 2nd half)
+        w_transposed = w_reshaped.transpose(0, 2, 1, 3)  # Swap axes 1 and 2
+
+        # Reshape back to [R, C] by flattening the first three dimensions (h, i, k).
+        # The new row index `r_new = h*D + i*2 + k`.
+        # - For k=0 (even indices): `r_new = h*D + 2*i`, gets data from original row `h*D + i`.
+        # - For k=1 (odd indices): `r_new = h*D + 2*i + 1`, gets data from original row `h*D + D//2 + i`.
+        # This creates the interleaved order: [row 0, row D/2, row 1, row D/2+1, ...] for each chunk.
+        w_interleaved = w_transposed.reshape(R, C)
+
+        return w_interleaved
+
+    def convert_hf_qkv_to_meta_format(loaded_weights, head_dim):
+        """Convert HuggingFace QKV weights to Meta format for RoPE compatibility."""
+        converted_dict = {}
+        for key, tensor in loaded_weights.items():
+            if any(f"{pfx}.weight" in key or f"{pfx}.bias" in key for pfx in ["q_proj", "k_proj"]):
+                print(f"Permuting {key}")
+                n_heads = tensor.shape[0] // head_dim
+                permuted = unpermute_proj(tensor, n_heads)
+                assert permuted.shape == tensor.shape, "permuted shape doesn't match original projection shape!"
+                converted_dict[key] = permuted
+            else:
+                converted_dict[key] = tensor
+        return converted_dict
+
+    return convert_hf_qkv_to_meta_format(hf_model.state_dict(), head_dim)
+
+
+if not args.meta_style:
+    print("Using interleaved state dict")
+    hf_state_dict = fix_hf_state_dict_for_rope(hf_model.config.head_dim)
+else:
+    print("Using non-interleaved state dict")
+    hf_state_dict = hf_model.state_dict()
+
 
 def tt_to_hf_key(key: str) -> str | List[str] | None:
     non_block_map = {
@@ -177,10 +273,16 @@ def import_hf_weights(init_state: Dict[str, Any], hf_model_config, hf_state_dict
             emb_dim = hf_model_config.hidden_size
 
             if not all(p.shape == (hf_model_config.num_key_value_heads * head_dim, emb_dim) for p in hf_values):
-                import ipdb
-
-                ipdb.set_trace()
                 raise ValueError(f"Mismatch in shape for {key}: {hf_values[0].shape} vs. {init_shapes[key]}(tt)")
+            if "kv" in key:
+                transformed_v_weight = hf_values[1]
+                layer_num = re.match(r"llama/llama/llama_block_(\d+)/(.*)", key).group(1)
+                # check that there was no change to the v_proj weight
+                assert np.allclose(
+                    transformed_v_weight, hf_model.state_dict()[f"model.layers.{layer_num}.self_attn.v_proj.weight"]
+                )
+
+            # print(f"{key} <- {hf_key[0]} + {hf_key[1]} @ -2: {hf_values[0].shape} + {hf_values[1].shape}")
             # M -> N linear repesented by n x m matrix, hence concate on dim -2 == 0.
             hf_value = np.concatenate(hf_values, axis=-2)
         else:
@@ -190,99 +292,6 @@ def import_hf_weights(init_state: Dict[str, Any], hf_model_config, hf_state_dict
 
         res = update_single_key(init_state, key, hf_value)
         assert res, f"failed to update key: {key}"
-
-
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "-i", "--input_path", type=str, default="llama_init.msgpack", help="Path to the dumped original weights file"
-)
-parser.add_argument(
-    "-o", "--output_path", type=str, default="llama_out.msgpack", help="Path to the output weights file"
-)
-parser.add_argument("--hf_model", type=str, default="TinyLlama/TinyLlama_v1.1", help="name of the HF model")
-parser.add_argument(
-    "--meta_style", action="store_true", help="The model is in the Meta style (QKV projections have dims interleaved.)"
-)
-parser.set_defaults(meta_style=False)
-
-hf_model = AutoModelForCausalLM.from_pretrained(parser.parse_args().hf_model)
-args = parser.parse_args()
-
-
-def fix_hf_state_dict_for_rope(head_dim=64):
-    def unpermute_proj(w: np.ndarray, n_heads: int = 32) -> np.ndarray:
-        """
-        Permutes the rows of the weight matrix `w` based on head structure using NumPy.
-        Assuming `w` has `R` rows and `n_heads`, it divides the rows into `n_heads`
-        chunks of size `D = R // n_heads`. Within each chunk, it interleaves the
-        first `D // 2` rows with the second `D // 2` rows.
-
-        Example: If a chunk has rows [r0, r1, r2, r3] (D=4), the output order for
-        that chunk will be [r0, r2, r1, r3].
-
-        This is intended to convert Hugging Face projection weights (Q/K) to a
-        layout compatible with Meta-style interleaved RoPE application.
-
-        Args:
-            w: Input weight matrix (NumPy array), shape [R, C]. Typically [dim, dim].
-            n_heads: Number of heads corresponding to the rows R.
-
-        Returns:
-            np.ndarray: The permuted weight matrix with the same shape as `w`.
-        """
-        if type(w) is not np.ndarray:
-            w = w.cpu().numpy()
-        R, C = w.shape  # R = dim (e.g., hidden_size)
-        D = R // n_heads  # D = head_dim
-        assert R % n_heads == 0, "Number of rows R must be divisible by n_heads."
-        assert D % 2 == 0, "Rows per head (D) must be even."
-
-        # Reshape the row dimension R into (n_heads, 2, D // 2).
-        # The dimension of size 2 separates the first half of rows (index 0)
-        # and the second half of rows (index 1) within each D-sized chunk.
-        # Shape becomes: [n_heads, 2, D // 2, C]
-        w_reshaped = w.reshape(n_heads, 2, D // 2, C)
-
-        # Transpose the 'half' dimension (axis 1) and the 'index within half'
-        # dimension (axis 2).
-        # Shape becomes: [n_heads, D // 2, 2, C]
-        # For head `h` and index `i` (0..D//2-1):
-        # - w_transposed[h, i, 0, :] contains original row `h*D + i` (from 1st half)
-        # - w_transposed[h, i, 1, :] contains original row `h*D + D//2 + i` (from 2nd half)
-        w_transposed = w_reshaped.transpose(0, 2, 1, 3)  # Swap axes 1 and 2
-
-        # Reshape back to [R, C] by flattening the first three dimensions (h, i, k).
-        # The new row index `r_new = h*D + i*2 + k`.
-        # - For k=0 (even indices): `r_new = h*D + 2*i`, gets data from original row `h*D + i`.
-        # - For k=1 (odd indices): `r_new = h*D + 2*i + 1`, gets data from original row `h*D + D//2 + i`.
-        # This creates the interleaved order: [row 0, row D/2, row 1, row D/2+1, ...] for each chunk.
-        w_interleaved = w_transposed.reshape(R, C)
-
-        return w_interleaved
-
-    def convert_hf_qkv_to_meta_format(loaded_weights, head_dim):
-        """Convert HuggingFace QKV weights to Meta format for RoPE compatibility."""
-        converted_dict = {}
-        for key, tensor in loaded_weights.items():
-            if any(f"{pfx}.weight" in key or f"{pfx}.bias" in key for pfx in ["q_proj", "k_proj"]):
-                print(f"Permuting {key}")
-                n_heads = tensor.shape[0] // head_dim
-                permuted = unpermute_proj(tensor, n_heads)
-                assert permuted.shape == tensor.shape, "permuted shape doesn't match original projection shape!"
-                converted_dict[key] = permuted
-            else:
-                converted_dict[key] = tensor
-        return converted_dict
-
-    return convert_hf_qkv_to_meta_format(hf_model.state_dict(), head_dim)
-
-
-if not args.meta_style:
-    print("Using interleaved state dict")
-    hf_state_dict = fix_hf_state_dict_for_rope(hf_model.config.head_dim)
-else:
-    print("Using non-interleaved state dict")
-    hf_state_dict = hf_model.state_dict()
 
 
 def flat_tup(tup):

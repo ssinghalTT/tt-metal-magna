@@ -113,6 +113,7 @@ ttml::autograd::TensorPtr GroupedQueryAttention::operator()(
     xt::xarray<float> our_query = core::to_xtensor(query_with_heads->get_value());
     xt::xarray<float> our_key = core::to_xtensor(key_with_heads->get_value());
     xt::xarray<float> our_value = core::to_xtensor(value_with_heads->get_value());
+    xt::dump_npy("/home/j/intermediate_results/our_value.npy", our_value);
 
     fmt::println("query shapes: {} (HF) vs {} (Our)", hf_query.shape(), our_query.shape());
     fmt::println("key shapes: {} (HF) vs {} (Our)", hf_key.shape(), our_key.shape());
@@ -138,7 +139,7 @@ ttml::autograd::TensorPtr GroupedQueryAttention::operator()(
     auto do_attn_steps_and_check = [&]() {
         auto query = query_with_heads;
         auto key = key_with_heads;
-        auto value = autograd::create_tensor(core::from_xtensor(hf_value, &autograd::ctx().get_device()));
+        auto value = value_with_heads;
 
         auto attention = ttml::ops::scaled_dot_product_attention(query, key, value, mask);
 

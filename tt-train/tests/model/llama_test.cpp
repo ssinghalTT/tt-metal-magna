@@ -238,7 +238,7 @@ ttml::models::llama::Llama init_llama(uint32_t seq_len = 32) {
 
     fmt::println("loading tinyllama.msgpack");
     ttml::serialization::MsgPackFile tinyllama_msgpack{};
-    tinyllama_msgpack.deserialize("/home/j/load_llama/tinyllama.msgpack");
+    tinyllama_msgpack.deserialize("data/tinyllama_exported.msgpack");
     fmt::println("deserialized tinyllama.msgpack");
 
     fmt::println("loading weights");
