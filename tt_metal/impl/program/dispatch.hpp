@@ -23,6 +23,7 @@
 #include "kernel_types.hpp"
 #include "program_impl.hpp"
 #include "sub_device_types.hpp"
+#include "trace/trace_node.hpp"
 
 enum class CoreType;
 
@@ -119,6 +120,24 @@ void update_program_dispatch_commands(
     const ProgramDispatchMetadata& dispatch_md,
     ProgramBinaryStatus program_binary_status,
     std::pair<bool, int> unicast_go_signal_update = {false, -1});
+
+void update_traced_program_dispatch_commands(
+    detail::ProgramImpl& program,
+    ProgramCommandSequence& cached_program_command_sequence,
+    const std::vector<std::vector<uint8_t>>& rta_data,
+    const std::vector<std::vector<uint32_t>>& cb_config_payloads,
+    uint32_t program_runtime_id,
+    uint32_t multicast_cores_launch_message_wptr,
+    uint32_t unicast_cores_launch_message_wptr,
+    uint32_t expected_num_workers_completed,
+    CoreCoord dispatch_core,
+    CoreType dispatch_core_type,
+    SubDeviceId sub_device_id,
+    const ProgramDispatchMetadata& dispatch_md,
+    ProgramBinaryStatus program_binary_status,
+    std::pair<bool, int> unicast_go_signal_update = {false, -1});
+
+TraceNode create_trace_node(Program& program, IDevice* device);
 
 void write_program_command_sequence(
     const ProgramCommandSequence& program_command_sequence,

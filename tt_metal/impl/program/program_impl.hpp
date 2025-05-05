@@ -114,6 +114,9 @@ public:
     ProgramConfig& get_program_config(uint32_t programmable_core_type_index);
     const std::vector<SubDeviceId>& determine_sub_device_ids(const IDevice* device);
 
+    void generate_trace_dispatch_commands(IDevice* device);
+    std::unordered_map<uint64_t, ProgramCommandSequence>& get_trace_cached_program_command_sequences() noexcept;
+
     // debug/test
     uint32_t get_sem_size(IDevice* device, CoreCoord logical_core, CoreType core_type) const;
     uint32_t get_cb_size(IDevice* device, CoreCoord logical_core, CoreType core_type) const;
@@ -199,6 +202,7 @@ private:
 
     // The rta_updates from one cached command sequence may reference data in another cached command sequence.
     std::unordered_map<uint64_t, ProgramCommandSequence> cached_program_command_sequences_;
+    std::unordered_map<uint64_t, ProgramCommandSequence> trace_cached_program_command_sequences_;
 
     friend std::shared_ptr<CircularBuffer> GetCircularBuffer(const Program& program, CBHandle id);
     friend void ValidateCircularBufferRegion(const Program& program, const IDevice* device);
