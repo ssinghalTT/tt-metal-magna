@@ -421,10 +421,10 @@ void kernel_main() {
                         send_packets<NocSendType::NOC_UNICAST_ATOMIC_INC>(
                             fabric_connection, fwd_packet_header, bwd_packet_header, params, source_l1_buffer_address);
                         break;
-                    // case NocSendType::NOC_FUSED_UNICAST_ATOMIC_INC:
-                    //     send_packets<NocSendType::NOC_FUSED_UNICAST_ATOMIC_INC>(
-                    //         fabric_connection, fwd_packet_header, bwd_packet_header, params, source_l1_buffer_address);
-                    //     break;
+                    case NocSendType::NOC_FUSED_UNICAST_ATOMIC_INC:
+                        send_packets<NocSendType::NOC_FUSED_UNICAST_ATOMIC_INC>(
+                            fabric_connection, fwd_packet_header, bwd_packet_header, params, source_l1_buffer_address);
+                        break;
                     default: ASSERT(false); break;
                 }
             }

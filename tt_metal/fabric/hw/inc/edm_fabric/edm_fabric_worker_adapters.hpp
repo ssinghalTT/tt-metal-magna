@@ -168,8 +168,8 @@ struct WorkerToFabricEdmSenderImpl {
         noc_async_write_one_packet_with_trid_set_state(
             edm_noc_addr, this->data_noc_cmd_buf, EDM_TO_DOWNSTREAM_NOC, EDM_TO_DOWNSTREAM_NOC_VC);
         const uint64_t noc_sem_addr = get_noc_addr(
-            this->edm_noc_x, this->edm_noc_y, this->edm_buffer_remote_free_slots_update_addr, EDM_TO_DOWNSTREAM_NOC, EDM_TO_DOWNSTREAM_NOC_VC);
-        noc_inline_dw_write_set_state(
+            this->edm_noc_x, this->edm_noc_y, this->edm_buffer_remote_free_slots_update_addr, EDM_TO_DOWNSTREAM_NOC);
+        noc_inline_dw_write_set_state<true, true>(
             noc_sem_addr, (-1) << REMOTE_DEST_BUF_WORDS_FREE_INC, 0xF, this->sync_noc_cmd_buf, EDM_TO_DOWNSTREAM_NOC, EDM_TO_DOWNSTREAM_NOC_VC);
     }
 

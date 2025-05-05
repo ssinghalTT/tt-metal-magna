@@ -1471,9 +1471,10 @@ FORCE_INLINE void noc_inline_dw_write(
 }
 
 // on BH this api can only write to stream register, writing to L1 will cause hangs!
-template <bool posted = false>
+template <bool posted = false, bool set_val = false>
 FORCE_INLINE void noc_inline_dw_write_set_state(
     uint64_t addr,
+    uint32_t val = 0,
     uint8_t be = 0xF,
     uint8_t cmd_buf = write_at_cmd_buf,
     uint8_t noc = noc_index,
@@ -1491,7 +1492,9 @@ FORCE_INLINE void noc_inline_dw_write_set_state(
     be32 = (be32 << be_shift);
 
     while (!noc_cmd_buf_ready(noc, cmd_buf));
-    NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_AT_DATA, val);
+    if constexpr (set_val) {
+        NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_AT_DATA, val);
+    }
     NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_CTRL, noc_cmd_field);
     NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_TARG_ADDR_LO, addr & 0xFFFFFFFF);
     NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_TARG_ADDR_COORDINATE, (uint32_t)(addr >> NOC_ADDR_COORD_SHIFT));
