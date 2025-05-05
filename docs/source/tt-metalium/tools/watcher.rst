@@ -111,7 +111,7 @@ The log file will contain lines such as the following:
 
 .. code-block::
 
-    Core (x=1,y=1):    CWFW,CRBW,R,R,R rmsg:D0G|BNT smsg:GGGG k_ids:4|3|5
+    Core (x=1,y=1):    CWFW,CRBW,R,R,R rmsg:D0G|BNT dmsg:GGGG k_ids:4|3|5
 
 - The hang above originated on core (1,1) in physical coords (i.e., the top left core)
 - BRISC last hit waypoint ``CWFW`` (CB Wait Front Wait), NCRISC hit ``CRBW`` (NOC CB Reserve Back Wait) and each TRISC
@@ -120,7 +120,7 @@ The log file will contain lines such as the following:
 - The run message ``rmsg`` sent from the host to the device, says the kernel was Device ``D`` dispatched, BRISC is
   using NOC ``0`` (NCRISC is using the other NOC, NOC 1), the host run state is Go ``G`` and each of BRISC, NCRISC and
   TRISC kernels are running (capital ``BNT``; lowercase would signify no kernel running)
-- The slave message ``smsg`` sent from BRISC to the other RISC Vs are all Go ``G``; ``D`` would indicate Done
+- The drone message ``dmsg`` sent from BRISC to the other RISC Vs are all Go ``G``; ``D`` would indicate Done
 - The kernel IDs ``k_ids`` running are ``4`` on BRISC, ``3`` on NCRISC and ``5`` on TRISC; look further down the log file
   to see the names and paths to those kernels
 
@@ -207,7 +207,7 @@ watcher log:
 
     # The ring buffer has a size of 32 elements, therefore writing 40 entries into the buffer will
     # result in the oldest 8 entries being dropped. Entries are printed starting with the most recent.
-    Core (x=1,y=1):    R,R,R,R,R rmsg:D0G|BNT smsg:GGGG k_ids:1|0|0
+    Core (x=1,y=1):    R,R,R,R,R rmsg:D0G|BNT dmsg:GGGG k_ids:1|0|0
         debug_ring_buffer(latest_written_idx=8)=
         [0x00000028,0x00000027,0x00000026,0x00000025,0x00000024,0x00000023,0x00000022,0x00000021,
          0x00000020,0x0000001f,0x0000001e,0x0000001d,0x0000001c,0x0000001b,0x0000001a,0x00000019,
@@ -221,7 +221,7 @@ per RISC in the log. If a stack overflow is detected, the core will hang and an 
 
 .. code-block::
 
-    Device 0 worker core(x= 0,y= 0) virtual(x= 1,y= 1):   GW,   W,   W,   W,   W  rmsg:D1D|BNt smsg:DDDD k_ids:11|10|0
+    Device 0 worker core(x= 0,y= 0) virtual(x= 1,y= 1):   GW,   W,   W,   W,   W  rmsg:D1D|BNt dmsg:DDDD k_ids:11|10|0
         brisc stack usage: 228/768, kernel using most stack: ttnn/cpp/ttnn/operations/normalization/groupnorm/device/kernels/dataflow/reader_mcast_sender_unary_sharded_gn_v2.cpp
         ncrisc stack usage: 192/768, kernel using most stack:  ttnn/cpp/ttnn/operations/data_movement/sharded/device/kernels/dataflow/reader_unary_sharded_blocks_interleaved_start_id.cpp
         trisc0 stack usage: 252/320, kernel using most stack: ttnn/cpp/ttnn/operations/normalization/groupnorm/device/kernels/compute/groupnorm_sharded_v2.cpp

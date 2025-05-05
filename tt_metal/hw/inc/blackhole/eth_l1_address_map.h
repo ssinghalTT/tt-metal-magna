@@ -52,7 +52,7 @@ struct address_map {
     static constexpr std::uint32_t MEM_ERISC_KERNEL_SIZE = (24 * 1024);
     static constexpr std::int32_t MEM_ERISC_INIT_LOCAL_L1_BASE_SCRATCH = MEM_ERISC_MAP_END;
     static constexpr std::int32_t MEM_ERISC_STACK_SIZE = 1024;
-    static constexpr std::int32_t MEM_SLAVE_ERISC_STACK_SIZE = 1024;
+    static constexpr std::int32_t MEM_DRONE_ERISC_STACK_SIZE = 1024;
     static constexpr std::int32_t MEM_ERISC_STACK_TOP =
         RISC_LOCAL_MEM_BASE + MEM_ERISC_LOCAL_SIZE;
 

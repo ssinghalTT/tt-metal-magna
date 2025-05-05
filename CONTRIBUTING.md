@@ -347,26 +347,26 @@ Legend:
     noc<n>:<riscv>{(x,y), a, l}=NOC<n> unicast address used by <riscv>
     noc<n>:<riscv>{(x1,y1)-(x2,y2), a, l}=NOC<n> multicast address used by <riscv>
     rmsg:<c>=brisc host run message, D/H device/host dispatch; brisc NOC ID; I/G/D init/go/done; | separator; B/b enable/disable brisc; N/n enable/disable ncrisc; T/t enable/disable TRISC
-    smsg:<c>=slave run message, I/G/D for NCRISC, TRISC0, TRISC1, TRISC2
+    dmsg:<c>=drone run message, I/G/D for NCRISC, TRISC0, TRISC1, TRISC2
     k_ids:<brisc id>|<ncrisc id>|<trisc id> (ID map to file at end of section)
 ...
 Dump #7 at 8.992s
-Device 0 worker core(x= 0,y= 0) virtual(x= 1,y= 1):   GW,   W,   W,   W,   W  rmsg:D0D|BNT smsg:DDDD k_ids:14|13|15
-Device 0 worker core(x= 1,y= 0) virtual(x= 2,y= 1):   GW,   W,   W,   W,   W  rmsg:D0D|BNT smsg:DDDD k_ids:14|13|15
-Device 0 worker core(x= 2,y= 0) virtual(x= 3,y= 1):   GW,   W,   W,   W,   W  rmsg:D0D|BNT smsg:DDDD k_ids:14|13|15
-Device 0 worker core(x= 3,y= 0) virtual(x= 4,y= 1):   GW,   W,   W,   W,   W  rmsg:D0D|BNT smsg:DDDD k_ids:14|13|15
-Device 0 worker core(x= 4,y= 0) virtual(x= 6,y= 1):   GW,   W,   W,   W,   W  rmsg:D0D|BNT smsg:DDDD k_ids:14|13|15
-Device 0 worker core(x= 5,y= 0) virtual(x= 7,y= 1):   GW,   W,   W,   W,   W  rmsg:D0D|BNT smsg:DDDD k_ids:14|13|15
-Device 0 worker core(x= 6,y= 0) virtual(x= 8,y= 1):   GW,   W,   W,   W,   W  rmsg:D0D|BNT smsg:DDDD k_ids:14|13|15
-Device 0 worker core(x= 7,y= 0) virtual(x= 9,y= 1):   GW,   W,   W,   W,   W  rmsg:D0D|BNT smsg:DDDD k_ids:14|13|15
-Device 0 worker core(x= 0,y= 7) virtual(x= 1,y=10):  NTW,UAPW,   W,   W,   W  rmsg:H1G|bNt smsg:GDDD k_ids:0|2|0
-Device 0 worker core(x= 1,y= 7) virtual(x= 2,y=10):  NTW, HQW,   W,   W,   W  rmsg:H1G|bNt smsg:GDDD k_ids:0|1|0
-Device 0 worker core(x= 2,y= 7) virtual(x= 3,y=10):  NTW, HQW,   W,   W,   W  rmsg:H1G|bNt smsg:GDDD k_ids:0|3|0
-Device 0 worker core(x= 3,y= 7) virtual(x= 4,y=10):  NTW,UAPW,   W,   W,   W  rmsg:H1G|bNt smsg:GDDD k_ids:0|7|0
-Device 0 worker core(x= 4,y= 7) virtual(x= 6,y=10): NABD,   W,   W,   W,   W  rmsg:H0G|Bnt smsg:DDDD k_ids:4|0|0
-Device 0 worker core(x= 5,y= 7) virtual(x= 7,y=10): NABD,   W,   W,   W,   W  rmsg:H0G|Bnt smsg:DDDD k_ids:6|0|0
-Device 0 worker core(x= 6,y= 7) virtual(x= 8,y=10):   GW,   W,   W,   W,   W  rmsg:H0D|bnt smsg:DDDD k_ids:0|0|0
-Device 0 worker core(x= 7,y= 7) virtual(x= 9,y=10):   GW,   W,   W,   W,   W  rmsg:H0D|bnt smsg:DDDD k_ids:0|0|0
+Device 0 worker core(x= 0,y= 0) virtual(x= 1,y= 1):   GW,   W,   W,   W,   W  rmsg:D0D|BNT dmsg:DDDD k_ids:14|13|15
+Device 0 worker core(x= 1,y= 0) virtual(x= 2,y= 1):   GW,   W,   W,   W,   W  rmsg:D0D|BNT dmsg:DDDD k_ids:14|13|15
+Device 0 worker core(x= 2,y= 0) virtual(x= 3,y= 1):   GW,   W,   W,   W,   W  rmsg:D0D|BNT dmsg:DDDD k_ids:14|13|15
+Device 0 worker core(x= 3,y= 0) virtual(x= 4,y= 1):   GW,   W,   W,   W,   W  rmsg:D0D|BNT dmsg:DDDD k_ids:14|13|15
+Device 0 worker core(x= 4,y= 0) virtual(x= 6,y= 1):   GW,   W,   W,   W,   W  rmsg:D0D|BNT dmsg:DDDD k_ids:14|13|15
+Device 0 worker core(x= 5,y= 0) virtual(x= 7,y= 1):   GW,   W,   W,   W,   W  rmsg:D0D|BNT dmsg:DDDD k_ids:14|13|15
+Device 0 worker core(x= 6,y= 0) virtual(x= 8,y= 1):   GW,   W,   W,   W,   W  rmsg:D0D|BNT dmsg:DDDD k_ids:14|13|15
+Device 0 worker core(x= 7,y= 0) virtual(x= 9,y= 1):   GW,   W,   W,   W,   W  rmsg:D0D|BNT dmsg:DDDD k_ids:14|13|15
+Device 0 worker core(x= 0,y= 7) virtual(x= 1,y=10):  NTW,UAPW,   W,   W,   W  rmsg:H1G|bNt dmsg:GDDD k_ids:0|2|0
+Device 0 worker core(x= 1,y= 7) virtual(x= 2,y=10):  NTW, HQW,   W,   W,   W  rmsg:H1G|bNt dmsg:GDDD k_ids:0|1|0
+Device 0 worker core(x= 2,y= 7) virtual(x= 3,y=10):  NTW, HQW,   W,   W,   W  rmsg:H1G|bNt dmsg:GDDD k_ids:0|3|0
+Device 0 worker core(x= 3,y= 7) virtual(x= 4,y=10):  NTW,UAPW,   W,   W,   W  rmsg:H1G|bNt dmsg:GDDD k_ids:0|7|0
+Device 0 worker core(x= 4,y= 7) virtual(x= 6,y=10): NABD,   W,   W,   W,   W  rmsg:H0G|Bnt dmsg:DDDD k_ids:4|0|0
+Device 0 worker core(x= 5,y= 7) virtual(x= 7,y=10): NABD,   W,   W,   W,   W  rmsg:H0G|Bnt dmsg:DDDD k_ids:6|0|0
+Device 0 worker core(x= 6,y= 7) virtual(x= 8,y=10):   GW,   W,   W,   W,   W  rmsg:H0D|bnt dmsg:DDDD k_ids:0|0|0
+Device 0 worker core(x= 7,y= 7) virtual(x= 9,y=10):   GW,   W,   W,   W,   W  rmsg:H0D|bnt dmsg:DDDD k_ids:0|0|0
 k_id[0]: blank
 k_id[1]: tt_metal/impl/dispatch/kernels/cq_prefetch.cpp
 k_id[2]: tt_metal/impl/dispatch/kernels/cq_dispatch.cpp
