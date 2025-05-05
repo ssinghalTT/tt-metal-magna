@@ -156,7 +156,7 @@ def update_single_key(existing_state: Dict[str, Any], key: str, new_value: np.nd
     return True
 
 
-def import_hf_weights(init_state: Dict[str, Any], hf_model):
+def import_hf_weights(init_state: Dict[str, Any], hf_model_config, hf_state_dict):
     init_shapes = {key: np.array(value).shape for (key, (_, value)) in init_state.items()}
     init_keys = set(init_state.keys())
 
@@ -173,10 +173,10 @@ def import_hf_weights(init_state: Dict[str, Any], hf_model):
             continue
         if isinstance(hf_key, list):
             hf_values = [hf_state_dict[k] for k in hf_key]
-            head_dim = hf_model.config.head_dim
-            emb_dim = hf_model.config.hidden_size
+            head_dim = hf_model_config.head_dim
+            emb_dim = hf_model_config.hidden_size
 
-            if not all(p.shape == (hf_model.config.num_key_value_heads * head_dim, emb_dim) for p in hf_values):
+            if not all(p.shape == (hf_model_config.num_key_value_heads * head_dim, emb_dim) for p in hf_values):
                 import ipdb
 
                 ipdb.set_trace()
@@ -264,7 +264,8 @@ def fix_hf_state_dict_for_rope(head_dim=64):
         """Convert HuggingFace QKV weights to Meta format for RoPE compatibility."""
         converted_dict = {}
         for key, tensor in loaded_weights.items():
-            if any(f"{pfx}.weight" in key or f"{pfx}.bias" in key for pfx in ["q_proj", "k_proj", "v_proj"]):
+            if any(f"{pfx}.weight" in key or f"{pfx}.bias" in key for pfx in ["q_proj", "k_proj"]):
+                print(f"Permuting {key}")
                 n_heads = tensor.shape[0] // head_dim
                 permuted = unpermute_proj(tensor, n_heads)
                 assert permuted.shape == tensor.shape, "permuted shape doesn't match original projection shape!"
@@ -277,8 +278,10 @@ def fix_hf_state_dict_for_rope(head_dim=64):
 
 
 if not args.meta_style:
+    print("Using interleaved state dict")
     hf_state_dict = fix_hf_state_dict_for_rope(hf_model.config.head_dim)
 else:
+    print("Using non-interleaved state dict")
     hf_state_dict = hf_model.state_dict()
 
 
@@ -298,7 +301,7 @@ from collections import Counter
 
 init_keys = Counter(tt_state.keys())
 print("Importing hf weights")
-import_hf_weights(tt_state, hf_model)
+import_hf_weights(tt_state, hf_model.config, hf_state_dict)
 new_keys = Counter(tt_state.keys())
 assert new_keys == init_keys, f"Keys mismatch after conversion: {new_keys} vs {init_keys}"
 print("Saving converted init_state")
