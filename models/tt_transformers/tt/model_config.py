@@ -1954,7 +1954,7 @@ class ModelArgs:
                     self.cached_hf_model = model
                 else:
                     model = self.cached_hf_model
-                model.model.layers = model.model.layers[:self.n_layers]
+                model.model.layers = model.model.layers[: self.n_layers]
             if wrap:
                 wrapper = HfModelWrapper(model, self.head_dim)
                 return wrapper
