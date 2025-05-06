@@ -481,15 +481,24 @@ TEST_F(Fabric1DFixture, TestEDMConnectionStressTestQuick) {
     std::pair<mesh_id_t, chip_id_t> dst_mesh_chip_id;
     chip_id_t not_used_1;
     chip_id_t not_used_2;
-    // Find a device with a neighbour in the East direction
-    bool connection_found = find_device_with_neighbor_in_direction(
-        src_mesh_chip_id, dst_mesh_chip_id, not_used_1, not_used_2, RoutingDirection::E);
-    if (!connection_found) {
-        GTEST_SKIP() << "No path found between sender and receivers";
+    // use control plane to find a mesh with 3 devices
+    auto user_meshes = control_plane->get_user_physical_mesh_ids();
+    std::optional<mesh_id_t> mesh_id;
+    for (const auto& mesh : user_meshes) {
+        auto mesh_shape = control_plane->get_physical_mesh_shape(mesh);
+        if (mesh_shape.mesh_size() > 1) {
+            mesh_id = mesh;
+            break;
+        }
+    }
+    if (!mesh_id.has_value()) {
+        GTEST_SKIP() << "No mesh found for 2 chip connection stress test";
     }
 
-    chip_id_t src_physical_device_id = control_plane->get_physical_chip_id_from_mesh_chip_id(src_mesh_chip_id);
-    chip_id_t dst_physical_device_id = control_plane->get_physical_chip_id_from_mesh_chip_id(dst_mesh_chip_id);
+    auto src_physical_device_id =
+        control_plane->get_physical_chip_id_from_mesh_chip_id(std::make_pair(mesh_id.value(), 0));
+    auto dst_physical_device_id =
+        control_plane->get_physical_chip_id_from_mesh_chip_id(std::make_pair(mesh_id.value(), 1));
 
     auto* sender_device = DevicePool::instance().get_active_device(src_physical_device_id);
     auto* receiver_device = DevicePool::instance().get_active_device(dst_physical_device_id);
@@ -547,19 +556,19 @@ TEST_F(Fabric1DFixture, TestEDMConnectionStressTestQuick) {
         for (size_t i = 0; i < num_workers; i++) {
             // Compute destination NOC coordinates for this worker
             auto dest_virtual_core = worker_virtual_cores[i];
-            
+
             // Compute next worker index in the token ring
             size_t next_worker_idx = (i + 1) % num_workers;
             auto next_worker_virtual_core = worker_virtual_cores[next_worker_idx];
-            
+
             // Prepare runtime args for this worker
             std::vector<uint32_t> &worker_args = runtime_args_per_worker[i];
-            
+
             // Basic configuration
             worker_args.push_back(fabric_write_dest_bank_addr);   // Fabric write destination bank address
             worker_args.push_back(dest_virtual_core.x);           // Fabric write destination NOC X
             worker_args.push_back(dest_virtual_core.y);           // Fabric write destination NOC Y
-            
+
             // Token ring configuration
             worker_args.push_back(i == 0 ? 1 : 0);                // Is starting worker (first worker starts)
             worker_args.push_back(num_times_to_connect);          // How many times to connect during turn
@@ -569,21 +578,21 @@ TEST_F(Fabric1DFixture, TestEDMConnectionStressTestQuick) {
 
             // Traffic pattern arrays (rotate starting index by worker ID for variation)
             worker_args.push_back(stall_durations_cycles.size()); // Number of stall durations
-            
+
             // Rotate starting point for each worker to prevent lock-step behavior
             size_t stall_offset = i % stall_durations_cycles.size();
             for (size_t j = 0; j < stall_durations_cycles.size(); j++) {
                 size_t idx = (stall_offset + j) % stall_durations_cycles.size();
                 worker_args.push_back(stall_durations_cycles[idx]);
             }
-            
+
             worker_args.push_back(packet_sizes.size());           // Number of packet sizes
             size_t packet_size_offset = i % packet_sizes.size();
             for (size_t j = 0; j < packet_sizes.size(); j++) {
                 size_t idx = (packet_size_offset + j) % packet_sizes.size();
                 worker_args.push_back(packet_sizes[idx]);
             }
-            
+
             worker_args.push_back(message_counts.size());         // Number of message counts
             size_t message_count_offset = i % message_counts.size();
             for (size_t j = 0; j < message_counts.size(); j++) {
@@ -592,14 +601,14 @@ TEST_F(Fabric1DFixture, TestEDMConnectionStressTestQuick) {
             }
 
             // Circular buffer indices for source data and packet headers
-            worker_args.push_back(0);  // Source L1 circular buffer index 
+            worker_args.push_back(0);  // Source L1 circular buffer index
             worker_args.push_back(1);  // Packet header circular buffer index
             worker_args.push_back(2);  // Number of headers (size units in words)
-            
+
             auto worker_flow_semaphore_id = tt_metal::CreateSemaphore(program, worker_logical_cores_vec[i], 0);
             auto worker_teardown_semaphore_id = tt_metal::CreateSemaphore(program, worker_logical_cores_vec[i], 0);
             auto worker_buffer_index_semaphore_id = tt_metal::CreateSemaphore(program, worker_logical_cores_vec[i], 0);
-            
+
             append_fabric_connection_rt_args(
                 sender_device->id(), receiver_device->id(), 0, program, {worker_logical_cores_vec[i]}, worker_args);
 
@@ -622,7 +631,7 @@ TEST_F(Fabric1DFixture, TestEDMConnectionStressTestQuick) {
         this->WaitForSingleProgramDone(sender_device, program);
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
-        
+
         std::cout << "Epoch " << epoch << " with " << num_workers << " workers completed in " << duration_ms << "ms" << std::endl;
     }
 }
