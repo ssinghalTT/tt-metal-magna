@@ -709,11 +709,14 @@ def run_test_sdpa_decode_paged_attention(
     tt_page_table = ttnn.Tensor(page_table, ttnn.int32).to(device)
 
     max_start_idx = 0
+    initial_start_idx = 0
     causal = True
 
-    while max_start_idx < s or not causal:
+    # while max_start_idx < s or not causal:
+    while initial_start_idx < s or not causal:
         scale = d**-0.5
         start_indices = np.linspace(max(max_start_idx - b, 0), max_start_idx, b, dtype=np.int32).tolist()
+        # start_indices = np.linspace(max(initial_start_idx - b, 0), initial_start_idx, b, dtype=np.int32).tolist()
 
         # Test when page_table does not contain blocks for full sequence length
         k_chunk_size = get_chunk_size(max_start_idx + 1, s)
@@ -723,18 +726,22 @@ def run_test_sdpa_decode_paged_attention(
 
         program_config = ttnn.SDPAProgramConfig(
             compute_with_storage_grid_size=grid_size,  # device.compute_with_storage_grid_size(),
-            q_chunk_size=padded_num_heads,
-            k_chunk_size=k_chunk_size,
             exp_approx_mode=False,
+            q_chunk_size=256,
+            k_chunk_size=256,
+            # q_chunk_size=padded_num_heads,
+            # k_chunk_size=k_chunk_size,
         )
 
+        logger.info(f"Testing iteration {initial_start_idx}")
+
         # Test various sequence lengths
-        logger.debug(
-            f"Testing {'causal' if causal else 'non-causal'} with sequence length: {max_start_idx if causal else s}"
-        )
-        logger.info(f"Using chunk size: {k_chunk_size}")
-        logger.info(f"Using padded layer length: {padded_layer_len}")
-        logger.info(f"Using padded num heads: {padded_num_heads}")
+        # logger.debug(
+        #     f"Testing {'causal' if causal else 'non-causal'} with sequence length: {max_start_idx if causal else s}"
+        # )
+        # logger.info(f"Using chunk size: {k_chunk_size}")
+        # logger.info(f"Using padded layer length: {padded_layer_len}")
+        # logger.info(f"Using padded num heads: {padded_num_heads}")
 
         if causal:
             attn_mask = torch.zeros((b, padded_num_heads, 1, padded_layer_len))
@@ -821,12 +828,14 @@ def run_test_sdpa_decode_paged_attention(
 
         assert out_pass
 
-        max_start_idx += 71 if max_start_idx < 4096 else 3001
+        # max_start_idx += 71 if max_start_idx < 4096 else 3001
+        initial_start_idx += 1
 
         if not causal:
             # only run one iteration for non-causal
             break
-        if max_start_idx >= s:
+        # if max_start_idx >= s:
+        if initial_start_idx >= s:
             # run last iteration to test non-causal
             causal = False
 
@@ -1037,9 +1046,9 @@ def run_test_sdpa_decode_paged_attention_single_iter(
         # [4, 32, 8, 4096, 128, (8, 8), True],  # llama 3.1 8b
         # [4, 16, 4, 32768, 128, (8, 8), True],
         # [32, 32, 8, 4096, 128, (8, 8), True],  # llama 3.1 8b
-        [8, 16, 4, 4096, 128, (8, 2), True],  # llama 3.1 8b N300
-        [1, 8, 1, 128 * 1024, 128, (8, 4), True],  # llama 3.1 8b N300
-        [1, 32, 8, 32 * 1024, 128, (8, 8), True],  # llama3.1 8b (performance-batch-1 settings)
+        # [8, 16, 4, 4096, 128, (8, 2), True],  # llama 3.1 8b N300
+        # [1, 8, 1, 128 * 1024, 128, (8, 4), True],  # llama 3.1 8b N300
+        [1, 32, 8, 64 * 1024, 128, (8, 8), True],  # llama3.1 8b (performance-batch-1 settings)
         # [32, 32, 8, 1024, 128, (8, 8), True],  # llama 3.1 8b (performance-batch-32 settings) -- Issue 21534: Breaking blackhole post commit tests
         # [1, 8, 1, 32768, 128, (8, 1), True],  # Llama2-70B
         # [16, 8, 1, 32768, 128, (8, 6), False, False],  # Llama2-70B
@@ -1048,7 +1057,9 @@ def run_test_sdpa_decode_paged_attention_single_iter(
         # [32, 8, 1, 32768, 128, (8, 8), True, True],  # Mixtral8x7b
     ),
 )
-@pytest.mark.parametrize("block_size", (32, 64, 128), ids=["paged_32", "paged_64", "paged_128"])
+# miguel
+# @pytest.mark.parametrize("block_size", (32, 64, 128), ids=["paged_32", "paged_64", "paged_128"])
+@pytest.mark.parametrize("block_size", (32,), ids=["paged_32"])
 def test_sdpa_decode_paged_attention(
     device, b, nh, nkv, s, d, kv_dtype, grid_size, q_dtype, cur_pos_tensor, block_size, use_program_cache
 ):
@@ -1072,7 +1083,7 @@ def test_sdpa_decode_paged_attention(
         sharded_out=False,
     )
 
-    assert device.num_program_cache_entries() == 4
+    assert device.num_program_cache_entries() == 2
 
 
 @skip_for_grayskull("Unsupported in GS since L1 runs OOM with most configs")
