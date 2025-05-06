@@ -1007,6 +1007,7 @@ def test_slice_index(device, input_shape, layout, input_memory_config, indices):
 
     assert_with_pcc(torch_output, ttnn_output, 0.99)
 
+
 @pytest.mark.parametrize(
     "input_shape, dim, start, end, step, layout",
     (
