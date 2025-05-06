@@ -71,6 +71,42 @@ void validate_rope_input_and_params(const autograd::TensorPtr& input, const Rota
     }
 }
 
+template <typename E>
+E apply_ntk_aware_scaling(const E& freqs, const RotaryEmbeddingParams& params) {
+    auto scaling_params = params.ntk_aware_scaling_params;
+    // Typical values for low_freq_factor and high_freq_factor are 1 and 4, respectively.
+    assert(scaling_params.low_freq_factor != scaling_params.high_freq_factor);
+    assert(scaling_params.low_freq_factor < scaling_params.high_freq_factor);
+
+    // These wavelengths are used as thresholds to determine whether to scale the frequency.
+    // For example, if the low_freq_factor is 1, then every frequency after the
+    auto low_freq_wavelength = scaling_params.original_context_length / scaling_params.low_freq_factor;
+    auto high_freq_wavelength = scaling_params.original_context_length / scaling_params.high_freq_factor;
+    if (low_freq_wavelength == high_freq_wavelength) {
+        throw std::invalid_argument(
+            "NTK-aware RoPE scaling requires low and high frequency wavelengths to be different.");
+    }
+
+    auto wavelengths = 2 * std::numbers::pi / freqs;
+
+    // for high frequencies, we're capturing short-range dependencies and needn't scale.
+    auto high_freqs = freqs;
+    // for low frequencies, we're capturing long-range dependencies and need to scale by the full scaling factor.
+    auto low_freqs = freqs / scaling_params.scaling_factor;
+
+    // for frequencies in between, we smoothly interpolate.
+    auto smooths = (scaling_params.original_context_length / wavelengths - scaling_params.low_freq_factor) /
+                   (scaling_params.high_freq_factor - scaling_params.low_freq_factor);
+    auto mid_freqs = (1.0F - smooths) * freqs / scaling_params.scaling_factor + smooths * freqs;
+
+    // if we're between the low and high freqs, use the smoothly interpolated mid-freqs,
+    // otherwise use low_freqs for the low freq wavelengths and high_freqs otherwise.
+    return xt::where(
+        (wavelengths < low_freq_wavelength) && (wavelengths > high_freq_wavelength),
+        mid_freqs,
+        xt::where(wavelengths > low_freq_wavelength, low_freqs, high_freqs));
+}
+
 // trans_mat, sin_cache, cos_cache are all precomputed and stored somewhere in
 // the module hierarchy and passed to the operation.
 autograd::TensorPtr rope(const autograd::TensorPtr& input, const RotaryEmbeddingParams& params) {
@@ -132,10 +168,12 @@ autograd::TensorPtr rope(const autograd::TensorPtr& input, const RotaryEmbedding
     return out;
 }
 
-std::pair<ttnn::Tensor, ttnn::Tensor> gen_freqs(uint32_t head_dim, uint32_t sequence_length, float theta = 10000.0F) {
-    int d = head_dim;
+std::pair<ttnn::Tensor, ttnn::Tensor> gen_freqs(const RotaryEmbeddingParams& params) {
+    auto head_dim = params.head_dim;
+    auto sequence_length = params.sequence_length;
+    auto theta = params.theta;
     // compute freqs: 1.0 / (theta ** (2 * (i-1) / head_dim)) for i in [1, head_dim/2]
-    xt::xarray<uint32_t> expt_data = xt::arange(0, d) / 2;
+    xt::xarray<uint32_t> expt_data = xt::arange(0, static_cast<int>(head_dim)) / 2;
     xt::xarray<float> expt_xt = xt::cast<float>(expt_data);
 
     expt_xt *= 2.0F / static_cast<float>(head_dim);
@@ -145,9 +183,13 @@ std::pair<ttnn::Tensor, ttnn::Tensor> gen_freqs(uint32_t head_dim, uint32_t sequ
 
     xt::xarray<float> seq_pos = xt::arange<float>(sequence_length);
     xt::xarray<float> seq_pos_repeated_to_head = xt::repeat(seq_pos, head_dim, seq_pos.dimension() - 1U);
-    xt::xarray<float> scales = seq_pos_repeated_to_head.reshape({sequence_length, static_cast<uint32_t>(head_dim)});
+    xt::xarray<float> scales = seq_pos_repeated_to_head.reshape({sequence_length, head_dim});
 
     xt::xarray<float> scaled_freqs = scales * freqs;
+
+    if (params.scaling_factor != 0.0F) {
+        scaled_freqs = apply_ntk_aware_scaling(scaled_freqs, params);
+    }
 
     // take the scaled freqs mod 2π to satisfy ttnn inputs constraints for sin/cos
     auto pi = static_cast<float>(std::numbers::pi);

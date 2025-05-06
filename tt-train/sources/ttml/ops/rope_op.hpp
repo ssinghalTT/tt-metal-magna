@@ -8,6 +8,13 @@
 
 namespace ttml::ops {
 
+struct NTKAwareScalingParams {
+    uint32_t original_context_length = 0U;
+    float scaling_factor = 0.0F;
+    float high_freq_factor;
+    float low_freq_factor;
+};
+
 struct RotaryEmbeddingParams {
     ttnn::Tensor cos_cache{};
     ttnn::Tensor sin_cache{};
@@ -15,15 +22,20 @@ struct RotaryEmbeddingParams {
     ttnn::Tensor neg_sin_cache{};
     ttnn::Tensor trans_mat{};
 
-    uint32_t sequence_length = 0;
-    uint32_t head_dim = 0;
-    // whether or not to transpose num_heads and seq_len dimensions before/after transformation
-    bool adjust_for_hf_style = false;
+    uint32_t sequence_length = 0U;
+    uint32_t head_dim = 0U;
+    float theta = 10000.0F;
+
+    NTKAwareScalingParams ntk_aware_scaling_params;
 };
 
 autograd::TensorPtr rope(const autograd::TensorPtr& input, const RotaryEmbeddingParams& rope_params);
 
-RotaryEmbeddingParams build_rope_params(uint32_t sequence_length, uint32_t head_dim, float theta = 10000.0F);
+RotaryEmbeddingParams build_rope_params(
+    uint32_t sequence_length,
+    uint32_t head_dim,
+    float theta = 10000.0F,
+    NTKAwareScalingParams ntk_aware_scaling_params = NTKAwareScalingParams{});
 // Throws an exception if the input is bad, parameters are bad, or the two are
 // incompatible with one another.
 void validate_rope_input_and_params(const autograd::TensorPtr& input, const RotaryEmbeddingParams& rope_params);
