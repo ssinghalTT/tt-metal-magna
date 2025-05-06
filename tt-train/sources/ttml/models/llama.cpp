@@ -57,10 +57,26 @@ Llama::Llama(const LlamaConfig& config) {
         tok_emb = std::make_shared<ttml::modules::Embedding>(vocab_size_divisible_by_32, embedding_dim);
     }
 
+    // Create NTK-aware scaling params if they are set
+    ops::NTKAwareScalingParams ntk_params;
+    if (config.scaling_factor != 0.0F && config.original_context_length != 0U) {
+        ntk_params.original_context_length = config.original_context_length;
+        ntk_params.scaling_factor = config.scaling_factor;
+        ntk_params.high_freq_factor = config.high_freq_factor;
+        ntk_params.low_freq_factor = config.low_freq_factor;
+
+        fmt::print("    RoPE scaling enabled:\n");
+        fmt::print("        Scaling factor: {}\n", config.scaling_factor);
+        fmt::print("        Original context length: {}\n", config.original_context_length);
+        fmt::print("        High freq factor: {}\n", config.high_freq_factor);
+        fmt::print("        Low freq factor: {}\n", config.low_freq_factor);
+    }
+
     m_rope_params = ops::build_rope_params(
         /*sequence_length=*/max_sequence_length,
         /*head_dim=*/embedding_dim / num_heads,
-        /*theta=*/theta);
+        /*theta=*/theta,
+        /*ntk_aware_scaling_params=*/ntk_params);
     blocks.reserve(num_blocks);
     for (uint32_t block_idx = 0; block_idx < num_blocks; ++block_idx) {
         blocks.push_back(std::make_shared<ttml::modules::LlamaBlock>(
@@ -111,6 +127,23 @@ LlamaConfig read_config(const YAML::Node& config) {
     llama_config.runner_type = common::transformer::read_runner_type(config);
     llama_config.weight_tying = common::transformer::read_weight_tying_type(config);
 
+    // Read RoPE NTK-aware scaling parameters if they exist
+    if (config["rope_scaling"]) {
+        const auto& rope_scaling = config["rope_scaling"];
+        if (rope_scaling["scaling_factor"]) {
+            llama_config.scaling_factor = rope_scaling["scaling_factor"].as<float>();
+        }
+        if (rope_scaling["high_freq_factor"]) {
+            llama_config.high_freq_factor = rope_scaling["high_freq_factor"].as<float>();
+        }
+        if (rope_scaling["low_freq_factor"]) {
+            llama_config.low_freq_factor = rope_scaling["low_freq_factor"].as<float>();
+        }
+        if (rope_scaling["original_context_length"]) {
+            llama_config.original_context_length = rope_scaling["original_context_length"].as<uint32_t>();
+        }
+    }
+
     return llama_config;
 }
 
@@ -124,6 +157,17 @@ YAML::Node write_config(const LlamaConfig& llama_config) {
     config["vocab_size"] = llama_config.vocab_size;
     config["max_sequence_length"] = llama_config.max_sequence_length;
     config["theta"] = llama_config.theta;
+
+    // Add RoPE scaling parameters if they are set
+    if (llama_config.scaling_factor != 0.0F && llama_config.original_context_length != 0U) {
+        YAML::Node rope_scaling;
+        rope_scaling["scaling_factor"] = llama_config.scaling_factor;
+        rope_scaling["high_freq_factor"] = llama_config.high_freq_factor;
+        rope_scaling["low_freq_factor"] = llama_config.low_freq_factor;
+        rope_scaling["original_context_length"] = llama_config.original_context_length;
+        config["rope_scaling"] = rope_scaling;
+    }
+
     return config;
 }
 

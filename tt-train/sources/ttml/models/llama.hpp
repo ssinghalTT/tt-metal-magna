@@ -27,6 +27,12 @@ struct LlamaConfig {
     uint32_t max_sequence_length = 256U;
     RunnerType runner_type = RunnerType::Default;
     WeightTyingType weight_tying = WeightTyingType::Disabled;
+
+    // RoPE NTK-aware scaling parameters
+    float scaling_factor = 0.0F;  // 0.0 means no scaling
+    float high_freq_factor = 4.0F;
+    float low_freq_factor = 1.0F;
+    uint32_t original_context_length = 0U;
 };
 
 class Llama : public ttml::autograd::ModuleBase {

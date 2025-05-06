@@ -12,10 +12,6 @@
 #include "autograd/tensor.hpp"
 #include "core/compute_kernel_config.hpp"
 #include "core/tt_tensor_utils.hpp"
-#include "core/ttnn_all_includes.hpp"
-#include "core/xtensor_utils.hpp"
-#include "ttnn/tensor/xtensor/xtensor_all_includes.hpp"
-#include "ttnn_fixed/trivial_ttnn_ops.hpp"
 
 namespace ttml::ops {
 
@@ -72,8 +68,7 @@ void validate_rope_input_and_params(const autograd::TensorPtr& input, const Rota
 }
 
 template <typename E>
-E apply_ntk_aware_scaling(const E& freqs, const RotaryEmbeddingParams& params) {
-    auto scaling_params = params.ntk_aware_scaling_params;
+E apply_ntk_aware_scaling(const E& freqs, const NTKAwareScalingParams& scaling_params) {
     // Typical values for low_freq_factor and high_freq_factor are 1 and 4, respectively.
     assert(scaling_params.low_freq_factor != scaling_params.high_freq_factor);
     assert(scaling_params.low_freq_factor < scaling_params.high_freq_factor);
@@ -168,10 +163,8 @@ autograd::TensorPtr rope(const autograd::TensorPtr& input, const RotaryEmbedding
     return out;
 }
 
-std::pair<ttnn::Tensor, ttnn::Tensor> gen_freqs(const RotaryEmbeddingParams& params) {
-    auto head_dim = params.head_dim;
-    auto sequence_length = params.sequence_length;
-    auto theta = params.theta;
+std::pair<ttnn::Tensor, ttnn::Tensor> gen_freqs(
+    uint32_t head_dim, uint32_t sequence_length, float theta, const NTKAwareScalingParams& scaling_params) {
     // compute freqs: 1.0 / (theta ** (2 * (i-1) / head_dim)) for i in [1, head_dim/2]
     xt::xarray<uint32_t> expt_data = xt::arange(0, static_cast<int>(head_dim)) / 2;
     xt::xarray<float> expt_xt = xt::cast<float>(expt_data);
@@ -187,8 +180,8 @@ std::pair<ttnn::Tensor, ttnn::Tensor> gen_freqs(const RotaryEmbeddingParams& par
 
     xt::xarray<float> scaled_freqs = scales * freqs;
 
-    if (params.scaling_factor != 0.0F) {
-        scaled_freqs = apply_ntk_aware_scaling(scaled_freqs, params);
+    if (scaling_params.scaling_factor != 0.0F) {
+        scaled_freqs = apply_ntk_aware_scaling(scaled_freqs, scaling_params);
     }
 
     // take the scaled freqs mod 2π to satisfy ttnn inputs constraints for sin/cos
@@ -216,7 +209,8 @@ ttnn::Tensor gen_trans_mat() {
     return core::from_xtensor(trans_mat, device);
 }
 
-RotaryEmbeddingParams build_rope_params(uint32_t sequence_length, uint32_t head_dim, float theta) {
+RotaryEmbeddingParams build_rope_params(
+    uint32_t sequence_length, uint32_t head_dim, float theta, NTKAwareScalingParams scaling_params) {
     if (head_dim % 32U != 0U) {
         throw std::invalid_argument(fmt::format("RoPE head_dim must be divisible by 32, but is {}", head_dim));
     }
@@ -227,7 +221,7 @@ RotaryEmbeddingParams build_rope_params(uint32_t sequence_length, uint32_t head_
     if (head_dim == 0U) {
         throw std::invalid_argument("RoPE head_dim must be non-zero.");
     }
-    auto [sin_freqs, cos_freqs] = gen_freqs(head_dim, sequence_length, theta);
+    auto [sin_freqs, cos_freqs] = gen_freqs(head_dim, sequence_length, theta, scaling_params);
     auto trans_mat = gen_trans_mat();
 
     return {
@@ -239,6 +233,8 @@ RotaryEmbeddingParams build_rope_params(uint32_t sequence_length, uint32_t head_
 
         .sequence_length = sequence_length,
         .head_dim = head_dim,
+
+        .ntk_aware_scaling_params = scaling_params,
     };
 }
 
