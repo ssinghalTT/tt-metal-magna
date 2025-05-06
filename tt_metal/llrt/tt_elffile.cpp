@@ -343,7 +343,7 @@ void ElfFile::Impl::LoadImage() {
                 uint32_t limit = words[ix];
                 auto const &seg = GetSegments()[ix];
                 if (seg.membytes > limit) {
-                    TT_THROW("{}: phdr[{}] [{},+{}] overflows limit of {} bytes", path_, ix,
+                    TT_THROW("{}: phdr[{}] [{},+{}) overflows limit of {} bytes", path_, ix,
                              seg.address, seg.membytes, limit);
                 }
             }   

@@ -81,7 +81,7 @@ SECTIONS
 #endif
   PROVIDE(__global_pointer$ = DATA_START + 0x7f0);
   .data DATA_START :
-#elif defined(TYPE_KERNEL)
+#else
   __kernel_init_local_l1_base = ABSOLUTE(.);
   /* Where firmware ended. */
   .data __fw_export_ldm_end : AT(__kernel_data_lma)
