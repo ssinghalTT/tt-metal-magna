@@ -336,13 +336,15 @@ void ElfFile::Impl::LoadImage() {
              std::strcmp(GetName(section), ".phdrs") == 0) {
             // Specifies phdr size limits
             auto bytes = GetContents(section);
-            for (unsigned ix = 0, jx = 0; jx != bytes.size(); ix++, jx += sizeof(offset_t)) {
-                offset_t size = 0;
-                for (unsigned kx = sizeof(offset_t); kx--;) {
-                    size = (size << 8) | unsigned(bytes[jx + kx]);
-                }
-                if (ix >= GetSegments().size() || GetSegments()[ix].membytes > size) {
-                    TT_THROW("{}: phdr {} overflows limit of {} bytes", path_, ix, size);
+            auto words = std::span(reinterpret_cast<uint32_t const *>(bytes.data()), bytes.size() / sizeof(uint32_t));
+            for (unsigned ix = 0; ix != words.size(); ix++) {
+                if (ix >= GetSegments().size())
+                    continue;
+                uint32_t limit = words[ix];
+                auto const &seg = GetSegments()[ix];
+                if (seg.membytes > limit) {
+                    TT_THROW("{}: phdr[{}] [{},+{}] overflows limit of {} bytes", path_, ix,
+                             seg.address, seg.membytes, limit);
                 }
             }   
         }

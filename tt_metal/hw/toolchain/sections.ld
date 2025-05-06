@@ -24,7 +24,7 @@ SECTIONS
 #elif defined(COMPILE_FOR_NCRISC) && defined(NCRISC_FIRMWARE_KERNEL_SPLIT)
   .text TEXT_START :
 #else
-  .text __fw_export_end_text :
+  .text __fw_export_text_end :
 #endif
        ALIGN(4)
   {
@@ -63,7 +63,7 @@ SECTIONS
 #endif
 /* FW must align to 16 byte boundary so kernel begins aligned to meet noc alignment constraints */
   . = ALIGN(ABSOLUTE(.) + MEM_PAD, 16);
-  __fw_export_end_text = ABSOLUTE(.);
+  __fw_export_text_end = ABSOLUTE(.);
 #else
    __kernel_data_lma = .;
 #endif
@@ -73,7 +73,7 @@ SECTIONS
 #if defined(COMPILE_FOR_NCRISC)
   PROVIDE (_Z11kernel_initm =
 #if !defined(NCRISC_FIRMWARE_KERNEL_SPLIT)
-           ABSOLUTE(__fw_export_end_text)
+           ABSOLUTE(__fw_export_text_end)
 #else
            MEM_NCRISC_KERNEL_BASE
 #endif
@@ -154,7 +154,7 @@ SECTIONS
   {
     LONG(TEXT_SIZE
 #if defined(TYPE_KERNEL) && !(defined(COMPILE_FOR_NCRISC) && defined(NCRISC_FIRMWARE_KERNEL_SPLIT))
-         - (__fw_export_end_text - TEXT_START)
+         - (__fw_export_text_end - TEXT_START)
 #endif
          )
     LONG(DATA_SIZE
