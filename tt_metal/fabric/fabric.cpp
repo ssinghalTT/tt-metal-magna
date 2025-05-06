@@ -91,6 +91,11 @@ void append_fabric_connection_rt_args(
     CoreCoord fabric_router_virtual_core =
         tt::tt_metal::MetalContext::instance().get_cluster().get_virtual_eth_core_from_channel(
             src_chip_id, fabric_router_channel);
+    auto logical_ethernet_core =
+        tt::tt_metal::MetalContext::instance().get_cluster().get_logical_ethernet_core_from_virtual(
+            src_chip_id, fabric_router_virtual_core);
+    size_t connected_ethernet_channel_id = logical_ethernet_core.y;
+    TT_FATAL(logical_ethernet_core.x == 0, "Grabbed wrong coord field");
 
     tt::tt_fabric::SenderWorkerAdapterSpec edm_connection = {
         .edm_noc_x = fabric_router_virtual_core.x,
@@ -102,6 +107,7 @@ void append_fabric_connection_rt_args(
         .edm_worker_location_info_addr = edm_config.sender_channels_worker_conn_info_base_address[0],
         .buffer_size_bytes = edm_config.channel_buffer_size_bytes,
         .buffer_index_semaphore_id = edm_config.sender_channels_buffer_index_semaphore_address[0],
+        .connected_ethernet_channel_id = connected_ethernet_channel_id,
         .persistent_fabric = true};
 
     auto worker_flow_control_semaphore_id = tt_metal::CreateSemaphore(worker_program, {worker_core}, 0);
