@@ -40,6 +40,7 @@ struct Pool2D {
         struct shared_variables_t {
             tt::tt_metal::KernelHandle reader0_kernel;
             tt::tt_metal::KernelHandle reader1_kernel;
+            tt::tt_metal::KernelHandle compute_kernel;
             tt::tt_metal::CBHandle raw_in_cb;
             tt::tt_metal::CBHandle cb_out;
             uint32_t ncores;

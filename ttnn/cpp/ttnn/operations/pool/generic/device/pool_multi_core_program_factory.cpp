@@ -88,7 +88,7 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
     uint32_t out_w_loop_count = std::ceil((float)out_w / nblocks);
 
     // distributing out_hw across the grid
-    auto grid_size = device->compute_with_storage_grid_size();
+    auto grid_size = input.device()->compute_with_storage_grid_size();
     auto all_cores = input.shard_spec().value().grid;
     uint32_t ncores = all_cores.num_cores();
     uint32_t in_nhw_per_core = input.shard_spec()->shape[0];
@@ -120,10 +120,17 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
     tt::tt_metal::create_cb(in_scalar_cb_id, program, all_cores, in_scalar_cb_pagesize, in_scalar_cb_npages, in_df);
     log_debug(tt::LogOp, "CB {} :: PS = {}, NP = {}", in_scalar_cb_id, in_scalar_cb_pagesize, in_scalar_cb_npages);
 
-    // For avgpool, instantiate and use this CB, which consists of 1s. We don't want to divide
-    // twice by kernel size for large kernel case.
+    /**
+     * Reader Kernel: input rows -> input cb
+     */
+    float one = 1.;
+    uint32_t bf16_one_u32 = *reinterpret_cast<uint32_t*>(&one);
+    uint32_t bf16_init_value = get_bf16_pool_init_value(pool_type);
+
     uint32_t in_one_cb_id = 32;
     if (pool_type == Pool2DType::AVG_POOL2D) {
+        // For avgpool, instantiate and use this CB, which consists of 1s. We don't want to divide
+        // twice by kernel size for large kernel case.
         in_one_cb_id = next_cb_index++;
         uint32_t in_one_cb_pagesize = tile_size(in_df);
         uint32_t in_one_cb_npages = 1;
@@ -268,14 +275,6 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
         log_debug(tt::LogOp, "is_out_sharded: {}", output.memory_config().is_sharded());
     }
 
-    /**
-     * Reader Kernel: input rows -> input cb
-     */
-    uint32_t bf16_scalar = get_bf16_pool_scalar(pool_type, kernel_size_hw, divisor_override) << 16;
-    float one = 1.;
-    uint32_t bf16_one_u32 = *reinterpret_cast<uint32_t*>(&one);
-    uint32_t bf16_init_value = get_bf16_pool_init_value(pool_type);
-
     std::vector<uint32_t> reader0_ct_args = {
         out_nhw_per_core,
         kernel_size_h,
@@ -286,7 +285,6 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
         input_shape[3] / num_shards_c,
         split_reader,  // enable split reader
         0,             // split reader id
-        bf16_scalar,
         bf16_one_u32,
         bf16_init_value,
         in_nblocks_c,
@@ -311,7 +309,6 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
         input_shape[3] / num_shards_c,
         split_reader,  // enable split reader
         1,             // split reader id
-        bf16_scalar,
         bf16_one_u32,
         bf16_init_value,
         in_nblocks_c,
@@ -373,7 +370,16 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
         in_scalar_cb_id,
         out_cb_id,
         max_pool_partials_cb_id,
-        in_one_cb_id};
+        in_one_cb_id,
+        kernel_size_h,
+        kernel_size_w,
+        in_h,
+        in_w,
+        pad_h,
+        pad_w,
+        stride_h,
+        stride_w,
+        ceil_pad_w};
 
     auto compute_config = tt::tt_metal::ComputeConfig{
         .math_fidelity = MathFidelity::HiFi4,
@@ -391,12 +397,43 @@ Pool2D::MultiCore::cached_program_t pool2d_multi_core_sharded_with_halo_v2_impl_
     }
 
     auto compute_kernel = CreateKernel(program, compute_kernel_fname, all_cores, compute_config);
+    uint32_t i = 0;
+    for (auto iterator = all_cores.ranges()[0].begin(); iterator != all_cores.ranges()[0].end(); ++iterator) {
+        uint32_t out_stick_x_start = ((i % (ncores / num_shards_c)) * out_nhw_per_core) / out_w;
+        uint32_t out_stick_y_start = ((i % (ncores / num_shards_c)) * out_nhw_per_core) % out_w;
+        std::vector<uint32_t> scalar_values = get_bf16_pool_scalar(
+            pool_type,
+            in_h,
+            in_w,
+            kernel_size_h,
+            kernel_size_w,
+            ceil_mode,
+            out_h,
+            out_w,
+            stride_h,
+            stride_w,
+            ceil_pad_w,
+            pad_h,
+            pad_w,
+            out_stick_x_start,
+            out_stick_y_start,
+            out_nhw_per_core,
+            divisor_override);
 
+        std::vector<uint32_t> runtime_args = {scalar_values.size()};
+        for (int j = 0; j < scalar_values.size(); j++) {
+            runtime_args.push_back(scalar_values[j] << 16);
+        }
+        tt::tt_metal::SetRuntimeArgs(program, compute_kernel, *iterator, {out_stick_x_start, out_stick_y_start});
+        tt::tt_metal::SetRuntimeArgs(program, reader0_kernel, *iterator, runtime_args);
+        tt::tt_metal::SetRuntimeArgs(program, reader1_kernel, *iterator, runtime_args);
+    }
     // Capture reader_indices_buffer to cache this with the program
     return {
         std::move(program),
         {.reader0_kernel = reader0_kernel,
          .reader1_kernel = reader1_kernel,
+         .compute_kernel = compute_kernel,
          .raw_in_cb = raw_in_cb,
          .cb_out = cb_out,
          .ncores = ncores,
@@ -487,6 +524,7 @@ void Pool2D::MultiCore::override_runtime_arguments(
     auto& program = cached_program.program;
     auto& reader0_kernel = cached_program.shared_variables.reader0_kernel;
     auto& reader1_kernel = cached_program.shared_variables.reader1_kernel;
+    auto& compute_kernel = cached_program.shared_variables.compute_kernel;
     auto& raw_in_cb = cached_program.shared_variables.raw_in_cb;
     auto& cb_out = cached_program.shared_variables.cb_out;
     auto& ncores = cached_program.shared_variables.ncores;
