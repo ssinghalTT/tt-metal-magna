@@ -168,7 +168,7 @@ void ControlPlane::validate_mesh_connections(mesh_id_t mesh_id) const {
                 physical_chip_id,
                 physical_chip_id_next);
             TT_FATAL(
-                eth_links_to_next->second.size() == num_ports_per_side,
+                eth_links_to_next->second.size() >= num_ports_per_side,
                 "Chip {} to chip {} has {} links but expecting {}",
                 physical_chip_id,
                 physical_chip_id_next,
@@ -182,7 +182,7 @@ void ControlPlane::validate_mesh_connections(mesh_id_t mesh_id) const {
                     physical_chip_id,
                     physical_chip_id_next_row);
                 TT_FATAL(
-                    eth_links_to_next_row->second.size() == num_ports_per_side,
+                    eth_links_to_next_row->second.size() >= num_ports_per_side,
                     "Chip {} to chip {} has {} links but expecting {}",
                     physical_chip_id,
                     physical_chip_id_next_row,
@@ -247,7 +247,7 @@ std::vector<chip_id_t> ControlPlane::get_mesh_physical_chip_ids(
                     continue;
                 }
             }
-            if (eth_ports.size() == num_ports_per_side) {
+            if (eth_ports.size() >= num_ports_per_side) {
                 if (visited_physical_chips.find(connected_chip_id) == visited_physical_chips.end()) {
                     q.push(connected_chip_id);
                     visited_physical_chips.insert(connected_chip_id);
@@ -316,7 +316,7 @@ std::vector<chip_id_t> ControlPlane::get_mesh_physical_chip_ids(
                     continue;
                 }
                 if (visited_physical_chips.find(connected_chip_id) == visited_physical_chips.end() and
-                    eth_ports.size() == num_ports_per_side) {
+                    eth_ports.size() >= num_ports_per_side) {
                     physical_chip_ids[i * mesh_ew_size + j] = connected_chip_id;
                     visited_physical_chips.insert(connected_chip_id);
                     found_chip = true;
@@ -587,7 +587,7 @@ void ControlPlane::configure_routing_tables_for_fabric_ethernet_channels() {
                     this->logical_mesh_chip_id_to_physical_chip_id_mapping_[mesh_id][logical_connected_chip_id];
                 const auto& connected_eth_cores = connected_chips_and_eth_cores.at(physical_connected_chip_id);
                 TT_FATAL(
-                    connected_eth_cores.size() == edge.connected_chip_ids.size(),
+                    connected_eth_cores.size() >= edge.connected_chip_ids.size(),
                     "Expected {} eth links from physical chip {} to physical chip {}",
                     edge.connected_chip_ids.size(),
                     physical_chip_id,
