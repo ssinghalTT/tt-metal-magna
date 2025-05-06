@@ -18,9 +18,12 @@
 #include "compute_kernel_api/tilize.h"
 #include "compute_kernel_api/untilize.h"
 #include "compute_kernel_api/matmul.h"
+#include "debug/dprint_pages.h"
+#include "debug/pause.h"
 
 namespace NAMESPACE {
 void MAIN {
+    bool once = true;
     // clang-format off
     // Definitions
     //   block_h: This the length of the row we wish to processes in terms of tiles
@@ -266,6 +269,10 @@ void MAIN {
             // Start Average Calc
             // Start Local Reduce
             cb_wait_front(cb_input_mask, block_w);
+            UNPACK(DPRINT << "MASK" << ENDL());
+            for (uint32_t i = 0; i < block_w; i++) {
+                UNPACK(tt::compute::common::print_full_tile(cb_input_mask, i, true));
+            }
             for (uint32_t out_block_index = 0; out_block_index < num_out_blocks_padded; out_block_index++) {
                 uint32_t out_block_h_actual, out_block_hw_actual;
                 if (extra_out_block && (out_block_index == (num_out_blocks_padded - 1))) {
@@ -276,6 +283,15 @@ void MAIN {
                     out_block_hw_actual = out_block_hw_normal;
                 }
                 cb_wait_front(cb_in0, out_block_hw_normal);
+
+                UNPACK(DPRINT << "INPUT" << ENDL());
+                for (uint32_t i = 0; i < out_block_hw_normal; i++) {
+                    UNPACK(
+                        DPRINT << "batch: " << b << " g :" << g
+                               << "tile: " << (i + (out_block_index * out_block_hw_normal)) << ENDL());
+                    UNPACK(tt::compute::common::print_full_tile(cb_in0, i, true));
+                    // once = false;
+                }
 
                 index_h_offset = 0;
                 reconfig_data_format_srcb(cb_in0, cb_input_mask);
@@ -289,6 +305,7 @@ void MAIN {
                         for (uint32_t w = 0; w < subblock_w; ++w) {
                             uint32_t index = w + index_subblock_w_offset + index_h_offset;
                             uint32_t index_mask = w + index_subblock_w_offset;
+
 #ifdef TILIZE_IN
                         mul_tiles(cb_in, cb_input_mask, index, index_mask, w);
 #else
@@ -554,6 +571,14 @@ void MAIN {
                 }
 
                 cb_wait_front(cb_in0, out_block_hw_normal);
+                // if(out_block_index == 0){
+                //     UNPACK(DPRINT << "cb_in0: " << g << ENDL());
+                //     UNPACK(tt::compute::common::print_full_tile(cb_in0, 0, true));
+                // }
+                // if(out_block_index == 0){
+                //     UNPACK(DPRINT << "cb_ex_global: " << g << ENDL());
+                //     UNPACK(tt::compute::common::print_full_tile(cb_ex_global, 0, true));
+                // }
                 // x - E[x]
                 sub_tiles_bcast_scalar_init_short(cb_in0, cb_ex_global);
                 cb_reserve_back(cb_xmm, out_block_hw_normal);
@@ -586,6 +611,10 @@ void MAIN {
                 mul_tiles_init(cb_xmm, cb_input_mask);
                 cb_reserve_back(cb_x, out_block_hw_normal);
                 cb_wait_front(cb_xmm, out_block_hw_normal);
+                // if(out_block_index == 0){
+                //     UNPACK(DPRINT << "cb_xmm: " << g << ENDL());
+                //     UNPACK(tt::compute::common::print_full_tile(cb_xmm, 0, true));
+                // }
                 for (uint32_t i = 0; i < out_block_h_actual; i++) {
                     index_subblock_w_offset = 0;
                     for (uint32_t j = 0; j < num_subblocks_w; ++j) {
@@ -593,6 +622,8 @@ void MAIN {
                         for (uint32_t w = 0; w < subblock_w; ++w) {
                             uint32_t index = w + index_subblock_w_offset;
                             uint32_t index_mask = index;
+                            // UNPACK(DPRINT << "group: " << g << ENDL());
+                            // UNPACK(tt::compute::common::print_full_tile(cb_input_mask, index, true));
                             mul_tiles(cb_xmm, cb_input_mask, index, index_mask, w);
                         }
                         tile_regs_commit();
@@ -648,6 +679,7 @@ void MAIN {
 
                 cb_wait_front(cb_reread_out, out_block_hw_normal);
                 cb_reserve_back(cb_reread_write_out, out_block_hw_normal);
+                // UNPACK(DPRINT << "block_w_cur: "<<block_w_curr << ENDL());
                 for (uint32_t w = 0; w < block_w_curr; ++w) {
                     uint32_t index_h_offset = 0;
                     uint32_t index_h1_offset = 0;
@@ -702,6 +734,7 @@ void MAIN {
                 cb_pop_front(cb_xmm, out_block_hw_normal);
                 cb_pop_front(cb_reread_out, out_block_hw_normal);
                 cb_push_back(cb_reread_write_out, out_block_hw_normal);
+                cb_wait_front(cb_reread_write_out, out_block_hw_normal);
 
                 // Start Optional Gamma:
                 if constexpr (do_gamma) {
@@ -765,6 +798,17 @@ void MAIN {
                         index_h_offset += block_w_curr;
                     }
                     cb_push_back(cb_outbeta, out_block_hw_normal);
+                    UNPACK(DPRINT << "OUTPUT" << ENDL());
+                    if (once) {
+                        for (uint32_t i = 0; i < out_block_hw_normal; i++) {
+                            UNPACK(
+                                DPRINT << "batch: " << b << " g :" << g
+                                       << "tile: " << (i + (out_block_index * out_block_hw_normal)) << ENDL());
+                            UNPACK(tt::compute::common::print_full_tile(cb_outbeta, i, true));
+                            // once = false;
+                        }
+                    }
+                    UNPACK(DPRINT << "OUTPUT: DONE" << ENDL());
                     cb_pop_front(cb_inbeta, out_block_hw_normal);
                     cb_wait_front(cb_outbeta, out_block_hw_normal);
                 }
