@@ -81,14 +81,16 @@ SECTIONS
 #endif
   PROVIDE(__global_pointer$ = DATA_START + 0x7f0);
   .data DATA_START :
+#define SECTION(NEW, PREV) NEW :
 #else
   __kernel_init_local_l1_base = ABSOLUTE(.);
   /* Where firmware ended. */
   .data __fw_export_ldm_end : AT(__kernel_data_lma)
+/* We can't rely on the linker's LMA computation because that fails when data is before text.  */
+#define SECTION(NEW, PREV) NEW : AT(LOADADDR(PREV) + (ADDR(NEW) - ADDR(PREV)))
 #endif
 	ALIGN(4)
   {
-     . = .; /* Force section emission.  */
      __ldm_data_start = .;
      *(.rodata .rodata.* .gnu.linkonce.r.*)
      *(.rodata1)
@@ -104,15 +106,14 @@ SECTIONS
     *(.data1)
 
     *(.got.plt) *(.igot.plt) *(.got) *(.igot)
-    . = ALIGN(4);
-    __ldm_data_end = .;
+    __ldm_data_end = ALIGN(4);
   } :data
-  .empty.ctors.dtors :
+  SECTION(.empty.ctors.dtors, .data)
   {
     /* We don't use .ctors/.dtors either (this still isn't the '90s), make sure there aren't any.  */
     KEEP (*(.ctors .ctors.* .dtors .dtors.*))
   } :data
-  .empty.init_array.fini_array :
+  SECTION(.empty.init_array.fini_array, .empty.ctors.dtors)
   {
     /* We don't support global static constructors or destructors. make sure there aren't any.  */
     KEEP (*(.preinit_array))
@@ -121,7 +122,7 @@ SECTIONS
     KEEP (*(SORT_BY_INIT_PRIORITY(.fini_array.*)))
     KEEP (*(.fini_array))
   } :data
-  .bss : ALIGN(4)
+  SECTION(.bss, .empty.init_array.fini_array) ALIGN(4)
   {
     __ldm_bss_start = .;
     *(.sbss2 .sbss2.* .gnu.linkonce.sb2.*)
@@ -131,8 +132,7 @@ SECTIONS
     *(.dynbss)
     *(.bss .bss.* .gnu.linkonce.b.*)
     *(COMMON)
-    . = ALIGN(4);
-    __ldm_bss_end = .;
+    __ldm_bss_end = ALIGN(4);
   } :data
 
 #ifdef TYPE_FIRMWARE
