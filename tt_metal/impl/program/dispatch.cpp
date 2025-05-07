@@ -1366,29 +1366,32 @@ public:
                 }
             }
         }
-        for (auto& kernel_bins_cmd : kernel_bins_cmds) {
-            calculator.add_dispatch_write_packed_large(kernel_bins_cmd.dispatch_subcmds.size());
-            if (not this->using_prefetcher_cache) {
-                auto prefetch_subcmds = kernel_bins_cmd.get_prefetch_subcmds<CQPrefetchRelayPagedPackedSubCmd>();
-                calculator.add_prefetch_relay_paged_packed(prefetch_subcmds.size());
-            } else {
-                auto prefetch_subcmds = kernel_bins_cmd.get_prefetch_subcmds<CQPrefetchRelayRingbufferSubCmd>();
-                calculator.add_prefetch_relay_ringbuffer(prefetch_subcmds.size());
-            }
-        }
-        if (this->using_prefetcher_cache) {
-            if (this->is_cached) {
-                calculator.add_prefetch_set_ringbuffer_offset();
-            } else {
-                calculator.add_prefetch_paged_to_ringbuffer();
-            }
-        }
         TT_ASSERT(
             program_sizeB >= cache_subcmd_offset,
             "Cache allocation size {} is smaller than the total size of the program binaries {}",
             program_sizeB,
             cache_subcmd_offset);
+
         this->program_sizeB = cache_subcmd_offset;  // save the actual size of the kernel binaries
+
+        if (this->using_prefetcher_cache and (kernel_bins_cmds.size() > 0 or kernel_bins_unicast_cmds.size() > 0)) {
+            if (this->is_cached) {
+                calculator.add_prefetch_set_ringbuffer_offset();
+            } else {
+                calculator.add_prefetch_paged_to_ringbuffer();
+            }
+            for (auto& kernel_bins_cmd : kernel_bins_cmds) {
+                calculator.add_dispatch_write_packed_large(kernel_bins_cmd.dispatch_subcmds.size());
+                auto prefetch_subcmds = kernel_bins_cmd.get_prefetch_subcmds<CQPrefetchRelayRingbufferSubCmd>();
+                calculator.add_prefetch_relay_ringbuffer(prefetch_subcmds.size());
+            }
+        } else {
+            for (auto& kernel_bins_cmd : kernel_bins_cmds) {
+                calculator.add_dispatch_write_packed_large(kernel_bins_cmd.dispatch_subcmds.size());
+                auto prefetch_subcmds = kernel_bins_cmd.get_prefetch_subcmds<CQPrefetchRelayPagedPackedSubCmd>();
+                calculator.add_prefetch_relay_paged_packed(prefetch_subcmds.size());
+            }
+        }
     }
 
     // Assemble the program binary commands into the device command sequence.
@@ -1401,6 +1404,14 @@ public:
                 kernel_bins_unicast_cmd.size_bytes());
         }
         uint32_t dram_alignment = hal.get_alignment(HalMemType::DRAM);
+        if (this->using_prefetcher_cache and (kernel_bins_cmds.size() > 0 or kernel_bins_unicast_cmds.size() > 0)) {
+            if (this->is_cached) {
+                device_command_sequence.add_prefetch_set_ringbuffer_offset(this->cache_offset);
+            } else {
+                device_command_sequence.add_prefetch_paged_to_ringbuffer(
+                    prefetch_paged_to_ringbuffer_cmd, this->program_sizeB);
+            }
+        }
         for (const KernelBinsCmds& kernel_bins_cmd : kernel_bins_cmds) {
             device_command_sequence.add_dispatch_write_packed_large(
                 CQ_DISPATCH_CMD_PACKED_WRITE_LARGE_TYPE_PROGRAM_BINARIES,
@@ -1416,14 +1427,6 @@ public:
                 auto prefetch_subcmds = kernel_bins_cmd.get_prefetch_subcmds<CQPrefetchRelayPagedPackedSubCmd>();
                 device_command_sequence.add_prefetch_relay_paged_packed(
                     kernel_bins_cmd.data_aligned_sizeB, prefetch_subcmds, prefetch_subcmds.size());
-            }
-        }
-        if (this->using_prefetcher_cache) {
-            if (this->is_cached) {
-                device_command_sequence.add_prefetch_set_ringbuffer_offset(this->cache_offset);
-            } else {
-                device_command_sequence.add_prefetch_paged_to_ringbuffer(
-                    prefetch_paged_to_ringbuffer_cmd, this->program_sizeB);
             }
         }
     }
@@ -1454,7 +1457,6 @@ private:
 
     std::vector<KernelBinsCmds> kernel_bins_cmds;
     std::vector<HostMemDeviceCommand> kernel_bins_unicast_cmds;
-    std::vector<CQPrefetchRelayRingbufferSubCmd> kernel_bins_cmds_unicast_sub_cmds;
 
     // calculate kernel bins total size in DRAM, decide whether to use prefetcher cache or not
     uint32_t check_prefetcher_cacheability(
