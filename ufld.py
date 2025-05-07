@@ -105,7 +105,7 @@ class device:
 
     def run(self, img):
         if type(img) == np.ndarray and len(img.shape) == 3:  # cv2 image
-            img = torch.from_numpy(img.transpose(2, 0, 1)).float().div(255.0).unsqueeze(0)
+            img = torch.from_numpy(img.transpose(2, 1, 0)).float().div(255.0).unsqueeze(0)
         elif type(img) == np.ndarray and len(img.shape) == 4:
             img = torch.from_numpy(img.transpose(0, 3, 1, 2)).float().div(255.0)
         else:
