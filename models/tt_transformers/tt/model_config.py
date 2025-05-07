@@ -329,6 +329,8 @@ class ModelArgs:
         "Mistral-7B-Instruct-v0.3": "models/tt_transformers/model_params/Mistral-7B-Instruct-v0.3",
     }
 
+    MAX_QKV_MM_SEQ_LEN = 2048
+
     def __init__(
         self,
         mesh_device,
@@ -726,29 +728,10 @@ class ModelArgs:
             )
             self.qkv_size = self.head_dim * (2 * self.n_kv_heads + self.n_heads)
             self.min_kv_prefill_shard_seqlen = (self.tile_size * 8 * 8) / (self.n_kv_heads // self.cluster_shape[1])
-            self.MAX_QKV_MM_SEQ_LEN = 2048
-            self.model_config["XQKV_PREFILL_PROGCFG"] = lambda seq_len: ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
-                compute_with_storage_grid_size=(8, 8),
-                in0_block_w=1,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
-                out_subblock_h=1,  # Must be divisible by per_core_M
-                out_subblock_w=1,  # Must be divisible by per_core_N, out_subblock_w * out_subblock_h <= 4
-                per_core_M=max(
-                    1, 8 if seq_len >= self.MAX_QKV_MM_SEQ_LEN else seq_len // self.tile_size // 8  # 8 rows
-                ),  # M / TILE_HEIGHT / Grid_Size (dynamic based on seqlen)
-                per_core_N=math.ceil(self.qkv_size / self.cluster_shape[1] / 32 / 8),  # N / TILE_WIDTH / grid width
-                transpose_mcast=False,
-                fused_activation=None,
-                fuse_batch=seq_len <= self.MAX_QKV_MM_SEQ_LEN,
-            )
+            self.model_config["XQKV_PREFILL_PROGCFG"] = lambda seq_len: self.get_xqkv_prefill_progcfg(seq_len)
 
             assert self.n_kv_heads % self.cluster_shape[1] == 0, "n_kv_heads must be divisible by num_devices"
-            self.model_config["KV_PREFILL_MEM_CFG"] = lambda seq_len: ttnn.create_sharded_memory_config(
-                (((self.n_kv_heads // self.cluster_shape[1]) * seq_len // (8 * 8)), self.head_dim),
-                ttnn.CoreGrid(y=8, x=8),
-                ttnn.ShardStrategy.HEIGHT,
-                ttnn.ShardOrientation.ROW_MAJOR,
-                use_height_and_width_as_shard_shape=True,
-            )
+            self.model_config["KV_PREFILL_MEM_CFG"] = lambda seq_len: self.get_xqkv_prefill_mem_cfg(seq_len)
 
             self.model_config["CREATE_QKV_DECODE_SHARD"] = (
                 ttnn.create_sharded_memory_config(
@@ -1153,6 +1136,30 @@ class ModelArgs:
             )
             logger.info(f"LM head grid: {self.lm_head_core_grid}")
 
+    def get_xqkv_prefill_progcfg(self, seq_len):
+        return ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
+            compute_with_storage_grid_size=(8, 8),
+            in0_block_w=1,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
+            out_subblock_h=1,  # Must be divisible by per_core_M
+            out_subblock_w=1,  # Must be divisible by per_core_N, out_subblock_w * out_subblock_h <= 4
+            per_core_M=max(
+                1, 8 if seq_len >= self.MAX_QKV_MM_SEQ_LEN else seq_len // self.tile_size // 8  # 8 rows
+            ),  # M / TILE_HEIGHT / Grid_Size (dynamic based on seqlen)
+            per_core_N=math.ceil(self.qkv_size / self.cluster_shape[1] / 32 / 8),  # N / TILE_WIDTH / grid width
+            transpose_mcast=False,
+            fused_activation=None,
+            fuse_batch=seq_len <= self.MAX_QKV_MM_SEQ_LEN,
+        )
+
+    def get_xqkv_prefill_mem_cfg(self, seq_len):
+        return ttnn.create_sharded_memory_config(
+            (((self.n_kv_heads // self.cluster_shape[1]) * seq_len // (8 * 8)), self.head_dim),
+            ttnn.CoreGrid(y=8, x=8),
+            ttnn.ShardStrategy.HEIGHT,
+            ttnn.ShardOrientation.ROW_MAJOR,
+            use_height_and_width_as_shard_shape=True,
+        )
+
     def is_distributed_norm(self, mode):
         if not self.is_multichip:
             return False
@@ -1269,7 +1276,7 @@ class ModelArgs:
             self.multiple_of = params["multiple_of"]
             self.hidden_dim = calculate_hidden_dim(self.dim, self.ffn_dim_multiplier, self.multiple_of)
 
-        if "_name_or_path" in params:
+        if params.get("_name_or_path", None):
             if is_hf:
                 normalized_path = os.path.normpath(params["_name_or_path"])
                 # For HF paths, they might end with `<model_name>/snapshots/<snapshot_id>/`
@@ -1399,22 +1406,28 @@ class ModelArgs:
 
     def _set_hf_params(self, checkpoint_dir):
         if self.from_hf_url:
-            from transformers import AutoConfig
+            # Special case Qwen2.5-VL models until they are fully integrated into a HF release
+            if "Qwen/Qwen2.5-VL" in self.model_name:
+                from transformers.models.qwen2_5_vl.configuration_qwen2_5_vl import Qwen2_5_VLConfig as AutoConfig
+            else:
+                from transformers import AutoConfig
 
             if self.dummy_weights:
                 norm_model_name = self.model_name.split("/")[-1]
                 logger.info(
                     f"Loading state param for dummy {norm_model_name} from {self.LOCAL_HF_PARAMS[norm_model_name]}"
                 )
-                config = AutoConfig.from_pretrained(self.LOCAL_HF_PARAMS[norm_model_name]).to_dict()
+                self.hf_config = AutoConfig.from_pretrained(self.LOCAL_HF_PARAMS[norm_model_name])
             else:
-                config = AutoConfig.from_pretrained(self.model_name).to_dict()
+                self.hf_config = AutoConfig.from_pretrained(self.model_name)
+            config = self.hf_config.to_dict()
 
         else:
             config_file = os.path.join(checkpoint_dir, "config.json")
             assert os.path.exists(config_file), f"config.json file not found at {config_file}"
             with open(config_file, "r") as f:
                 config = json.load(f)
+
         self._set_params_from_dict(config, is_hf=True)
 
     def __repr__(self):
@@ -1486,17 +1499,22 @@ class ModelArgs:
         else:
             assert self.checkpoint_type == CheckpointType.HuggingFace
             if self.from_hf_url:
-                from transformers import AutoConfig, AutoModelForCausalLM
+                # Special case Qwen2.5-VL models until they are fully integrated into a HF release
+                if "Qwen/Qwen2.5-VL" in self.model_name:
+                    from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
+                        Qwen2_5_VLForConditionalGeneration as AutoModelForCausalLM,
+                    )
+
+                    print("Loading Qwen2.5-VL model: ", AutoModelForCausalLM)
+                else:
+                    from transformers import AutoModelForCausalLM
 
                 model = AutoModelForCausalLM.from_pretrained(self.CKPT_DIR)
                 state_dict = model.state_dict()
             else:
                 state_dict = load_hf_state_dict(self.CKPT_DIR)
-
-        if self.checkpoint_type == CheckpointType.HuggingFace:
             state_dict = standardize_hf_keys(state_dict)
             state_dict = convert_hf_to_meta(state_dict, self.head_dim)
-
         keys_dict = list(state_dict.keys())[:]
         remv = [f"layers.{i}." for i in list(range(self.n_layers, self.full_model_n_layers))]
         for k in keys_dict:
@@ -1867,7 +1885,14 @@ class ModelArgs:
                 model.load_state_dict(self.load_state_dict())
             return model
         else:
-            from transformers import AutoConfig, AutoModelForCausalLM
+            # Special case Qwen2.5-VL models until they are fully integrated into a HF release
+            if "Qwen/Qwen2.5-VL" in self.model_name:
+                from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
+                    Qwen2_5_VLForConditionalGeneration as AutoModelForCausalLM,
+                )
+                from transformers.models.qwen2_5_vl.configuration_qwen2_5_vl import Qwen2_5_VLConfig as AutoConfig
+            else:
+                from transformers import AutoConfig, AutoModelForCausalLM
 
             # HF is much faster at loading from a checkpoint than generating from config
             # so use that by preference unless we don't have a checkpoint
