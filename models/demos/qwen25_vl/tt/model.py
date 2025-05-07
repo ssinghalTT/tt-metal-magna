@@ -340,6 +340,10 @@ class Transformer(LightweightModule):
     def mesh_device(self):
         return self.__tt_transformer.mesh_device
 
+    @property
+    def cluster_shape(self):
+        return self.__tt_transformer.args.cluster_shape
+
     # override prepare_inputs_prefill
     def prepare_inputs_prefill(self, tokens, start_pos=0, page_table=None, chunk_page_table=None):
         # tokens is actually embeddings
@@ -350,7 +354,9 @@ class Transformer(LightweightModule):
             device=self.mesh_device,
             dtype=ttnn.bfloat16,
             layout=ttnn.TILE_LAYOUT,
-            mesh_mapper=ttnn.ReplicateTensorToMesh(self.mesh_device),
+            mesh_mapper=ttnn.ShardTensor2dMesh(
+                mesh_device=self.mesh_device, dims=(None, 3), mesh_shape=self.cluster_shape
+            ),
         )
 
         # Slice the rot mats to the prefill seqlen

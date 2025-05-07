@@ -280,8 +280,8 @@ def test_demo(
     if use_tt_vision:
         # Create the TorchVisionTransformer wrapper using the original vision model as reference
         vision_model_args = VisionModelArgs(
-            mesh_device,
-            max_batch_size=1,  # todo)) this may need to change for multiple users?
+            mesh_device.create_submesh(ttnn.MeshShape(1, 1), offset=None),
+            max_batch_size=batch_size,  # todo)) this may need to change for multiple users?
             max_seq_len=max_seq_len,
         )
         vision_model_args.hf_config.vision_config.depth = config.vision_config.depth
