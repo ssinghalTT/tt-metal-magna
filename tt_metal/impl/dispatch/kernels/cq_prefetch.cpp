@@ -1216,8 +1216,9 @@ uint32_t process_paged_to_ringbuffer_cmd(uint32_t cmd_ptr, uint32_t& downstream_
     }
 
     ringbuffer_wp = scratch_read_addr;
+    ringbuffer_offset = ringbuffer_wp - scratch_db_base;  // this is to avoid inserting offset command after cache load
 
-    // The consumer will perforam a read barrier.
+    // The consumer will perform a read barrier.
 
     return CQ_PREFETCH_CMD_BARE_MIN_SIZE;
 }
