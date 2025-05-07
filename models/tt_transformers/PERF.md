@@ -1,4 +1,4 @@
-# Llama 3 model performance and accuracy
+# Model performance and accuracy
 
 Performance collected from [demo/simple_text_demo.py](demo/simple_text_demo.py) and accuracy collected from [tests/test_accuracy.py](tests/test_accuracy.py). You can generate this table by running these tests with the `lt` tool (tell it to run `table` or `pareto`) and pressing `m` whilst in the results section to export to markdown.
 
@@ -6,7 +6,7 @@ Note that `test_accuracy.py` parses the below to determine expected values +- 0.
 
 Also note that all the performance metrics below were taken for a maximum generation of 200 tokens, i.e., 200 decode iterations.
 
-## LlamaOptimizations.performance
+## Performance
 
 This configuration uses bfp4 MLP and bfp8 attention weightsfor all models.
 
@@ -43,44 +43,11 @@ This configuration uses bfp4 MLP and bfp8 attention weightsfor all models.
 | Mistral-7B        | T3K         | 91        | 98        | 67.82         | 53.93     |
 
 
-## LlamaOptimizations.accuracy
+## Accuracy
 
 This configuration uses bfp8 MLP and BF16 attention weights (70B+ models use bfp8 attention and bfp4 MLP).
 Llama 3 models test as insensitive to attention precision and so we use bfp8 attention and kv-cache for them even in accuracy mode.
 
-<<<<<<< HEAD
-This configuration uses bfp4 MLP FF1+FF3 only for the 3.1-70B model and the Qwen-2.5-72B model. **Batch_size=1 and prefill_length is 128 tokens.**
-
-| Model          | Device | Top-1 (%) | Top-5 (%) | Speed (t/s/u) | TTFT (ms) |
-|----------------|--------|-----------|-----------|---------------|-----------|
-| Llama3.2-1B    | N150   | 91        | 98        | 82.6          | 29        |
-| Llama3.2-1B    | N300   | 91        | 99        | 102.0         | 25        |
-| Llama3.2-1B    | T3K    | 89        | 98        | 117.1         | 31        |
-| Llama3.2-1B    | TG     | 87        | 98        | 51.3          |           |
-| Llama3.2-3B    | N150   | 92        | 100       | 48.1          | 63        |
-| Llama3.2-3B    | N300   | 91        | 98        | 63.3          | 42        |
-| Llama3.2-3B    | T3K    | 95        | 98        | 66.6          | 56        |
-| Llama3.2-3B    | TG     | 91        | 98        | 33.6          |           |
-| Llama3.1-8B    | N150   | 95        | 100       | 25.1          | 140       |
-| Llama3.1-8B    | N300   | 95        | 100       | 38.5          | 84        |
-| Llama3.1-8B    | T3K    | 95        | 100       | 60.8          | 61        |
-| Llama3.1-8B    | TG     | 88        | 100       | 29.5          |           |
-| Llama3.2-11B   | N300   | 92        | 100       | 38.5          | 78        |
-| Llama3.2-11B   | T3K    | 95        | 100       | 58.9          | 164       |
-| Llama3.2-11B   | TG     | 88        | 100       | 29.5          |           |
-| Llama3.1-70B   | T3K    | 97        | 100       | 14.2          | 195       |
-| Llama3.1-70B   | TG     | 95        | 100       | 12.7          |           |
-| Llama3.2-90B   | T3K    | 97        | 100       | 6             | 5600      |
-| Qwen2.5-7B     | N300   | 84        | 95        | 33.8          | 85        |
-| Qwen2.5-72B    | T3K    | 99        | 100       | 13.3          | 254       |
-| Phi3.5-mini    | N150   |           |           | 38.8          | 92        |
-| Phi3.5-mini    | N300   |           |           | 53.9          | 63        |
-| Phi3.5-mini    | T3K    |           |           | 48.6          | 53        |
-| Mistral-7B     | N150   | 91        | 98        | 29.75         | 100.24    |
-| Mistral-7B     | N300   | 91        | 98        | 47.01         | 65.95     |
-| Mistral-7B     | T3K    | 91        | 98        | 67.82         | 53.93     |
-models/tt_transformers/tt/model_config.py
-=======
 | Model             | Device      | Top-1 (%) | Top-5 (%) | Speed (t/s/u) | TTFT (ms) |
 |-------------------|-------------|-----------|-----------|---------------|-----------|
 | Llama3.2-1B       | N150        | 85        | 98        | 84.7          | 29        |
@@ -100,13 +67,16 @@ models/tt_transformers/tt/model_config.py
 | Llama3.2-11B      | TG          | 88        | 100       | 29.5          |           |
 | Llama3.1-70B      | T3K         | 95        | 100       | 16.5          | 168       |
 | Llama3.1-70B      | TG          | 95        | 100       | 12.7          |           |
+| Llama3.2-90B      | T3K         | 97        | 100       | 6             | 5600      |
 | Qwen2.5-7B        | N300        | 87        | 98        | 31.3          | 86        |
 | Qwen2.5-72B       | T3K         | 99        | 100       | 15.1          | 216       |
 | Phi3.5-mini       | N150        |           |           | 38.8          | 92        |
 | Phi3.5-mini       | N300        |           |           | 53.9          | 63        |
 | Phi3.5-mini       | T3K         |           |           | 48.6          | 53        |
+| Mistral-7B        | N150        | 91        | 98        | 29.75         | 100.24    |
+| Mistral-7B        | N300        | 91        | 98        | 47.01         | 65.95     |
+| Mistral-7B        | T3K         | 91        | 98        | 67.82         | 53.93     |
 
->>>>>>> 094b78eb50 (#20990: Update accuracy to be bf16 attn for all models, retest all, skip 8b n150)
 ##  Long-context (64K Tokens)
 
 This configuration uses bfp4 MLP FF1+FF3 for all models. **Batch_size=1 and prefill_length is 64k tokens.**
