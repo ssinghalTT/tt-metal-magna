@@ -332,13 +332,16 @@ void ElfFile::Impl::LoadImage() {
                 TT_THROW("{}: {} section has contents (namespace-scope constructor present?)", path_, name);
             }
         }
-        if (std::strcmp(GetName(section)), ".data") {
+        if (std::strcmp(GetName(section), ".data")) {
             // Verify this is at the start of segment 1 -- we had a
             // linker script bug at one point.
-            auto const &seg = GetSegments()[1];
-            if (section.sh_addr != seg.address) {
+            bool in_range = GetSegments().size() < 2;
+            if (!in_range || section.sh_addr != GetSegments()[1].address) {
                 TT_THROW("{}: .data section at [{},+{}) not at start of data segment at [{},+{})",
-                         section.sh_addr, section.sh_size, seg.address, seg.membytes);
+                         path_,
+                         section.sh_addr, section.sh_size,
+                         in_range ? GetSegments()[1].address : 0,
+                         in_range ? GetSegments()[1].membytes : 0);
             }
         }
     }
