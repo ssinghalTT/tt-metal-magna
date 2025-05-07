@@ -9,6 +9,7 @@ import importlib
 import datetime
 import os
 import json
+import csv
 import enlighten
 from tt_metal.tools.profiler.process_ops_logs import get_device_data_generate_report
 from tt_metal.tools.profiler.common import PROFILER_LOGS_DIR
@@ -67,8 +68,18 @@ def gather_single_test_perf(device, test_passed):
         return opPerfData[0]
 
 
-def run(test_module, input_queue, output_queue):
+def run(test_module, input_queue, output_queue, suite_name=""):
     device_generator = get_devices(test_module)
+    log_file = f"multiply_pytorch2_results/output_log_{suite_name}.csv"
+    log_file_full = f"multiply_pytorch2_results/Log_full/output_log_{suite_name}.csv"
+
+    # Open the file in write mode to clear its contents
+    os.makedirs(os.path.dirname(log_file), exist_ok=True)
+    with open(log_file, "w") as f:
+        pass  # This will empty the file
+    os.makedirs(os.path.dirname(log_file_full), exist_ok=True)
+    with open(log_file_full, "w") as f:
+        pass  # This will empty the fil
     try:
         device, device_name = next(device_generator)
         logger.info(f"Opened device configuration, {device_name}.")
@@ -101,6 +112,60 @@ def run(test_module, input_queue, output_queue):
                 print("STATUS", status)
                 # print("message", message)
                 print("**************************")
+                data_full = {
+                    "input_a_shape": test_vector["input_shape"]["self"],
+                    "input_b_shape": test_vector["input_shape"]["other"],
+                    "input_a_dtype": test_vector["input_a_dtype"],
+                    "input_b_dtype": test_vector["input_b_dtype"],
+                    "a_mem": test_vector["input_a_memory_config"],
+                    "b_mem": test_vector["input_b_memory_config"],
+                    "status": status,
+                    "message": message,
+                }
+                file_exists = False
+                try:
+                    with open(log_file_full, "r"):
+                        file_exists = True
+                except FileNotFoundError:
+                    pass
+
+                with open(log_file_full, "a", newline="") as f:
+                    writer = csv.DictWriter(f, fieldnames=data_full.keys())
+
+                    # Write header only if the file does not exist
+                    if not file_exists:
+                        writer.writeheader()
+
+                    # Write data row
+                    writer.writerow(data_full)
+            # log_file = "/home/ubuntu/tt-metal/output_log.csv"
+            data = {
+                "input_a_shape": test_vector["input_shape"]["self"],
+                "input_b_shape": test_vector["input_shape"]["other"],
+                "input_a_dtype": test_vector["input_a_dtype"],
+                "input_b_dtype": test_vector["input_b_dtype"],
+                "a_mem": test_vector["input_a_memory_config"],
+                "b_mem": test_vector["input_b_memory_config"],
+                "status": status,
+            }
+
+            # Write to CSV
+            file_exists = False
+            try:
+                with open(log_file, "r"):
+                    file_exists = True
+            except FileNotFoundError:
+                pass
+
+            with open(log_file, "a", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=data.keys())
+
+                # Write header only if the file does not exist
+                if not file_exists:
+                    writer.writeheader()
+
+                # Write data row
+                writer.writerow(data)
     except Empty as e:
         try:
             # Run teardown in mesh_device_fixture
@@ -139,7 +204,7 @@ def execute_suite(test_module, test_vectors, pbar_manager, suite_name):
             test_vector.pop("status")
             test_vector.pop("validity")
             if p is None and len(test_vectors) > 1:
-                p = Process(target=run, args=(test_module, input_queue, output_queue))
+                p = Process(target=run, args=(test_module, input_queue, output_queue, suite_name))
                 p.start()
             try:
                 if MEASURE_PERF:

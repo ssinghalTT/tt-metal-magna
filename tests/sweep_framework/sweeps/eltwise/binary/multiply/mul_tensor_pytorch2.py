@@ -20,7 +20,7 @@ from models.utility_functions import torch_random
 # Each suite has a key name (in this case "suite_1") which will associate the test vectors to this specific suite of inputs.
 # Developers can create their own generator functions and pass them to the parameters as inputs.
 parameters = {
-    "test_a8": {
+    "shape_fix_check": {
         "input_shape": [
             {"self": [0], "other": 0.5},
             {"self": [1, 1, 1, 10], "other": -3.4028234663852886e38},
