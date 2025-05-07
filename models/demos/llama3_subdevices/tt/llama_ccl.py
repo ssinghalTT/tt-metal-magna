@@ -4,7 +4,7 @@
 
 import ttnn
 import torch
-
+from loguru import logger
 from models.demos.llama3_subdevices.tt.llama_common import (
     check_mesh_tensor_alloc,
 )
@@ -754,6 +754,7 @@ def tt_sharded_distributed_rmsnorm(
         strategy=ttnn.ShardStrategy.WIDTH,
         use_height_and_width_as_shard_shape=True,
     )
+    logger.info("fused_rms_1_1_32_8192")
     tt_stats = ttnn.fused_rms_1_1_32_8192(
         inp,
         ln_sharded_progcfg,
@@ -766,6 +767,8 @@ def tt_sharded_distributed_rmsnorm(
         persistent_output_tensor=persistent_buffer,
         is_pre=True,
     )
+    logger.info("fused_rms_1_1_32_8192_done")
+    logger.info("fused_rms_1_1_32_8192")
     tt_out = ttnn.fused_rms_1_1_32_8192(
         inp,
         ln_sharded_progcfg,
@@ -778,5 +781,7 @@ def tt_sharded_distributed_rmsnorm(
         memory_config=output_mem_config,
         is_pre=False,
     )
+    logger.info("fused_rms_1_1_32_8192_done")
     tt_ccl.gather_idx[cluster_axis] = (tt_ccl.gather_idx[cluster_axis] + 1) % tt_ccl.num_cbs
+    logger.info("gather_idx update")
     return tt_out, inp

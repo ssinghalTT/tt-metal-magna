@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import ttnn
+from loguru import logger
 from models.common.lightweightmodule import LightweightModule
 from models.demos.llama3_subdevices.tt.llama_ccl import tt_sharded_distributed_rmsnorm, tt_distributed_rmsnorm
 
@@ -55,6 +56,7 @@ class DistributedNorm(LightweightModule):
         """Apply a norm, possibly gathering inputs if required."""
         if self.TG:
             if mode == "decode":
+                logger.info("TT_SHARDED_DISTRIBUTED_RMSNORM")
                 return tt_sharded_distributed_rmsnorm(
                     x,
                     res,
@@ -81,14 +83,20 @@ class DistributedNorm(LightweightModule):
 
         # Distributed norm already performs a gather
         if self.args.is_multichip and not self.args.is_distributed_norm(mode):
+            logger.info("distributed norm all_gather")
             x = ttnn.all_gather(x, dim=3, num_links=1, topology=self.args.ccl_topology(), memory_config=input_mem_cfg)
+            logger.info("\tdone distributed norm all_gather")
         else:
             x = ttnn.to_memory_config(x, input_mem_cfg)
 
+        logger.info("Norm")
         x = self.norm(x, mode=mode, in_sharded=(mode == "decode"), out_sharded=(mode == "decode"))
+        logger.info("\tDone Norm")
 
         # Distributed norm requires a gather
         if self.args.is_distributed_norm(mode):
+            logger.info("distributed norm all_gather")
             x = ttnn.all_gather(x, dim=3, num_links=1, topology=self.args.ccl_topology())
+            logger.info("\tdone distributed norm all_gather")
 
         return x

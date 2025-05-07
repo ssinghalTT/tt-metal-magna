@@ -107,6 +107,9 @@ void kernel_main() {
                 const uint32_t offset_address = bank_base_address + (read_offset * page_size_bytes);
                 const uint64_t shard_noc_addr = get_noc_addr(x, y, offset_address);
                 const uint32_t transfer_size = read_size * page_size_bytes;
+                ASSERT(y != 16 && y != 17);
+                ASSERT(y <= 36 && x <= 36);
+                ASSERT(offset_address > 32);
 
                 cb_reserve_back(fabric_sender_cb_id, num_pages_reserve_push);
                 noc_async_read(shard_noc_addr, sender_read_addr, transfer_size);

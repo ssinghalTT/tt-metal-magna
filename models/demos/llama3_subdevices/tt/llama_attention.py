@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import torch
-
+from loguru import logger
 import ttnn
 from models.common.lightweightmodule import LightweightModule
 
@@ -262,6 +262,7 @@ class TtLlamaAttention(LightweightModule):
         # QKV matmuls
         # Use HiFi2 for DRAM-sharded matmuls as they are otherwise flop-bound. Loses 1 bit of activation precision.
         ###
+        logger.info("xqkv matmul")
         xqkv_fused_sharded = ttnn.matmul(
             x,
             self.wqkv,
@@ -272,12 +273,14 @@ class TtLlamaAttention(LightweightModule):
             dtype=ttnn.bfloat8_b,
             sub_device_id=self.prefetcher_setup.worker_sub_device_id,
         )
+        logger.info("xqkv matmul done")
         ttnn.deallocate(x)
         # xqkv_fused_sharded -> [1, 1, 32, 12288 // 8]
 
         ###
         # Reshape and rotary embeddings
         ###
+        logger.info("line all reduce create heads")
         (
             xqkv_reduced,
             q_heads_pre_rot_1BQD,
@@ -295,7 +298,7 @@ class TtLlamaAttention(LightweightModule):
             slice_size=8,
             dtype=ttnn.bfloat16,
         )
-
+        logger.info("line all reduce create heads done")
         # print("done create qkv heads")
         ttnn.deallocate(xqkv_fused_sharded)
         ttnn.deallocate(xqkv_reduced)
@@ -307,7 +310,7 @@ class TtLlamaAttention(LightweightModule):
         ttnn.deallocate(q_heads_pre_rot_1BQD)
         ttnn.deallocate(k_heads_pre_rot_1BKD)
 
-        # print("done rotary embeddings")
+        logger.info("done rotary embeddings")
 
         ###
         # KV update
@@ -324,7 +327,7 @@ class TtLlamaAttention(LightweightModule):
         ttnn.experimental.paged_fused_update_cache(
             keys, k_heads_1BKD, values, v_heads_1BKD, update_idxs_tensor=current_pos, page_table=page_table
         )
-
+        logger.info("update cache done")
         ttnn.deallocate(k_heads_1BKD)
         ttnn.deallocate(v_heads_1BKD)
 
@@ -335,7 +338,7 @@ class TtLlamaAttention(LightweightModule):
         # This is because the SDPA op in decode mode has different number of reductions depending on batch size
         # Which leads to slightly different outputs from attention (due to accumulated errors)
         sdpa_out_mem_cfg = self.model_config["SCORES_BATCHED_MM_OUTPUT_MEMCFG"](self.batch_size_per_device_group)
-
+        logger.info("sdpa out mem cfg")
         if page_table:
             attn_output_1G4D_sharded = ttnn.transformer.paged_scaled_dot_product_attention_decode(
                 q_heads_1BQD,
@@ -348,6 +351,7 @@ class TtLlamaAttention(LightweightModule):
                 compute_kernel_config=self.model_config["SDPA_DECODE_COMPUTE_PROGCFG"],
                 memory_config=sdpa_out_mem_cfg,
             )
+            logger.info("paged sdpa decode done")
         else:
             attn_output_1G4D_sharded = ttnn.transformer.scaled_dot_product_attention_decode(
                 q_heads_1BQD,
@@ -359,7 +363,7 @@ class TtLlamaAttention(LightweightModule):
                 compute_kernel_config=self.model_config["SDPA_DECODE_COMPUTE_PROGCFG"],
                 memory_config=sdpa_out_mem_cfg,  # FIXME: why not L1 height sharded e.g. SCORES_BATCHED_MM_OUTPUT_MEMCFG?
             )
-
+            logger.info("sdpa decode done")
         ttnn.deallocate(q_heads_1BQD)
 
         # print("done attention")
@@ -375,10 +379,13 @@ class TtLlamaAttention(LightweightModule):
         #     attn_output_gathered, self.model_config["GATHER_USERS_MEMCFG"](list(self.mesh_device.shape)[1])
         # )
         # ttnn.deallocate(attn_output_gathered)
+        logger.info("untilize")
         attn_output_1G4D_sharded_rm = ttnn.untilize(
             attn_output_1G4D_sharded,
         )
+        logger.info("untilize done")
         ttnn.deallocate(attn_output_1G4D_sharded)
+        logger.info("all gather concat")
         attn_output_cat = self.tt_ccl.all_gather_concat(
             attn_output_1G4D_sharded_rm,
             dim=1,
@@ -387,6 +394,7 @@ class TtLlamaAttention(LightweightModule):
             memory_config=self.model_config["SHARDED_ATTN_WO_INPUT_RING_MEMCFG"],
             num_heads=self.n_local_heads,
         )
+        logger.info("all gather concat done")
         # print("done concat heads")
 
         # Original matmul on each device [1, 1, 32, 1024] @ [1, 1, 1024, 2048]
@@ -400,13 +408,16 @@ class TtLlamaAttention(LightweightModule):
             dtype=ttnn.bfloat8_b,
             sub_device_id=self.prefetcher_setup.worker_sub_device_id,
         )
+        logger.info("dense out matmul done")
         # [1, 1, 32, 2304]
         # print("done matmul")
 
         dense_out_reduced = self.tt_ccl.line_all_reduce(
             dense_out_ttnn, cluster_axis=0, num_links=3, memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"]
         )
+        logger.info("dense out all reduce done")
         ttnn.deallocate(dense_out_ttnn)
+        logger.info("dense out deallocate done")
 
         # print("done all reduce")
 
@@ -644,6 +655,7 @@ class TtLlamaAttention(LightweightModule):
                 kv_cache=kv_cache,
             )
         else:
+            logger.info("forward decode")
             return self.forward_decode(x, current_pos, rot_mats, page_table=page_table, kv_cache=kv_cache)
 
     def prefill_prepare_tensor_for_kv_cache(self, key_or_value_layer, user_id):

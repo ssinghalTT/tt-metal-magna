@@ -415,7 +415,7 @@ FORCE_INLINE void receiver_send_completion_ack(uint8_t src_id) {
         while (internal_::eth_txq_is_busy(DEFAULT_ETH_TXQ)) {
         };
     }
-    DPRINT << "RX Sending Completions (1)\n";
+    // DPRINT << "RX Sending Completions (1)\n";
     remote_update_ptr_val<DEFAULT_ETH_TXQ>(to_sender_packets_completed_streams[src_id], 1);
 }
 
@@ -493,33 +493,8 @@ FORCE_INLINE void establish_worker_connection(
     // Send the difference of the current free slots vs the cached value from teardown
     // This should always be a value >= 0
     // TODO: Should we skip if 0?
-    ASSERT(
-        get_ptr_val(stream_id) >=
-        static_cast<int32_t>(local_sender_channel_worker_interface.worker_location_info_ptr->edm_read_counter));
-    // ASSERT(
-    //     local_sender_channel_worker_interface.local_write_counter.counter >=
-    //     local_sender_channel_worker_interface.worker_location_info_ptr->edm_the_real_local_read_counter);
-    // WATCHER_RING_BUFFER_PUSH(local_sender_channel_worker_interface.local_write_counter.counter);
-    // WATCHER_RING_BUFFER_PUSH(local_sender_channel_worker_interface.worker_location_info_ptr->edm_the_real_local_read_counter);
-    // ASSERT(
-    //     local_sender_channel_worker_interface.local_write_counter.counter -
-    //         local_sender_channel_worker_interface.worker_location_info_ptr->edm_the_real_local_read_counter <=
-    //     SENDER_NUM_BUFFERS);
+    ASSERT(get_ptr_val(stream_id) <= SENDER_NUM_BUFFERS);
 
-    DPRINT << "establish connection\n";
-    DPRINT << "local_write_counter.counter="
-           << (uint32_t)local_sender_channel_worker_interface.local_write_counter.counter << "\n";
-    DPRINT << "edm_the_real_local_read_counter="
-           << (uint32_t)local_sender_channel_worker_interface.worker_location_info_ptr->edm_the_real_local_read_counter
-           << "\n";
-    DPRINT << "edm_read_counter="
-           << (uint32_t)local_sender_channel_worker_interface.worker_location_info_ptr->edm_read_counter
-           << "\n";
-    DPRINT
-        << "addr "
-        << (uint32_t)(&local_sender_channel_worker_interface.worker_location_info_ptr->edm_the_real_local_read_counter)
-        << "\n";
-    DPRINT << "ptr_val=" << (uint32_t)get_ptr_val(stream_id) << "\n";
     local_sender_channel_worker_interface.template notify_worker_of_read_counter_update<enable_ring_support>();
 }
 
@@ -551,7 +526,7 @@ FORCE_INLINE void check_worker_connections(
             //     sender_channel_counters->add_connection();
             // }
             channel_connection_established = true;
-            DPRINT << "establish connection with worker\n";
+            // DPRINT << "establish connection with worker\n";
             establish_worker_connection(local_sender_channel_worker_interface, stream_id);
         }
     } else if (local_sender_channel_worker_interface.has_worker_teardown_request()) {
@@ -720,7 +695,7 @@ void run_receiver_channel_step(
     } else {
         increment_local_update_ptr_val<to_receiver_pkts_sent_id>(-pkts_received_since_last_check);
         // Ack counter does not get used to index a buffer slot, so we skip the buffer index increment
-        // and only increment the counter 
+        // and only increment the counter
         ack_counter.counter += pkts_received_since_last_check;
     }
 
@@ -1027,7 +1002,7 @@ void __attribute__((noinline)) wait_for_static_connection_to_ready(
         if (sender_ch_live_check_skip[i]) {
             while (!connect_is_requested(*local_sender_channel_worker_interfaces[i].connection_live_semaphore));
 
-            DPRINT << "establish connection with EDM\n";
+            // DPRINT << "establish connection with EDM\n";
             establish_edm_connection(local_sender_channel_worker_interfaces[i], sender_channel_free_slots_stream_ids[i]);
         }
     }
@@ -1395,11 +1370,18 @@ void kernel_main() {
     WriteTransactionIdTracker<RECEIVER_NUM_BUFFERS, NUM_TRANSACTION_IDS, NUM_TRANSACTION_IDS>
         receiver_channel_1_trid_tracker;
 
+    auto FORCE_INLINE open_downstream_edm_noc_interface_connection = [&](auto& downstream_edm_noc_interface) {
+        downstream_edm_noc_interface.template open<true, tt::tt_fabric::worker_handshake_noc>();
+        ASSERT(downstream_edm_noc_interface.worker_credits_stream_id < 32);
+        init_ptr_val(downstream_edm_noc_interface.worker_credits_stream_id, SENDER_NUM_BUFFERS);
+    };
+
     if (has_downstream_edm_vc0_buffer_connection) {
-        for (auto& downstream_edm_noc_interface : downstream_edm_noc_interfaces) {
-            downstream_edm_noc_interface.template open<true, tt::tt_fabric::worker_handshake_noc>();
-            init_ptr_val(downstream_edm_noc_interface.worker_credits_stream_id, SENDER_NUM_BUFFERS);
-            ASSERT(get_ptr_val(downstream_edm_noc_interface.worker_credits_stream_id) == SENDER_NUM_BUFFERS);
+        open_downstream_edm_noc_interface_connection(downstream_edm_noc_interfaces[0]);
+    }
+    if constexpr (enable_ring_support) {
+        if (has_downstream_edm_vc1_buffer_connection) {
+            open_downstream_edm_noc_interface_connection(downstream_edm_noc_interfaces[1]);
         }
     }
 
@@ -1407,6 +1389,15 @@ void kernel_main() {
         erisc::datamover::handshake::sender_side_finish(handshake_addr, DEFAULT_HANDSHAKE_CONTEXT_SWITCH_TIMEOUT);
     } else {
         erisc::datamover::handshake::receiver_side_finish(handshake_addr, DEFAULT_HANDSHAKE_CONTEXT_SWITCH_TIMEOUT);
+    }
+
+    if (has_downstream_edm_vc0_buffer_connection) {
+        ASSERT(get_ptr_val(downstream_edm_noc_interfaces[0].worker_credits_stream_id) == SENDER_NUM_BUFFERS);
+    }
+    if constexpr (enable_ring_support) {
+        if (has_downstream_edm_vc1_buffer_connection) {
+            ASSERT(get_ptr_val(downstream_edm_noc_interfaces[1].worker_credits_stream_id) == SENDER_NUM_BUFFERS);
+        }
     }
 
     *edm_status_ptr = tt::tt_fabric::EDMStatus::REMOTE_HANDSHAKE_COMPLETE;

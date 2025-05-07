@@ -4,6 +4,7 @@
 
 import torch
 import ttnn
+from loguru import logger
 from models.common.lightweightmodule import LightweightModule
 import torch.nn.functional as F
 
@@ -103,6 +104,7 @@ class TtLlamaMLP(LightweightModule):
         pc_2 = self.model_config["FF2_TG_RING_PROGCFG"]
         pc_3 = self.model_config["FF1_3_TG_RING_PROGCFG"]
 
+        logger.info("linear")
         w1_out = ttnn.linear(
             x,
             self.w1,
@@ -115,14 +117,15 @@ class TtLlamaMLP(LightweightModule):
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
             sub_device_id=self.prefetcher_setup.worker_sub_device_id if mode == "decode" else None,
         )
-
+        logger.info("linear done")
+        logger.info("reduce scatter")
         w1_out_reduced = self.tt_ccl.line_reduce_scatter(
             w1_out,
             cluster_axis=1,
             num_links=3,
             memory_config=self.model_config["REDUCE_SCATTER_OUT_MEMCFG"],
         )
-
+        logger.info("reduce scatter done")
         w3_out = ttnn.linear(
             x,
             self.w3,
@@ -135,6 +138,7 @@ class TtLlamaMLP(LightweightModule):
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
             sub_device_id=self.prefetcher_setup.worker_sub_device_id if mode == "decode" else None,
         )
+        logger.info("linear done")
         ttnn.deallocate(x)
         try:
             w3_out_reduced = self.tt_ccl.line_reduce_scatter(
@@ -147,6 +151,7 @@ class TtLlamaMLP(LightweightModule):
             print(e)
             self.tt_ccl.close()
 
+        logger.info("eltwise mul")
         ff1ff3 = ttnn.mul(
             w1_out_reduced,
             w3_out_reduced,
@@ -155,11 +160,12 @@ class TtLlamaMLP(LightweightModule):
             memory_config=self.model_config["REDUCE_SCATTER_OUT_MEMCFG"],
         )
 
-        # print("eltwise mul", w2_in)
+        logger.info("eltwise mul done")
 
         ttnn.deallocate(w3_out_reduced)
         ttnn.deallocate(w1_out_reduced)
 
+        logger.info("line all gather")
         w2_in = self.tt_ccl.line_all_gather(
             ff1ff3,
             dim=3,
@@ -168,8 +174,9 @@ class TtLlamaMLP(LightweightModule):
             memory_config=self.model_config["FF2_IN_RING_MEMCFG"],
             buffer_key="BINARY_MUL",
         )
+        logger.info("all gather done")
         ttnn.deallocate(ff1ff3)
-
+        logger.info("linear")
         w2_out = ttnn.linear(
             w2_in,
             self.w2,
@@ -181,11 +188,11 @@ class TtLlamaMLP(LightweightModule):
             global_cb=self.prefetcher_setup.global_circular_buffer if self.model_config["USE_PREFETCHER"] else None,
             sub_device_id=self.prefetcher_setup.worker_sub_device_id if mode == "decode" else None,
         )
-
+        logger.info("linear done")
         w2_out_reduced = self.tt_ccl.line_all_reduce(
             w2_out, cluster_axis=0, num_links=3, memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"]
         )
-
+        logger.info("all reduce done")
         ttnn.deallocate(w2_out)
 
         return w2_out_reduced

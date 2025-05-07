@@ -7,6 +7,7 @@
 #include <tt-metalium/global_circular_buffer_impl.hpp>
 #include "cpp/ttnn/global_circular_buffer.hpp"
 #include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
 
 namespace ttnn::global_circular_buffer {
 

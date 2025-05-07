@@ -68,9 +68,12 @@ void kernel_main() {
     arg_idx += num_sem_ranges;
 
     size_t arg_for_fab = arg_idx;
+
+    DPRINT << "calling fabric connection open_start\n";
     auto fabric_connection =
         FabricConnectionManager::build_from_args<FabricConnectionManager::BUILD_AND_OPEN_CONNECTION_START_ONLY>(
             arg_idx);
+    DPRINT << "\tfinished calling fabric connection open_start\n";
 
     // packet header cb
     cb_reserve_back(reserved_packet_header_cb_id, 1);
@@ -92,7 +95,9 @@ void kernel_main() {
         tt::tt_fabric::MulticastRoutingCommandHeader{1, static_cast<uint8_t>(num_targets_backward_direction)});
 
     if (fabric_connection.is_logically_connected()) {
+        DPRINT << "calling fabric connection open_finish\n";
         fabric_connection.open_finish();
+        DPRINT << "\tFinished fabric connection open\n";
     }
 
     // 1. mcast via fabric to remote tensor addresses
@@ -126,6 +131,8 @@ void kernel_main() {
         noc_async_writes_flushed();
         cb_pop_front(cb0_id, num_tiles_to_read_this_core);
     }
+
+    DPRINT << "Done main loop\n";
 
     // 2. mcast output ready semaphore
     uint64_t out_ready_sem_noc_addr_in_pkt =
@@ -165,7 +172,9 @@ void kernel_main() {
 
     // 3. wait for mcast output ready semaphore
     if (wait_output_semaphore) {
+        DPRINT << "Waiting for output semaphore\n";
         while (*reinterpret_cast<volatile uint32_t*>(out_ready_sem_bank_addr) != out_ready_sem_wait_value);
+        DPRINT << "\tDone waiting for output semaphore\n";
     }
 
     // Set up for mcasting to concat workers
@@ -186,6 +195,7 @@ void kernel_main() {
     }
 
     if (wait_output_semaphore) {
+        DPRINT << "Setting up for mcasting to concat workers\n";
         for (uint32_t i = 0; i < 3; i++) {
             uint32_t mcast_dest_num = 2;
             if (i == 1) {
@@ -220,10 +230,13 @@ void kernel_main() {
                 false,  // linked = false
                 true);  // multicast_path_reserve = true
         }
+        DPRINT << "\tDone setting up for mcasting to concat workers\n";
     }
 
     if (fabric_connection.is_logically_connected()) {
+        DPRINT << "calling fabric connection close_start\n";
         fabric_connection.close_start();
+        DPRINT << "\tFinished fabric connection close_start\n";
     }
 
     if (reset_global_semaphore) {
@@ -232,7 +245,9 @@ void kernel_main() {
 
     // noc_async_read_barrier();
     if (fabric_connection.is_logically_connected()) {
+        DPRINT << "calling fabric connection close_finish\n";
         fabric_connection.close_finish();
+        DPRINT << "\tFinished fabric connection close_finish\n";
     }
     noc_async_write_barrier();
 }

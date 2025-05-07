@@ -6,6 +6,7 @@ import ttnn
 import torch
 import gc
 from tqdm import tqdm
+from loguru import logger
 from models.demos.llama3_subdevices.tt.llama_decoder import TtTransformerBlock
 from models.common.rmsnorm import RMSNorm
 import ttnn
@@ -128,6 +129,7 @@ class TtTransformer(LightweightModule):
         self.tt_rot_mats_prefill = None
 
     def setup_prefill(self, mesh_sub_device_manager_id_prefill=None):
+        logger.info("Setting up prefill")
         self.prefetcher_setup = TtLlamaPrefetcherSetup(
             self.mesh_device,
             n_tensors=0,
@@ -150,6 +152,7 @@ class TtTransformer(LightweightModule):
             self.tt_ccl = self.tt_ccl_prefill
 
     def setup_decode(self, mesh_sub_device_manager_id_decode=None):
+        logger.info("Setting up decode")
         self.prefetcher_setup = TtLlamaPrefetcherSetup(
             self.mesh_device,
             n_tensors=5,
@@ -385,6 +388,7 @@ class TtTransformer(LightweightModule):
         This method will take device tensors and any other args to run forward.
         It returns ttnn device tensors.
         """
+        logger.info("ttn prefill forward")
         tt_logits = self.forward(
             x,
             current_pos=None,
@@ -412,6 +416,7 @@ class TtTransformer(LightweightModule):
         This method will take device tensors and any other args to run forward.
         It returns ttnn device tensors.
         """
+        logger.info("ttn decode forward")
         rot_mats = self.rope_setup.get_rot_mats(rot_mat_idxs)
         x_embd = self.embd(x)
         tt_logits = self.forward(
@@ -422,6 +427,7 @@ class TtTransformer(LightweightModule):
             page_table=page_table,
             kv_cache=kv_cache,
         )
+        logger.info("ttn decode forward done")
         sub_core_grids = ttnn.CoreRangeSet(
             [
                 ttnn.CoreRange(ttnn.CoreCoord(1, 0), ttnn.CoreCoord(3, 9)),
@@ -430,6 +436,7 @@ class TtTransformer(LightweightModule):
         )
 
         # Gather the output across all devices and untilize the tensor (for argmax)
+        logger.info("ttn line all gather")
         tt_logits = self.tt_ccl.line_all_gather(
             tt_logits[0],
             dim=3,
@@ -440,12 +447,13 @@ class TtTransformer(LightweightModule):
         )
 
         tt_logits = ttnn.untilize(tt_logits, use_multicore=True, sub_core_grids=sub_core_grids)
+        logger.info("ttn untilize done")
         tt_logits = ttnn.reshape(
             tt_logits,
             ttnn.Shape([1, 1, 1, tt_logits.shape[-1]]),
             ttnn.Shape([1, 1, tt_logits.shape[-2], tt_logits.shape[-1]]),
         )
-
+        logger.info("ttn reshape done")
         if argmax_on_device:
             tt_logits = ttnn.argmax(  # TODO Add multicore support to batch > 1
                 tt_logits, dim=3, keepdim=True, use_multicore=True, sub_core_grids=sub_core_grids, output_tensor=x
@@ -454,7 +462,7 @@ class TtTransformer(LightweightModule):
             # Send output logits to DRAM so L1 is not reserved for ttnn tracing and can be used by subsequent operations
             if not self.args.is_galaxy:
                 tt_logits = ttnn.to_memory_config(tt_logits, ttnn.DRAM_MEMORY_CONFIG)
-
+        logger.info("ttn to memory config done")
         ttnn.plus_one(
             current_pos,
             sub_core_grids=ttnn.CoreRangeSet([ttnn.CoreRange(ttnn.CoreCoord(1, 0), ttnn.CoreCoord(1, 0))]),
@@ -463,6 +471,7 @@ class TtTransformer(LightweightModule):
             rot_mat_idxs,
             sub_core_grids=ttnn.CoreRangeSet([ttnn.CoreRange(ttnn.CoreCoord(1, 0), ttnn.CoreCoord(1, 0))]),
         )
+        logger.info("ttn plus one done")
         return tt_logits
 
     def switch_mode(self, mode):
@@ -513,21 +522,29 @@ class TtTransformer(LightweightModule):
         get_last_token=-1,
         kv_cache=None,
     ):
+        logger.info("RUNNING FORWARD")
         if mode == "decode":
+            logger.info("Creating global CB")
             self.prefetcher_setup.create_global_cb()
+            logger.info("Global CB created")
             garbage_tensor = ttnn.dram_prefetcher(
                 self.tt_tensors,
                 num_layers=self.n_layers,
                 global_cb=self.prefetcher_setup.global_circular_buffer,
                 enable_performance_mode=self.enable_prefetcher_performance_mode,
             )
+            logger.info("Garbage tensor created")
             self.mesh_device.set_sub_device_stall_group([self.prefetcher_setup.worker_sub_device_id])
+            logger.info("Sub device stall group set")
 
         if mode == "decode" and not self.args.is_galaxy:
+            logger.info("To memory config DECODE_RESIDUAL_MEMCFG")
             x = ttnn.to_memory_config(x, self.model_config["DECODE_RESIDUAL_MEMCFG"])
+            logger.info("To memory config done DECODE_RESIDUAL_MEMCFG")
 
         h = None
         for i, layer in enumerate(self.layers):
+            logger.info(f"Layer forward {i}, name={type(layer).__name__}")
             x, h = layer(
                 x,
                 h,
@@ -540,6 +557,7 @@ class TtTransformer(LightweightModule):
                 chunk_start_idx=chunk_start_idx,
                 kv_cache=kv_cache[i] if kv_cache is not None else None,
             )
+            logger.info(f"\tDone")
         # ttnn.deallocate(h)
         if mode == "decode":
             ttnn.deallocate(garbage_tensor)

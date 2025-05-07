@@ -862,7 +862,7 @@ TEST(EdmFabric, BasicMcastThroughputTest_SingleMcast) {
     RunWriteThroughputStabilityTestWithPersistentFabric(
         num_mcasts, num_unicasts, num_links, num_op_invocations, params);
 }
-TEST(EdmFabric, DISABLED_BasicMcastThroughputTest_SenderFullNoWrap_ReceiverNoWrap_SingleWorker_2Device) {
+TEST(EdmFabric, BasicMcastThroughputTest_SenderFullNoWrap_ReceiverNoWrap_SingleWorker_2Device) {
     const size_t num_mcasts = 9;
     const size_t num_unicasts = 0;
     const size_t num_links = 1;
@@ -889,7 +889,7 @@ TEST(EdmFabric, BasicMcastThroughputTest_SenderFullNoWrap_ReceiverNoWrap_2Device
     RunWriteThroughputStabilityTestWithPersistentFabric(
         num_mcasts, num_unicasts, num_links, num_op_invocations, params);
 }
-TEST(EdmFabric, DISABLED_BasicMcastThroughputTest_SenderFullNoWrap_ReceiverNoWrap_SingleWorker_4Device) {
+TEST(EdmFabric, BasicMcastThroughputTest_SenderFullNoWrap_ReceiverNoWrap_SingleWorker_4Device) {
     const size_t num_mcasts = 9;
     const size_t num_unicasts = 0;
     const size_t num_links = 1;
@@ -903,7 +903,7 @@ TEST(EdmFabric, DISABLED_BasicMcastThroughputTest_SenderFullNoWrap_ReceiverNoWra
     RunWriteThroughputStabilityTestWithPersistentFabric(
         num_mcasts, num_unicasts, num_links, num_op_invocations, params);
 }
-TEST(EdmFabric, DISABLED_BasicMcastThroughputTest_SenderFullNoWrap_ReceiverNoWrap_TwoWorkers_4Device) {
+TEST(EdmFabric, BasicMcastThroughputTest_SenderFullNoWrap_ReceiverNoWrap_TwoWorkers_4Device) {
     const size_t num_mcasts = 9;
     const size_t num_unicasts = 0;
     const size_t num_links = 1;
@@ -928,7 +928,7 @@ TEST(EdmFabric, BasicMcastThroughputTest_SenderFullNoWrap_ReceiverNoWrap) {
     RunWriteThroughputStabilityTestWithPersistentFabric(
         num_mcasts, num_unicasts, num_links, num_op_invocations, params);
 }
-TEST(EdmFabric, DISABLED_BasicMcastThroughputTest_SenderOneElemWrap_ReceiverNoWrap_SingleWorker_2Device) {
+TEST(EdmFabric, BasicMcastThroughputTest_SenderOneElemWrap_ReceiverNoWrap_SingleWorker_2Device) {
     const size_t num_mcasts = 10;
     const size_t num_unicasts = 0;
     const size_t num_links = 1;
@@ -1084,7 +1084,7 @@ TEST(EdmFabric, BasicMcastThroughputTest_SenderTwiceFilled_ReceiverOnceFilled_Li
     RunWriteThroughputStabilityTestWithPersistentFabric(
         num_mcasts, num_unicasts, num_links, num_op_invocations, params);
 }
-TEST(EdmFabric, DISABLED_BasicMcastThroughputTest_SenderFourTImesFilled_ReceiverTwiceFilled_2Device_1Worker) {
+TEST(EdmFabric, BasicMcastThroughputTest_SenderFourTImesFilled_ReceiverTwiceFilled_2Device_1Worker) {
     const size_t num_mcasts = 36;
     const size_t num_unicasts = 0;
     const size_t num_links = 1;
@@ -1169,7 +1169,7 @@ TEST(EdmFabric, BasicMcastThroughputTest_SmallPerf1) {
         num_mcasts, num_unicasts, num_links, num_op_invocations, params);
 }
 
-TEST(EdmFabric, DISABLED_BasicMcastThroughputTest_0) {
+TEST(EdmFabric, BasicMcastThroughputTest_0) {
     const size_t num_mcasts = 100;
     const size_t num_unicasts = 2;
     const size_t num_links = 2;
@@ -1181,7 +1181,7 @@ TEST(EdmFabric, DISABLED_BasicMcastThroughputTest_0) {
     RunWriteThroughputStabilityTestWithPersistentFabric(
         num_mcasts, num_unicasts, num_links, num_op_invocations, params);
 }
-TEST(EdmFabric, DISABLED_BasicMcastThroughputTest_1) {
+TEST(EdmFabric, BasicMcastThroughputTest_1) {
     const size_t num_mcasts = 1000;
     const size_t num_unicasts = 2;
     const size_t num_links = 2;
@@ -1250,7 +1250,7 @@ TEST(EdmFabric, BasicMcastThroughputTest_5) {
     RunWriteThroughputStabilityTestWithPersistentFabric(num_mcasts, num_unicasts, num_links, num_op_invocations);
 }
 // DISABLED due to long runtime
-TEST(EdmFabric, DISABLED_BasicMcastThroughputTest_6) {
+TEST(EdmFabric, BasicMcastThroughputTest_6) {
     const size_t num_mcasts = 100;
     const size_t num_unicasts = 2;
     const size_t num_links = 2;
@@ -1258,7 +1258,7 @@ TEST(EdmFabric, DISABLED_BasicMcastThroughputTest_6) {
     RunWriteThroughputStabilityTestWithPersistentFabric(num_mcasts, num_unicasts, num_links, num_op_invocations);
 }
 // DISABLED due to long runtime
-TEST(EdmFabric, DISABLED_BasicMcastThroughputTest_7) {
+TEST(EdmFabric, BasicMcastThroughputTest_7) {
     const size_t num_mcasts = 1000;
     const size_t num_unicasts = 2;
     const size_t num_links = 2;
@@ -1266,7 +1266,7 @@ TEST(EdmFabric, DISABLED_BasicMcastThroughputTest_7) {
     RunWriteThroughputStabilityTestWithPersistentFabric(num_mcasts, num_unicasts, num_links, num_op_invocations);
 }
 // DISABLED due to long runtime
-TEST(EdmFabric, DISABLED_BasicMcastThroughputTest_8) {
+TEST(EdmFabric, BasicMcastThroughputTest_8) {
     const size_t num_mcasts = 50000;
     const size_t num_unicasts = 2;
     const size_t num_links = 2;
@@ -1274,7 +1274,7 @@ TEST(EdmFabric, DISABLED_BasicMcastThroughputTest_8) {
     RunWriteThroughputStabilityTestWithPersistentFabric(num_mcasts, num_unicasts, num_links, num_op_invocations);
 }
 // DISABLED due to long runtime
-TEST(EdmFabric, DISABLED_BasicMcastThroughputTest_9) {
+TEST(EdmFabric, BasicMcastThroughputTest_9) {
     const size_t num_mcasts = 200000;
     const size_t num_unicasts = 2;
     const size_t num_links = 2;
@@ -1282,7 +1282,7 @@ TEST(EdmFabric, DISABLED_BasicMcastThroughputTest_9) {
     RunWriteThroughputStabilityTestWithPersistentFabric(num_mcasts, num_unicasts, num_links, num_op_invocations);
 }
 // DISABLED due to long runtime
-TEST(EdmFabric, DISABLED_BasicMcastThroughputTest_10) {
+TEST(EdmFabric, BasicMcastThroughputTest_10) {
     const size_t num_mcasts = 800000;
     const size_t num_unicasts = 2;
     const size_t num_links = 2;

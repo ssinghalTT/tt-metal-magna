@@ -346,7 +346,9 @@ def run_llama3_demo(
 
     # Get cos/sin matrices for the current position of each user
     rot_mats = tt_model.rope_setup.get_rot_mats(rot_mat_idxs)
+    logger.info("rot_mats done")
     tt_decode_input = tt_embd(tt_out_tok)
+    logger.info("tt_decode_input done")
     tt_out = tt_model(
         tt_decode_input,
         current_pos_tensor,
@@ -354,17 +356,20 @@ def run_llama3_demo(
         mode="decode",
         page_table=page_table_tt,
     )
-
+    logger.info("tt_model tt_out done")
     # Note: Persistent output buffer used, do not deallocate output!
     tt_out_gathered = tt_model.tt_ccl.line_all_gather(
         tt_out[0], dim=3, num_links=2, cluster_axis=0, memory_config=ttnn.DRAM_MEMORY_CONFIG, buffer_key="SAMPLING"
     )
+    logger.info("tt_out_gathered done")
     tt_out_rm = ttnn.untilize(tt_out_gathered, use_multicore=True, sub_core_grids=sub_core_grids)
+    logger.info("tt_out_rm done")
     tt_out_rm = ttnn.reshape(tt_out_rm, (1, 1, 1, tt_out_rm.shape[3]), (1, 1, tt_out_rm.shape[2], tt_out_rm.shape[3]))
+    logger.info("tt_out_rm reshape done")
     _ = ttnn.argmax(
         tt_out_rm, dim=3, keepdim=True, use_multicore=True, output_tensor=tt_out_tok, sub_core_grids=sub_core_grids
     )
-
+    logger.info("tt_out_rm argmax done")
     if not stress_test:
         ttnn.plus_one(
             current_pos_tensor,
@@ -376,7 +381,9 @@ def run_llama3_demo(
         )
 
     ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
+    logger.info("ttn end trace capture done")
     ttnn.synchronize_device(mesh_device)
+    logger.info("ttn synchronize device done")
 
     # Reset the decoding position for the proper run of the model
     current_pos_reset = ttnn.from_torch(

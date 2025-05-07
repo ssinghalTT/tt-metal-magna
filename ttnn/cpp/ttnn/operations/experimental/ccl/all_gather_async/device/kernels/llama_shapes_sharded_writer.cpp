@@ -138,6 +138,7 @@ void kernel_main() {
             packet_header_buffer_seminc, sizeof(PACKET_HEADER_TYPE));
     }
     // Write the mcast packet (backward)
+    noc_async_writes_flushed();
     if (fabric_connection.has_backward_connection()) {
         pkt_hdr->to_chip_multicast(
             tt::tt_fabric::MulticastRoutingCommandHeader{1, static_cast<uint8_t>(num_sync_targets_backward)});
@@ -162,4 +163,5 @@ void kernel_main() {
     }
 
     noc_async_write_barrier();
+    noc_async_atomic_barrier();
 }

@@ -2,6 +2,7 @@
 
 # SPDX-License-Identifier: Apache-2.0
 import ttnn
+from loguru import logger
 from models.demos.llama3_subdevices.tt.llama_attention import TtLlamaAttention
 from models.demos.llama3_subdevices.tt.llama_mlp import TtLlamaMLP
 from models.common.rmsnorm import RMSNorm
@@ -130,6 +131,7 @@ class TtTransformerBlock(LightweightModule):
         kv_cache=None,
     ) -> ttnn.Tensor:
         TG = self.args.is_galaxy
+        logger.info("TT_TRANSFORMER_BLOCK forward")
         # x is fractured across devices and interleaved in DRAM (for prefill) and sharded in L1 (for decode)
         skip_mem_cfg = self.model_config["DECODE_RESIDUAL_MEMCFG"] if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG
         assert (
@@ -137,7 +139,9 @@ class TtTransformerBlock(LightweightModule):
         ), f"decoder input memcfg mismatch: {x.memory_config()} != {skip_mem_cfg}"
         # Norms take fractured inputs and output replicated across devices
         try:
+            logger.info("attention norm")
             attn_in_sharded, h = self.attention_norm(x, None, mode)
+            logger.info("attention norm done")
         except Exception as e:
             print(e)
             print("failed to run attention norm")
@@ -146,6 +150,7 @@ class TtTransformerBlock(LightweightModule):
         # NOTE: donnot deallocate x here as it updated inplace and returns new h
         # Attention takes replicated inputs and produces fractured outputs
         # pad attn input
+        logger.info("attention forward")
         attn_out = self.attention.forward(
             attn_in_sharded,
             current_pos,
@@ -157,6 +162,7 @@ class TtTransformerBlock(LightweightModule):
             chunk_start_idx=chunk_start_idx,
             kv_cache=kv_cache,
         )
+        logger.info("attention forward done")
         # print("attention done", attn_out)
 
         # Norms take fractured inputs and output replicated across devices
@@ -169,7 +175,9 @@ class TtTransformerBlock(LightweightModule):
         #     ff_in = ttnn.to_memory_config(ff_in, memory_config=self.model_config["MLP_ACT_MEMCFG"])
 
         # MLP takes replicated inputs and produces fractured outputs
+        logger.info("feed forward")
         ff_out = self.feed_forward.forward(ff_in_sharded, mode)
+        logger.info("feed forward done")
         # print("feed forward done", ff_out)
         # if self.layer_num == self.n_layers - 1:
         out = ttnn.add(h, ff_out, memory_config=skip_mem_cfg)  # , dtype=ttnn.bfloat16)

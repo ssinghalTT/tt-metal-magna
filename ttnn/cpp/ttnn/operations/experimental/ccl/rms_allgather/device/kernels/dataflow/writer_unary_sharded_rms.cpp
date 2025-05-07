@@ -125,4 +125,6 @@ void kernel_main() {
         }
         fabric_connection.close_finish();  // Includes a noc async write barrier
     }
+    noc_async_write_barrier();
+    noc_async_atomic_barrier();
 }

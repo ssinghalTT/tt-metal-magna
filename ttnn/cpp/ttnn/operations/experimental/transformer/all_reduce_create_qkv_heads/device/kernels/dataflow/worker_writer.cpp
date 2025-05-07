@@ -68,9 +68,11 @@ void kernel_main() {
     arg_idx += num_mcast_ranges;
 
     size_t arg_for_fab = arg_idx;
+    DPRINT << "calling fabric connection open_start\n";
     auto fabric_connection =
         FabricConnectionManager::build_from_args<FabricConnectionManager::BUILD_AND_OPEN_CONNECTION_START_ONLY>(
             arg_idx);
+    DPRINT << "\tFinished fabric connection open_start\n";
 
     // packet header cb
     cb_reserve_back(reserved_packet_header_cb_id, 1);
@@ -94,7 +96,9 @@ void kernel_main() {
         tt::tt_fabric::MulticastRoutingCommandHeader{1, static_cast<uint8_t>(num_targets_backward_direction)});
 
     if (fabric_connection.is_logically_connected()) {
+        DPRINT << "calling fabric connection open_finish\n";
         fabric_connection.open_finish();
+        DPRINT << "\tFinished fabric connection open_finish\n";
     }
 
     // 1. mcast via fabric to remote tensor addresses
@@ -103,6 +107,7 @@ void kernel_main() {
     uint32_t core_id = 0;
     uint32_t writer_chip_offset = my_chip_id * num_tiles_per_core * tensor0_page_size;
 
+    DPRINT << "Main loop\n";
     while (tiles_read < num_tiles_to_read) {
         uint32_t num_tiles_to_read_this_core = std::min(num_tiles_per_core - shard_tile_id, packet_size_in_pages);
         num_tiles_to_read_this_core = std::min(num_tiles_to_read - tiles_read, num_tiles_to_read_this_core);
@@ -131,7 +136,7 @@ void kernel_main() {
             core_id++;
         }
     }
-
+    DPRINT << "\tDone main loop\n";
     // 2. mcast output ready semaphore
     auto* pkt_hdr = reinterpret_cast<PACKET_HEADER_TYPE*>(packet_header_buffer_seminc);
     uint64_t out_ready_sem_noc_addr_in_pkt =
@@ -162,7 +167,9 @@ void kernel_main() {
     noc_semaphore_inc(out_ready_sem_noc_addr, 1);
 
     // 3. wait for mcast output ready semaphore
+    DPRINT << "Waiting for output semaphore\n";
     while (*reinterpret_cast<volatile uint32_t*>(out_ready_sem_bank_addr) != out_ready_sem_wait_value);
+    DPRINT << "\tDone waiting for output semaphore\n";
 
     // loop over mcast ranges
     for (uint32_t i = 0; i < num_mcast_ranges; i++) {
@@ -186,7 +193,9 @@ void kernel_main() {
     *reinterpret_cast<volatile uint32_t*>(out_ready_sem_bank_addr) = 0;
 
     if (fabric_connection.is_logically_connected()) {
+        DPRINT << "calling fabric connection close\n";
         fabric_connection.close();
+        DPRINT << "\tFinished fabric connection close\n";
     }
 
     noc_async_write_barrier();

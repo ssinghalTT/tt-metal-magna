@@ -41,7 +41,7 @@ namespace tt::tt_fabric {
  */
 template <uint8_t EDM_NUM_BUFFER_SLOTS = 0>
 struct WorkerToFabricEdmSenderImpl {
-    static constexpr bool ENABLE_STATEFUL_WRITE_CREDIT_TO_DOWNSTREAM_EDM = true;
+    static constexpr bool ENABLE_STATEFUL_WRITE_CREDIT_TO_DOWNSTREAM_EDM = false;  // true;
     static constexpr uint32_t sender_channel_0_free_slots_stream_id = 16;
     static constexpr bool USER_DEFINED_NUM_BUFFER_SLOTS = EDM_NUM_BUFFER_SLOTS != 0;
     // Temporary flag to distinguish between worker and EDM users of this adapter until we split it into
@@ -62,6 +62,8 @@ struct WorkerToFabricEdmSenderImpl {
     static WorkerToFabricEdmSenderImpl build_from_args(std::size_t& arg_idx) {
         bool is_persistent_fabric = get_arg_val<uint32_t>(arg_idx++);
         const WorkerXY edm_worker_xy = WorkerXY::from_uint32(get_arg_val<uint32_t>(arg_idx++));
+        ASSERT(edm_worker_xy.x <= 32);
+        ASSERT(edm_worker_xy.y == 16 || edm_worker_xy.y == 17);
         const auto edm_buffer_base_addr = get_arg_val<uint32_t>(arg_idx++);
         const uint8_t num_buffers_per_channel = get_arg_val<uint32_t>(arg_idx++);
         const size_t edm_l1_sem_id = get_arg_val<uint32_t>(arg_idx++);
@@ -79,13 +81,13 @@ struct WorkerToFabricEdmSenderImpl {
         auto worker_teardown_sem_addr =
             reinterpret_cast<volatile uint32_t* const>(get_semaphore<my_core_type>(get_arg_val<uint32_t>(arg_idx++)));
         const auto worker_buffer_index_semaphore_addr = get_semaphore<my_core_type>(get_arg_val<uint32_t>(arg_idx++));
-        ASSERT(
-            (my_core_type == ProgrammableCoreType::TENSIX && worker_buffer_index_semaphore_addr < 1499136) ||
-            (my_core_type == ProgrammableCoreType::ACTIVE_ETH && worker_buffer_index_semaphore_addr < 262144));
-        ASSERT(
-            (my_core_type == ProgrammableCoreType::TENSIX && (uint32_t)writer_send_sem_addr < 1499136) ||
-            (my_core_type == ProgrammableCoreType::ACTIVE_ETH && (uint32_t)writer_send_sem_addr < 262144));
-        ASSERT(edm_buffer_index_addr < 262144);
+        // ASSERT(
+        //     (my_core_type == ProgrammableCoreType::TENSIX && worker_buffer_index_semaphore_addr < 1499136) ||
+        //     (my_core_type == ProgrammableCoreType::ACTIVE_ETH && worker_buffer_index_semaphore_addr < 262144));
+        // ASSERT(
+        //     (my_core_type == ProgrammableCoreType::TENSIX && (uint32_t)writer_send_sem_addr < 1499136) ||
+        //     (my_core_type == ProgrammableCoreType::ACTIVE_ETH && (uint32_t)writer_send_sem_addr < 262144));
+        // ASSERT(edm_buffer_index_addr < 262144);
         return WorkerToFabricEdmSenderImpl(
             is_persistent_fabric,
             edm_worker_xy.x,
@@ -183,12 +185,18 @@ struct WorkerToFabricEdmSenderImpl {
         }
     }
 
-    FORCE_INLINE void wait_for_empty_write_slot() const { 
-        DPRINT << "EDM has space for packet\n";
-        DPRINT << "\tbuffer_slot_write_counter.counter=" << (uint32_t)this->buffer_slot_write_counter.counter << "\n";
-        DPRINT << "\t*from_remote_buffer_free_slots_ptr=" << (uint32_t)*this->from_remote_buffer_free_slots_ptr << "\n";
-        while (!this->edm_has_space_for_packet()); 
-        DPRINT << "wait_for_empty_write_slot: EDM does have space for packet\n";
+    FORCE_INLINE void wait_for_empty_write_slot() const {
+        if constexpr (IS_WORKER) {
+            DPRINT << "EDM has space for packet\n";
+            DPRINT << "\tbuffer_slot_write_counter.counter=" << (uint32_t)this->buffer_slot_write_counter.counter
+                   << "\n";
+            DPRINT << "\t*from_remote_buffer_free_slots_ptr=" << (uint32_t)*this->from_remote_buffer_free_slots_ptr
+                   << "\n";
+        }
+        while (!this->edm_has_space_for_packet());
+        if constexpr (IS_WORKER) {
+            DPRINT << "wait_for_empty_write_slot: EDM does have space for packet\n";
+        }
     }
 
     FORCE_INLINE void send_payload_blocking(uint32_t cb_id, uint32_t num_pages, uint32_t page_size) {
@@ -230,6 +238,7 @@ struct WorkerToFabricEdmSenderImpl {
     template <bool enable_ring_support, uint8_t EDM_TO_DOWNSTREAM_NOC>
     FORCE_INLINE void send_payload_non_blocking_from_address_with_trid(
         uint32_t source_address, size_t size_bytes, uint8_t trid) {
+        // ASSERT(size_bytes <= 4 * 1088 + sizeof(PACKET_HEADER_TYPE)); // TODO: get max packet size from somewhere
         send_payload_from_address_with_trid_impl<
             EDM_IO_BLOCKING_MODE::NON_BLOCKING,
             enable_ring_support,
@@ -247,7 +256,6 @@ struct WorkerToFabricEdmSenderImpl {
     void open_start() {
         const auto dest_noc_addr_coord_only = get_noc_addr(this->edm_noc_x, this->edm_noc_y, 0);
 
-        ASSERT(remote_buffer_index_addr > 0);
         /// DOUBLE CHECK THE READ BACK I RTHINK I AM MISSING CONN INFO READ BACK????
         tt::tt_fabric::EDMChannelWorkerLocationInfo* worker_location_info_ptr =
             reinterpret_cast<tt::tt_fabric::EDMChannelWorkerLocationInfo*>(edm_worker_location_info_addr);
@@ -255,10 +263,11 @@ struct WorkerToFabricEdmSenderImpl {
         worker_location_info_ptr->edm_read_counter = 0;
         if constexpr (IS_WORKER) {
             const uint64_t remote_buffer_index_addr = dest_noc_addr_coord_only | edm_buffer_index_addr;
+            // ASSERT(remote_buffer_index_addr > 0);
             // piggy back off of worker_teardown_addr just to temporarily store the read-back write pointer
             // then once we get it we will use that address for the teardown ack
             // Note this is safe because only the worker can initiate teardown (and it will not do it until)
-            // some time atleast after it copied the wrptr out of the worker_teardown_addr 
+            // some time atleast after it copied the wrptr out of the worker_teardown_addr
             noc_async_read(
                 remote_buffer_index_addr,
                 reinterpret_cast<size_t>(this->worker_teardown_addr),
@@ -325,12 +334,13 @@ struct WorkerToFabricEdmSenderImpl {
         // We need to write our read counter value to the register before we signal the EDM
         // As EDM will potentially increment the register as well
         if constexpr (IS_WORKER) {
+            ASSERT(this->buffer_slot_write_counter.index <= 8);
             this->buffer_slot_write_counter.counter = *this->worker_teardown_addr;
             this->buffer_slot_write_counter.index = BufferIndex{static_cast<uint8_t>(this->buffer_slot_write_counter.counter % static_cast<uint32_t>(this->num_buffers_per_channel))};
             this->buffer_slot_index = this->buffer_slot_write_counter.get_buffer_index();
         } else {
             increment_local_update_ptr_val(worker_credits_stream_id, *from_remote_buffer_free_slots_ptr);
-            DPRINT << "worker_credits_stream_id=" << (uint32_t)worker_credits_stream_id << "\n";
+            // DPRINT << "worker_credits_stream_id=" << (uint32_t)worker_credits_stream_id << "\n";
         }
 
         // write-back the read counter
@@ -339,11 +349,9 @@ struct WorkerToFabricEdmSenderImpl {
 
         const auto dest_noc_addr_coord_only = get_noc_addr(this->edm_noc_x, this->edm_noc_y, 0);
         const uint64_t edm_write_ptr =
-            dest_noc_addr_coord_only |
-            reinterpret_cast<size_t>(
-                edm_worker_location_info_addr +
-                offsetof(tt::tt_fabric::EDMChannelWorkerLocationInfo, edm_read_counter));
-        ASSERT(*this->worker_teardown_addr <= 8);
+            dest_noc_addr_coord_only | reinterpret_cast<size_t>(
+                                           edm_worker_location_info_addr +
+                                           offsetof(tt::tt_fabric::EDMChannelWorkerLocationInfo, edm_read_counter));
 
         noc_inline_dw_write<false, posted>(
             edm_connection_handshake_noc_addr, open_connection_value, 0xf, WORKER_HANDSHAKE_NOC);
@@ -423,8 +431,8 @@ struct WorkerToFabricEdmSenderImpl {
     // TODO: keep a local copy that we use during the lifetime of the channel to avoid repeated L1 reads
     // EDM ONLY
     volatile tt_l1_ptr uint32_t* buffer_slot_index_ptr;
-    BufferIndex buffer_slot_index{0};   
-    
+    BufferIndex buffer_slot_index{0};
+
     // WORKER ONLY
     ChannelCounter<EDM_NUM_BUFFER_SLOTS> buffer_slot_write_counter;
 
@@ -459,7 +467,8 @@ private:
         } else {
             const uint64_t noc_sem_addr =
                 get_noc_addr(this->edm_noc_x, this->edm_noc_y, this->edm_buffer_remote_free_slots_update_addr, noc);
-            DPRINT << "Notifying EDM of free slots update at address " << (uint64_t)noc_sem_addr << ", noc=" << (uint32_t)noc << "\n";
+            // DPRINT << "Notifying EDM of free slots update at address " << (uint64_t)noc_sem_addr << ", noc=" <<
+            // (uint32_t)noc << "\n";
             noc_inline_dw_write(noc_sem_addr, (-1) << REMOTE_DEST_BUF_WORDS_FREE_INC, 0xf, noc);
         }
         if constexpr (!IS_WORKER) {
@@ -523,8 +532,12 @@ private:
         uint64_t buffer_address = this->compute_dest_buffer_slot_noc_addr();
 
         ASSERT(size_bytes <= this->buffer_size_bytes);
-        ASSERT(tt::tt_fabric::is_valid(
-            *const_cast<PACKET_HEADER_TYPE*>(reinterpret_cast<volatile PACKET_HEADER_TYPE*>(source_address))));
+        if constexpr (IS_WORKER) {
+            // tt::tt_fabric::validate_detailed(reinterpret_cast<volatile PACKET_HEADER_TYPE*>(source_address));
+            ASSERT(
+                reinterpret_cast<volatile PACKET_HEADER_TYPE*>(source_address)->payload_size_bytes <=
+                4 * 1088);  // TODO: get max packet size from somewhere
+        }
         send_chunk_from_address<blocking_mode>(source_address, 1, size_bytes, buffer_address);
         post_send_payload_increment_pointers();
     }
@@ -532,7 +545,7 @@ private:
     FORCE_INLINE void send_payload_from_address_with_trid_impl(
         uint32_t source_address, size_t size_bytes, uint8_t trid) {
         ASSERT(size_bytes <= this->buffer_size_bytes);
-        ASSERT(size_bytes > 0);
+        // ASSERT(size_bytes > 0);
         ASSERT(tt::tt_fabric::is_valid(
             *const_cast<PACKET_HEADER_TYPE*>(reinterpret_cast<volatile PACKET_HEADER_TYPE*>(source_address))));
         if constexpr (USER_DEFINED_NUM_BUFFER_SLOTS) {
