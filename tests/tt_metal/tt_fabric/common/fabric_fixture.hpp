@@ -171,5 +171,13 @@ class Fabric2DPushFixture : public BaseFabricFixture {
     void SetUp() override { this->SetUpDevices(tt::tt_metal::FabricConfig::FABRIC_2D_PUSH); }
 };
 
+void RunTestUnicastRaw(
+    BaseFabricFixture* fixture, uint32_t num_hops = 1, RoutingDirection direction = RoutingDirection::E);
+
+void RunTestUnicastConnAPI(
+    BaseFabricFixture* fixture, uint32_t num_hops = 1, RoutingDirection direction = RoutingDirection::E);
+
+void RunTestMCastConnAPI(BaseFabricFixture* fixture);
+
 }  // namespace fabric_router_tests
 }  // namespace tt::tt_fabric
