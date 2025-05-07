@@ -50,6 +50,8 @@ run_python_model_tests_wormhole_b0() {
 
     #Yolov10
     WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest -svv tests/ttnn/integration_tests/yolov10/test_ttnn_yolov10.py::test_yolov10x
+    #Yolov12
+    WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml pytest models/experimental/yolov12x/tests/pcc/test_ttnn_yolov12x.py -k "pretrained_weight_false"
 
     # Llama3.1-8B
     llama8b=/mnt/MLPerf/tt_dnn-models/llama/Meta-Llama-3.1-8B-Instruct/
