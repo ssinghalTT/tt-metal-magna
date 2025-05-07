@@ -81,6 +81,7 @@
 #include "util.hpp"
 #include "utils.hpp"
 #include "host_api.hpp"
+#include "tt_metal/impl/debug/silicon_debugger_ifc.hpp"
 
 namespace tt {
 class tt_hlk_desc;
@@ -1294,6 +1295,9 @@ void detail::ProgramImpl::compile(IDevice* device, bool force_slow_dispatch) {
     if (compiled_.contains(BuildEnvManager::get_instance().get_device_build_env(device->build_id()).build_key)) {
         return;
     }
+
+    InitSiliconDebuggerInterfaceFile();
+
     // Clear the determined sub_device_ids when we compile the program for the first time
     // This way, determine_sub_device_ids is forced to recalculate with the finalized information on the used cores
     if (compiled_.empty()) {
@@ -1387,6 +1391,9 @@ void detail::ProgramImpl::compile(IDevice* device, bool force_slow_dispatch) {
                     }
                     while (not detail::HashLookup::inst().is_bin_generated(kernel_hash)) {
                     }
+
+                    // Save kernel information for the silicon debugger
+                    SiliconDebuggerInterfaceLogKernel (kernel, build_options);
                 },
                 events);
         }
