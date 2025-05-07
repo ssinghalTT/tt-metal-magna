@@ -332,7 +332,7 @@ void ElfFile::Impl::LoadImage() {
                 TT_THROW("{}: {} section has contents (namespace-scope constructor present?)", path_, name);
             }
         }
-        if ( !(section.sh_flags & SHF_ALLOC) && section.sh_type == SHT_PROGBITS &&
+        if (!(section.sh_flags & SHF_ALLOC) && section.sh_type == SHT_PROGBITS &&
              std::strcmp(GetName(section), ".phdrs") == 0) {
             // Specifies phdr size limits
             auto bytes = GetContents(section);
@@ -347,6 +347,18 @@ void ElfFile::Impl::LoadImage() {
                              seg.address, seg.membytes, limit);
                 }
             }   
+        }
+        if (std::strcmp(GetName(section), ".data") == 0) {
+            // Verify this is at the start of segment 1 -- we had a
+            // linker script bug at one point.
+            bool in_range = GetSegments().size() >= 2;
+            if (!in_range || section.sh_addr != GetSegments()[1].address) {
+                TT_THROW("{}: .data section at [{},+{}) not at start of data segment at [{},+{})",
+                         path_,
+                         section.sh_addr, section.sh_size,
+                         in_range ? GetSegments()[1].address : 0,
+                         in_range ? GetSegments()[1].membytes : 0);
+            }
         }
     }
     if (haveStack) {
