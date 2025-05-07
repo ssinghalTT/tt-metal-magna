@@ -1013,7 +1013,6 @@ conv_op_l1_usage conv2d::calculate_L1_usage(
         // ACT CB
         uint32_t act_cb_size = tilized_act_block_num_bytes;
         if (conv_config.enable_act_double_buffer) {
-            tt::log_info(tt::LogOp, "double buffer enabled");
             act_cb_size *= 2;
         }
         tt::log_debug(tt::LogOp, "Act CB Size: {}", act_cb_size);
