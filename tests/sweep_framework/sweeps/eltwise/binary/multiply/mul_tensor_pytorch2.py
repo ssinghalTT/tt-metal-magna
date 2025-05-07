@@ -6,6 +6,8 @@ from typing import Optional, Tuple
 from functools import partial
 
 import torch
+import pytest
+import itertools
 import ttnn
 from tests.sweep_framework.sweep_utils.utils import gen_shapes
 from tests.tt_eager.python_api_testing.sweep_tests.generation_funcs import gen_func_with_cast_tt
@@ -13,7 +15,21 @@ from tests.tt_eager.python_api_testing.sweep_tests.generation_funcs import gen_f
 from tests.ttnn.utils_for_testing import check_with_pcc, start_measuring_time, stop_measuring_time
 from models.utility_functions import torch_random
 
+
 # Ref: https://github.com/tenstorrent/pytorch2.0_ttnn/blob/main/docs/operations/aten.mul.Tensor.md
+def compare_tensors(input_tensor, torch_input_tensor, calculated_tensor, expected_tensor):
+    assert input_tensor.shape == calculated_tensor.shape == expected_tensor.shape, "Tensors must have the same shape"
+    mismatch_indices = torch.nonzero(calculated_tensor != expected_tensor)
+    for idx in mismatch_indices:
+        idx_tuple = tuple(idx.tolist())
+        print(f"Mismatch at index {idx_tuple}:")
+        print(f"    --> Input Tensor")
+        print(f"    -----> TTNN Input : {input_tensor[idx_tuple]}")
+        print(f"    -----> Torch Input: {torch_input_tensor[idx_tuple]}")
+        print(f"    --> TTNN value : {calculated_tensor[idx_tuple]}")
+        print(f"    --> Torch value: {expected_tensor[idx_tuple]}")
+        print("=" * 50)
+
 
 # Parameters provided to the test vector generator are defined here.
 # They are defined as dict-type suites that contain the arguments to the run function as keys, and lists of possible inputs as values.
@@ -405,6 +421,17 @@ parameters = {
         "input_a_memory_config": [ttnn.DRAM_MEMORY_CONFIG, ttnn.L1_MEMORY_CONFIG],
         "input_b_memory_config": [ttnn.DRAM_MEMORY_CONFIG, ttnn.L1_MEMORY_CONFIG],
     },
+    "failed_with_PCC": {
+        "input_shape": [
+            {"self": [1, 1, 1, 2048], "other": -3.4028234663852886e38},
+        ],
+        "input_a_dtype": [ttnn.bfloat16],
+        "input_b_dtype": [ttnn.bfloat16],
+        "input_a_layout": [ttnn.TILE_LAYOUT],
+        "input_b_layout": [ttnn.TILE_LAYOUT],
+        "input_a_memory_config": [ttnn.DRAM_MEMORY_CONFIG],
+        "input_b_memory_config": [ttnn.DRAM_MEMORY_CONFIG],
+    },
 }
 
 
@@ -412,7 +439,7 @@ parameters = {
 # The run function must take the above-defined parameters as inputs.
 # The runner will call this run function with each test vector, and the returned results from this function will be stored.
 # If you defined a device_mesh_fixture above, the object you yielded will be passed into this function as 'device'. Otherwise, it will be the default ttnn device opened by the infra.
-def run(
+def run_mul(
     input_shape,
     input_a_dtype,
     input_b_dtype,
@@ -459,12 +486,71 @@ def run(
     else:
         input_tensor_b = input_shape["other"]
 
+    ttnn.set_printoptions(profile="full")
+    # print("input_tensor_a :",input_tensor_a)
+    # print("input_tensor_b : ",input_tensor_b)
     start_time = start_measuring_time()
     result = ttnn.multiply(input_tensor_a, input_tensor_b, use_legacy=False)
+    # print(result)
+    torch.set_printoptions(threshold=float("inf"))
     output_tensor = ttnn.to_torch(result)
+    # print("tt : ",output_tensor)
     e2e_perf = stop_measuring_time(start_time)
+    # print("torch : ",torch_output_tensor)
+    compare_tensors(input_tensor_a, torch_input_tensor_a, output_tensor, torch_output_tensor)
 
     return [check_with_pcc(torch_output_tensor, output_tensor, pcc=0.99), e2e_perf]
+
+
+def run(
+    input_shape,
+    input_a_dtype,
+    input_b_dtype,
+    input_a_layout,
+    input_b_layout,
+    input_a_memory_config,
+    input_b_memory_config,
+    *,
+    device,
+) -> list:
+    return run_mul(
+        input_shape,
+        input_a_dtype,
+        input_b_dtype,
+        input_a_layout,
+        input_b_layout,
+        input_a_memory_config,
+        input_b_memory_config,
+        device=device,
+    )
+
+
+param_keys = parameters["failed_with_PCC"].keys()
+param_values = itertools.product(*parameters["failed_with_PCC"].values())
+
+
+@pytest.mark.parametrize(",".join(param_keys), list(param_values))
+def test_mul_failure_Case(
+    input_shape,
+    input_a_dtype,
+    input_b_dtype,
+    input_a_layout,
+    input_b_layout,
+    input_a_memory_config,
+    input_b_memory_config,
+    *,
+    device,
+) -> list:
+    return run_mul(
+        input_shape,
+        input_a_dtype,
+        input_b_dtype,
+        input_a_layout,
+        input_b_layout,
+        input_a_memory_config,
+        input_b_memory_config,
+        device=device,
+    )
 
 
 # +--------+------+-------------------------+-------------------+---------+----------------------+----------------+--------------------------------+
