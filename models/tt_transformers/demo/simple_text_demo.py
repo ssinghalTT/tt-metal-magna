@@ -108,6 +108,25 @@ def create_tt_page_table(global_batch_size, data_parallel, paged_attention_confi
     return page_table
 
 
+def tg_create_submeshes(mesh_device, data_parallel):
+    # Assumes that device is open in (8, 4) shape
+    if data_parallel == 4:
+        submeshes = mesh_device.create_submeshes(ttnn.MeshShape(2, 4))
+    elif data_parallel == 8:
+        submeshes = mesh_device.create_submeshes(ttnn.MeshShape(2, 2))
+    elif data_parallel == 16:
+        submeshes = mesh_device.create_submeshes(ttnn.MeshShape(1, 2))
+    elif data_parallel == 32:
+        submeshes = mesh_device.create_submeshes(ttnn.MeshShape(1, 1))
+    else:
+        raise ValueError(f"Unsupported data_parallel value: {data_parallel}")
+
+    for submesh in submeshes:
+        submesh.reshape(ttnn.MeshShape(1, 32 // data_parallel))
+
+    return submeshes
+
+
 def prepare_generator_args(
     num_devices,
     data_parallel,
@@ -119,12 +138,16 @@ def prepare_generator_args(
     page_params,
     paged_attention,
 ):
-    # Partition the mesh, singular model implemented for TP on 1xN mesh
-    submesh_devices = (
-        mesh_device.create_submeshes(ttnn.MeshShape(1, num_devices // data_parallel))
-        if isinstance(mesh_device, ttnn.MeshDevice) and data_parallel > 1
-        else [mesh_device]
-    )
+    device_env = os.environ.get("MESH_DEVICE")
+    if device_env == "TG":
+        submesh_devices = tg_create_submeshes(mesh_device, data_parallel)
+    else:
+        # Partition the mesh, singular model implemented for TP on 1xN mesh
+        submesh_devices = (
+            mesh_device.create_submeshes(ttnn.MeshShape(1, num_devices // data_parallel))
+            if isinstance(mesh_device, ttnn.MeshDevice) and data_parallel > 1
+            else [mesh_device]
+        )
     state_dict = None
 
     # Hybrid requires a model per submesh
@@ -464,9 +487,10 @@ def test_demo_text(
         if (
             is_ci_env
             and num_devices == 32
-            and (data_parallel > 4 or (data_parallel == 4 and "3.1-70B" not in llama_dir))
+            and (data_parallel != 4 or "3.1-70B" not in llama_dir)
+            and (data_parallel != 32 or "3.1-8B" not in llama_dir)
         ):
-            pytest.skip("CI runs only Llama3 70b DP = 4, TP = 8 on TG")
+            pytest.skip("CI runs only Llama3 70b DP = 4, TP = 8 and Llama3 8b DP = 32, TP = 1 on TG")
         if (
             is_ci_env
             and num_devices == 8
