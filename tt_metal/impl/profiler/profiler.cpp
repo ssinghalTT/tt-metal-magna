@@ -533,7 +533,6 @@ void DeviceProfiler::logNocTracePacketDataToJson(
                 {"src_device_id", device_id},
                 {"sx", core_x},
                 {"sy", core_y},
-                {"dst_device_id", device_id},
                 {"num_bytes", local_noc_event.getNumBytes()},
                 {"type", magic_enum::enum_name(ev_md.noc_xfer_type)},
                 {"timestamp", timestamp},
@@ -660,34 +659,34 @@ void DeviceProfiler::serializeJsonNocTraces(
 
             if (current_event.contains("type") && current_event["type"].get<std::string>().starts_with("FABRIC_") &&
                 (i + 1 < events.size())) {
-                const auto& next_event_const = events[i + 1];
-                if (next_event_const.contains("type") && next_event_const["type"] == "WRITE_") {
+                const auto& fabric_event = current_event;
+                const auto& local_noc_write_event = events[i + 1];
+                if (local_noc_write_event.contains("type") && local_noc_write_event["type"] == "WRITE_") {
                     // Check if timestamps are close enough; otherwise
-                    double ts_diff = next_event_const.value("timestamp", 0.0) - current_event.value("timestamp", 0.0);
+                    double ts_diff =
+                        local_noc_write_event.value("timestamp", 0.0) - fabric_event.value("timestamp", 0.0);
                     if (ts_diff > 1000) {
                         log_warning(
                             "Failed to coalesce fabric noc trace events because timestamps are implausibly far apart.");
                     } else {
                         try {
                             // router eth core location is derived from the following noc WRITE_ event
-                            CoreCoord phys_eth_route_coord = {
-                                next_event_const.at("dx").get<int>(), next_event_const.at("dy").get<int>()};
+                            CoreCoord virt_eth_route_coord = {
+                                local_noc_write_event.at("dx").get<int>(), local_noc_write_event.at("dy").get<int>()};
+                            CoreCoord phys_eth_route_coord =
+                                getPhysicalAddressFromVirtual(device_id, virt_eth_route_coord);
 
-                            CoreCoord src_coord = {
-                                current_event.at("sx").get<int>(), current_event.at("sy").get<int>()};
-                            CoreCoord dst_coord = {
-                                current_event.at("dx").get<int>(), current_event.at("dy").get<int>()};
+                            int hops = fabric_event.at("routing_hops").get<int>();
 
-                            int hops = current_event.at("routing_hops").get<int>();
-                            auto maybe_route = routing_lookup.getRoutingPathsToDestination(
-                                device_id, src_coord, phys_eth_route_coord, hops, dst_coord);
+                            std::optional<tt::tt_fabric::chan_id_t> eth_chan_opt =
+                                routing_lookup.getRouterEthCoreToChannelLookup(device_id, phys_eth_route_coord);
+                            if (eth_chan_opt) {
+                                tt::tt_fabric::chan_id_t eth_chan = *eth_chan_opt;
 
-                            if (maybe_route.has_value()) {
-                                FabricRoutingLookup::FullFabricRoute route = maybe_route.value();
-                                chip_id_t dest_chip_id = route.back().first;
+                                CoreCoord dst_coord = {
+                                    fabric_event.at("dx").get<int>(), fabric_event.at("dy").get<int>()};
 
-                                nlohmann::ordered_json modified_write_event = next_event_const;
-                                modified_write_event["dst_device_id"] = dest_chip_id;
+                                nlohmann::ordered_json modified_write_event = local_noc_write_event;
                                 modified_write_event["timestamp"] = current_event["timestamp"];
 
                                 // replace original eth core destination with true destination
@@ -695,26 +694,9 @@ void DeviceProfiler::serializeJsonNocTraces(
                                 modified_write_event["dy"] = dst_coord.y;
 
                                 // replace the type with fabric event type
-                                modified_write_event["type"] = current_event["type"];
+                                modified_write_event["type"] = fabric_event["type"];
 
-                                // add route override
-                                bool noc1_for_first_route = next_event_const.at("noc").get<std::string>() == "NOC_1";
-                                modified_write_event["route_override"] = nlohmann::json::array_t();
-                                for (int i = 0; i < route.size(); i++) {
-                                    auto& [chip_id, coord_pair] = route[i];
-                                    int p1_x = coord_pair.first.x;
-                                    int p1_y = coord_pair.first.y;
-                                    int p2_x = coord_pair.second.x;
-                                    int p2_y = coord_pair.second.y;
-                                    std::string noc_type = (i == 0 && noc1_for_first_route) ? "NOC_1" : "NOC_0";
-                                    modified_write_event["route_override"].push_back(nlohmann::json::object_t{
-                                        {"chip_id", chip_id},
-                                        {"noc", noc_type},
-                                        {"p1_x", p1_x},
-                                        {"p1_y", p1_y},
-                                        {"p2_x", p2_x},
-                                        {"p2_y", p2_y}});
-                                }
+                                modified_write_event["fabric_send"] = {{"eth_chan", eth_chan}, {"hops", hops}};
 
                                 coalesced_events.push_back(std::move(modified_write_event));
                                 coalesced = true;
@@ -722,8 +704,8 @@ void DeviceProfiler::serializeJsonNocTraces(
                                 log_warning(
                                     "Fabric routing lookup failed for event in op '{}' at ts {}: src_dev={}, "
                                     "eth_core=({}, {}), hops={}. Keeping original events.",
-                                    current_event.value("op_name", "N/A"),
-                                    current_event.value("timestamp", 0.0),
+                                    fabric_event.value("op_name", "N/A"),
+                                    fabric_event.value("timestamp", 0.0),
                                     device_id,
                                     phys_eth_route_coord.x,
                                     phys_eth_route_coord.y,
@@ -777,7 +759,7 @@ void DeviceProfiler::serializeJsonNocTraces(
 }
 
 CoreCoord DeviceProfiler::getPhysicalAddressFromVirtual(chip_id_t device_id, const CoreCoord& c) const {
-    bool coord_is_translated = c.x >= MetalContext::instance().hal().get_virtual_worker_start_x() - 1 &&
+    bool coord_is_translated = c.x >= MetalContext::instance().hal().get_virtual_worker_start_x() - 1 ||
                                c.y >= MetalContext::instance().hal().get_virtual_worker_start_y() - 1;
     try {
         if (device_architecture == tt::ARCH::WORMHOLE_B0 && coord_is_translated) {
@@ -939,6 +921,7 @@ void DeviceProfiler::dumpResults(
             // serialize noc traces only in normal state, to avoid overwriting individual trace files
             if (state == ProfilerDumpState::NORMAL && rtoptions.get_profiler_noc_events_enabled()) {
                 serializeJsonNocTraces(noc_trace_json_log, rpt_path, device_id, routing_lookup);
+                dumpClusterCoordinatesAsJson(std::filesystem::path(rpt_path) / "cluster_coordinates.json");
             }
         }
     } else {
