@@ -18,6 +18,7 @@ import functools
 import argparse
 import re
 from collections import Counter
+import ipdb
 
 msgpack_numpy.patch()
 
@@ -42,6 +43,7 @@ parser.set_defaults(meta_style=False)
 args = parser.parse_args()
 
 
+@ipdb.iex
 def tweak_and_dump_tokenizer():
     tokenizer = AutoTokenizer.from_pretrained(parser.parse_args().hf_model)
     """
@@ -91,6 +93,7 @@ def tweak_and_dump_tokenizer():
     print(f"Modified tokenizer saved to {tokenizer_path}")
 
 
+@ipdb.iex
 def dump_model():
     hf_model = AutoModelForCausalLM.from_pretrained(parser.parse_args().hf_model)
 

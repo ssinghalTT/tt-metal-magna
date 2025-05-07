@@ -17,6 +17,7 @@ Llama::Llama(const LlamaConfig& config) {
     uint32_t vocab_size = config.vocab_size;
     uint32_t max_sequence_length = config.max_sequence_length;
     uint32_t embedding_dim = config.embedding_dim;
+    std::optional<uint32_t> intermediate_dim = config.intermediate_dim;
     uint32_t num_heads = config.num_heads;
     uint32_t num_groups = config.num_groups;
     float dropout_prob = config.dropout_prob;
@@ -28,6 +29,7 @@ Llama::Llama(const LlamaConfig& config) {
     fmt::print("    Vocab size: {}\n", vocab_size);
     fmt::print("    Max sequence length: {}\n", max_sequence_length);
     fmt::print("    Embedding dim: {}\n", embedding_dim);
+    fmt::print("    Intermediate dim: {}\n", intermediate_dim ? fmt::format("{}", *intermediate_dim) : "None");
     fmt::print("    Num heads: {}\n", num_heads);
     fmt::print("    Num groups: {}\n", num_groups);
     fmt::print("    Dropout probability: {}\n", dropout_prob);
@@ -80,7 +82,7 @@ Llama::Llama(const LlamaConfig& config) {
     blocks.reserve(num_blocks);
     for (uint32_t block_idx = 0; block_idx < num_blocks; ++block_idx) {
         blocks.push_back(std::make_shared<ttml::modules::LlamaBlock>(
-            embedding_dim, num_heads, num_groups, m_rope_params, dropout_prob));
+            embedding_dim, num_heads, num_groups, m_rope_params, dropout_prob, intermediate_dim));
     }
     ln_fc = std::make_shared<ttml::modules::RMSNormLayer>(embedding_dim);
     fc = last_fc;
@@ -119,6 +121,10 @@ LlamaConfig read_config(const YAML::Node& config) {
     llama_config.num_heads = config["num_heads"].as<uint32_t>();
     llama_config.num_groups = config["num_groups"].as<uint32_t>();
     llama_config.embedding_dim = config["embedding_dim"].as<uint32_t>();
+    if (config["intermediate_dim"]) {
+        uint32_t intermediate_dim = config["intermediate_dim"].as<uint32_t>();
+        llama_config.intermediate_dim = std::make_optional(intermediate_dim);
+    }
     llama_config.dropout_prob = config["dropout_prob"].as<float>();
     llama_config.num_blocks = config["num_blocks"].as<uint32_t>();
     llama_config.vocab_size = config["vocab_size"].as<uint32_t>();
@@ -152,6 +158,9 @@ YAML::Node write_config(const LlamaConfig& llama_config) {
     config["num_heads"] = llama_config.num_heads;
     config["num_groups"] = llama_config.num_groups;
     config["embedding_dim"] = llama_config.embedding_dim;
+    if (llama_config.intermediate_dim) {
+        config["intermediate_dim"] = *llama_config.intermediate_dim;
+    }
     config["dropout_prob"] = llama_config.dropout_prob;
     config["num_blocks"] = llama_config.num_blocks;
     config["vocab_size"] = llama_config.vocab_size;
