@@ -108,6 +108,9 @@ void SubDeviceManagerTracker::load_sub_device_manager(SubDeviceManagerId sub_dev
     auto local_l1_size = sub_device_manager->second->local_l1_size();
     default_allocator->shrink_allocator_size(BufferType::L1, local_l1_size, /*bottom_up=*/true);
     active_sub_device_manager_ = sub_device_manager->second.get();
+
+    device_->sysmem_manager().sub_device_cq_owner().clear();
+    device_->sysmem_manager().sub_device_cq_owner().resize(active_sub_device_manager_->num_sub_devices());
 }
 
 void SubDeviceManagerTracker::clear_loaded_sub_device_manager() {

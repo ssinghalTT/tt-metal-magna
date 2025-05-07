@@ -84,6 +84,8 @@ public:
 
     void fetch_queue_write(uint32_t command_size_B, uint8_t cq_id, bool stall_prefetcher = false);
 
+    std::vector<std::optional<uint32_t>>& sub_device_cq_owner() { return sub_device_cq_owner_; }
+
 private:
     chip_id_t device_id = 0;
     uint8_t num_hw_cqs = 0;
@@ -100,6 +102,7 @@ private:
     std::vector<tt::Writer> prefetch_q_writers;
     std::vector<uint32_t> prefetch_q_dev_ptrs;
     std::vector<uint32_t> prefetch_q_dev_fences;
+    std::vector<std::optional<uint32_t>> sub_device_cq_owner_;
 
     bool bypass_enable = false;
     std::vector<uint32_t> bypass_buffer;
