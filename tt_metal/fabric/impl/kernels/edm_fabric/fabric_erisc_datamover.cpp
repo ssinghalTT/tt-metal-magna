@@ -379,8 +379,7 @@ FORCE_INLINE void send_next_data(
 
     auto src_addr = (uint32_t)pkt_header;
     auto dest_addr = receiver_buffer_channel.get_buffer_address(remote_receiver_buffer_index);
-    while (internal_::eth_txq_is_busy(DEFAULT_ETH_TXQ)) {
-    };
+
     internal_::eth_send_packet_bytes_unsafe(DEFAULT_ETH_TXQ, src_addr, dest_addr, payload_size_bytes);
 
     // Note: We can only advance to the next buffer index if we have fully completed the send (both the payload and sync
@@ -425,8 +424,6 @@ FORCE_INLINE void receiver_send_received_ack(
 
 // MUST CHECK !is_eth_txq_busy() before calling
 FORCE_INLINE void receiver_send_completion_ack(uint8_t src_id) {
-    while (internal_::eth_txq_is_busy(DEFAULT_ETH_TXQ)) {
-    };
     remote_update_ptr_val(to_sender_packets_completed_streams[src_id], 1);
 }
 
@@ -498,13 +495,15 @@ FORCE_INLINE bool connect_is_requested(uint32_t cached) {
 template <uint8_t SENDER_NUM_BUFFERS>
 FORCE_INLINE void establish_connection(
     tt::tt_fabric::EdmChannelWorkerInterface<SENDER_NUM_BUFFERS>& local_sender_channel_worker_interface) {
-    local_sender_channel_worker_interface.cache_producer_noc_addr();
+    local_sender_channel_worker_interface.template cache_producer_noc_addr<use_stateful_api_on_sender_ack>();
     if constexpr (enable_first_level_ack) {
-        local_sender_channel_worker_interface.template update_worker_copy_of_read_ptr<enable_ring_support>(
-            local_sender_channel_worker_interface.local_ackptr.get_ptr());
+        local_sender_channel_worker_interface
+            .template update_worker_copy_of_read_ptr<enable_ring_support, use_stateful_api_on_sender_ack>(
+                local_sender_channel_worker_interface.local_ackptr.get_ptr());
     } else {
-        local_sender_channel_worker_interface.template update_worker_copy_of_read_ptr<enable_ring_support>(
-            local_sender_channel_worker_interface.local_rdptr.get_ptr());
+        local_sender_channel_worker_interface
+            .template update_worker_copy_of_read_ptr<enable_ring_support, use_stateful_api_on_sender_ack>(
+                local_sender_channel_worker_interface.local_rdptr.get_ptr());
     }
 }
 
@@ -563,7 +562,7 @@ void run_sender_channel_step(
     // TODO: update to be stream reg based. Initialize to space available and simply check for non-zero
     bool receiver_has_space_for_packet = outbound_to_receiver_channel_pointers.has_space_for_packet();
     bool has_unsent_packet = local_sender_channel_worker_interface.has_unsent_payload();
-    bool can_send = receiver_has_space_for_packet && has_unsent_packet;
+    bool can_send = receiver_has_space_for_packet && has_unsent_packet && !internal_::eth_txq_is_busy(DEFAULT_ETH_TXQ);
     if constexpr (enable_first_level_ack) {
         bool sender_backpressured_from_sender_side =
             !(local_sender_channel_worker_interface.local_rdptr.distance_behind(
@@ -596,12 +595,14 @@ void run_sender_channel_step(
             to_sender_packets_completed_streams[sender_channel_index], -completions_since_last_check);
         if constexpr (!enable_first_level_ack) {
             if constexpr (SKIP_CONNECTION_LIVENESS_CHECK) {
-                local_sender_channel_worker_interface.template update_worker_copy_of_read_ptr<enable_ring_support>(
-                    sender_rdptr.get_ptr());
+                local_sender_channel_worker_interface
+                    .template update_worker_copy_of_read_ptr<enable_ring_support, use_stateful_api_on_sender_ack>(
+                        sender_rdptr.get_ptr());
             } else {
                 if (channel_connection_established) {
-                    local_sender_channel_worker_interface.template update_worker_copy_of_read_ptr<enable_ring_support>(
-                        sender_rdptr.get_ptr());
+                    local_sender_channel_worker_interface
+                        .template update_worker_copy_of_read_ptr<enable_ring_support, use_stateful_api_on_sender_ack>(
+                            sender_rdptr.get_ptr());
                 }
             }
         }
@@ -616,12 +617,14 @@ void run_sender_channel_step(
         if (acks_since_last_check > 0) {
             sender_ackptr.increment_n(acks_since_last_check);
             if constexpr (SKIP_CONNECTION_LIVENESS_CHECK) {
-                local_sender_channel_worker_interface.template update_worker_copy_of_read_ptr<enable_ring_support>(
-                    sender_ackptr.get_ptr());
+                local_sender_channel_worker_interface
+                    .template update_worker_copy_of_read_ptr<enable_ring_support, use_stateful_api_on_sender_ack>(
+                        sender_ackptr.get_ptr());
             } else {
                 if (channel_connection_established) {
-                    local_sender_channel_worker_interface.template update_worker_copy_of_read_ptr<enable_ring_support>(
-                        sender_ackptr.get_ptr());
+                    local_sender_channel_worker_interface
+                        .template update_worker_copy_of_read_ptr<enable_ring_support, use_stateful_api_on_sender_ack>(
+                            sender_ackptr.get_ptr());
                 }
             }
             increment_local_update_ptr_val(
@@ -706,7 +709,8 @@ void run_receiver_channel_step(
         }
 
         auto& completion_counter = receiver_channel_pointers.completion_counter;
-        bool unsent_completions = !completion_counter.is_caught_up_to(completion_counter, wr_flush_counter);
+        bool unsent_completions = !completion_counter.is_caught_up_to(completion_counter, wr_flush_counter) &&
+                                  !internal_::eth_txq_is_busy(DEFAULT_ETH_TXQ);
         if (unsent_completions) {
             // completion ptr incremented in callee
             auto receiver_buffer_index = wr_flush_counter.get_buffer_index();
@@ -721,7 +725,8 @@ void run_receiver_channel_step(
         bool unflushed_writes = !completion_counter.is_caught_up_to(wr_sent_counter);
         auto receiver_buffer_index = completion_counter.get_buffer_index();
         bool next_trid_flushed = receiver_channel_trid_tracker.transaction_flushed(receiver_buffer_index);
-        bool can_send_completion = unflushed_writes && next_trid_flushed;
+        bool can_send_completion =
+            unflushed_writes && next_trid_flushed && !internal_::eth_txq_is_busy(DEFAULT_ETH_TXQ);
         if (can_send_completion) {
             receiver_send_completion_ack(receiver_channel_pointers.get_src_chan_id(receiver_buffer_index));
             receiver_channel_trid_tracker.clear_trid_at_buffer_slot(receiver_buffer_index);
