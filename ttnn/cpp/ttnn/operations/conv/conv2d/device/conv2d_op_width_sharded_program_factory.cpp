@@ -97,9 +97,6 @@ tt::tt_metal::operation::ProgramWithCallbacks multi_core_optimized_conv_width_sh
     uint32_t max_subblock_h = fp32_dest_acc_en ? 4 : 8;
     uint32_t act_block_h_ntiles_padded = act_block_h_ntiles;
     uint32_t out_subblock_h_ntiles_padded = out_subblock_h_ntiles;
-    // bool enable_subblock_padding = false;
-    // bool enable_split_reader = false;
-    // enable_act_double_buffer = false;
     if (enable_subblock_padding) {
         TT_FATAL(
             act_block_h_ntiles == out_block_h_ntiles, "to pad subblock, the number of blocks on height dim must be 1");
@@ -322,15 +319,12 @@ tt::tt_metal::operation::ProgramWithCallbacks multi_core_optimized_conv_width_sh
     uint32_t act_block_h_datums_split_last = act_block_h_nsubblocks_split_last * out_subblock_h_ntiles * TILE_HEIGHT;
 
     uint32_t act_block_num_tiles_split = act_block_h_nsubblocks_split * out_subblock_h_ntiles * act_block_w_ntiles;
-    uint32_t act_block_num_tiles_split_last =
-        act_block_h_nsubblocks_split_last * out_subblock_h_ntiles * act_block_w_ntiles;
 
     log_debug(LogOp, "act_block_h_nsubblocks_split: {}", act_block_h_nsubblocks_split);
     log_debug(LogOp, "act_block_h_nsubblocks_split_last: {}", act_block_h_nsubblocks_split_last);
     log_debug(LogOp, "act_block_h_datums_split: {}", act_block_h_datums_split);
     log_debug(LogOp, "act_block_h_datums_split_last: {}", act_block_h_datums_split_last);
     log_debug(LogOp, "act_block_num_tiles_split: {}", act_block_num_tiles_split);
-    log_debug(LogOp, "act_block_num_tiles_split_last: {}", act_block_num_tiles_split_last);
     log_debug(LogOp, "act_block_w_datums: {}", act_block_w_datums);
     log_debug(LogOp, "conv_act_size_c: {}", conv_act_size_c);
     log_debug(LogOp, "filter_h: {}", filter_h);
@@ -628,14 +622,14 @@ tt::tt_metal::operation::ProgramWithCallbacks multi_core_optimized_conv_width_sh
         a.buffer());
 
     cb_indices.act_cb = cb_indices.get_next_cb_index();
-    tt::tt_metal::create_cb(
-        cb_indices.act_cb, program, all_cores, tilized_act_tile_size, act_block_num_tiles_split, tilized_act_df);
-    log_debug(
-        LogOp,
-        "Act CB: {}, npages: {}, pagesize: {}",
-        cb_indices.act_cb,
-        act_block_num_tiles_split,
-        tilized_act_tile_size);
+
+    uint32_t act_cb_size = act_block_num_tiles_split;
+    if (enable_act_double_buffer) {
+        act_cb_size *= 2;
+    }
+
+    tt::tt_metal::create_cb(cb_indices.act_cb, program, all_cores, tilized_act_tile_size, act_cb_size, tilized_act_df);
+    log_debug(LogOp, "Act CB: {}, npages: {}, pagesize: {}", cb_indices.act_cb, act_cb_size, tilized_act_tile_size);
 
     // Used for placing tilized activations
     cb_indices.tilize_mode_tilized_act_cb = cb_indices.get_next_cb_index();
