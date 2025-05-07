@@ -28,6 +28,7 @@
 using namespace tt;
 using namespace tt::tt_metal;
 
+using tt::tt_metal::detail::ProgramImpl;
 namespace {
 
 // Class to track stats for DispatchData
@@ -131,8 +132,8 @@ public:
     };
     ~DataCollector() { inst = nullptr; };
 
-    void RecordData(Program& program, data_collector_t type, uint32_t transaction_size, RISCV riscv);
-    void RecordKernelGroups(Program& program, CoreType core_type, std::vector<KernelGroup>& kernel_groups);
+    void RecordData(ProgramImpl& program, data_collector_t type, uint32_t transaction_size, RISCV riscv);
+    void RecordKernelGroups(ProgramImpl& program, CoreType core_type, std::vector<KernelGroup>& kernel_groups);
     void RecordProgramRun(Program& program);
     void DumpData();
 
@@ -143,7 +144,7 @@ private:
     std::map<uint64_t, int> program_id_to_call_count;
 };
 
-void DataCollector::RecordData(Program& program, data_collector_t type, uint32_t transaction_size, RISCV riscv) {
+void DataCollector::RecordData(ProgramImpl& program, data_collector_t type, uint32_t transaction_size, RISCV riscv) {
     uint64_t program_id = program.get_id();
     if (program_id_to_dispatch_data.count(program_id) == 0) {
         // If no existing data for this program, initialize starting values.
@@ -158,7 +159,8 @@ void DataCollector::RecordData(Program& program, data_collector_t type, uint32_t
     program_id_to_dispatch_data[program_id].at(type).Update(transaction_size, riscv);
 }
 
-void DataCollector::RecordKernelGroups(Program& program, CoreType core_type, std::vector<KernelGroup>& kernel_groups) {
+void DataCollector::RecordKernelGroups(
+    ProgramImpl& program, CoreType core_type, std::vector<KernelGroup>& kernel_groups) {
     uint64_t program_id = program.get_id();
     // Make a copy of relevant info, since user may destroy program before we dump.
     for (KernelGroup& kernel_group : kernel_groups) {
@@ -269,7 +271,7 @@ void InitDataCollector() {
 
 namespace tt {
 
-void RecordDispatchData(Program& program, data_collector_t type, uint32_t transaction_size, RISCV riscv) {
+void RecordDispatchData(ProgramImpl& program, data_collector_t type, uint32_t transaction_size, RISCV riscv) {
     // Do nothing if we're not enabling data collection.
     if (!tt::tt_metal::MetalContext::instance().rtoptions().get_dispatch_data_collection_enabled()) {
         return;
@@ -279,7 +281,7 @@ void RecordDispatchData(Program& program, data_collector_t type, uint32_t transa
     DataCollector::inst->RecordData(program, type, transaction_size, riscv);
 }
 
-void RecordKernelGroups(Program& program, CoreType core_type, std::vector<KernelGroup>& kernel_groups) {
+void RecordKernelGroups(ProgramImpl& program, CoreType core_type, std::vector<KernelGroup>& kernel_groups) {
     // Do nothing if we're not enabling data collection.
     if (!tt::tt_metal::MetalContext::instance().rtoptions().get_dispatch_data_collection_enabled()) {
         return;

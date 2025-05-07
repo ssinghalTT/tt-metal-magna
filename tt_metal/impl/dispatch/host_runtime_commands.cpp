@@ -136,7 +136,7 @@ void EnqueueProgramCommand::process() {
     // Reserve space for this program in the kernel config ring buffer
     program_dispatch::reserve_space_in_kernel_config_buffer(
         this->config_buffer_mgr,
-        program.get_program_config_sizes(),
+        program.impl().get_program_config_sizes(),
         program.get_program_binary_status(device->id()),
         num_workers,
         this->expected_num_workers_completed,
@@ -149,7 +149,7 @@ void EnqueueProgramCommand::process() {
     auto& cached_program_command_sequence = program.get_cached_program_command_sequences().at(command_hash);
     // Update the generated dispatch commands based on the state of the CQ and the ring buffer
     program_dispatch::update_program_dispatch_commands(
-        program,
+        program.impl(),
         cached_program_command_sequence,
         this->multicast_cores_launch_message_wptr,
         this->unicast_cores_launch_message_wptr,

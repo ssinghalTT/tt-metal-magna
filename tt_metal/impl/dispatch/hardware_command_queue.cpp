@@ -390,16 +390,16 @@ void HWCommandQueue::enqueue_program(Program& program, bool blocking) {
     std::vector<SubDeviceId> sub_device_ids = {program.determine_sub_device_ids(device_)};
     TT_FATAL(sub_device_ids.size() == 1, "Programs must be executed on a single sub-device");
     // Finalize Program: Compute relative offsets for data structures (semaphores, kernel binaries, etc) in L1
-    program_dispatch::finalize_program_offsets(program, device_);
+    program_dispatch::finalize_program_offsets(program.impl(), device_);
 
     if (program.get_program_binary_status(device_->id()) == ProgramBinaryStatus::NotSent) {
         // Write program binaries to device if it hasn't previously been cached
         program.allocate_kernel_bin_buf_on_device(device_);
-        if (program.get_program_transfer_info().binary_data.size()) {
-            const BufferRegion buffer_region(0, program.get_kernels_buffer(device_)->size());
+        if (program.impl().get_program_transfer_info().binary_data.size()) {
+            const BufferRegion buffer_region(0, program.impl().get_kernels_buffer(device_)->size());
             this->enqueue_write_buffer(
-                *program.get_kernels_buffer(device_),
-                program.get_program_transfer_info().binary_data.data(),
+                *program.impl().get_kernels_buffer(device_),
+                program.impl().get_program_transfer_info().binary_data.data(),
                 buffer_region,
                 false);
         }
@@ -414,12 +414,12 @@ void HWCommandQueue::enqueue_program(Program& program, bool blocking) {
 #ifdef DEBUG
     if (tt::tt_metal::MetalContext::instance().rtoptions().get_validate_kernel_binaries()) {
         TT_FATAL(!this->manager_.get_bypass_mode(), "Tracing cannot be used while validating program binaries");
-        if (const auto buffer = program.get_kernels_buffer(device_)) {
+        if (const auto buffer = program.impl().get_kernels_buffer(device_)) {
             std::vector<uint32_t> read_data(buffer->page_size() * buffer->num_pages() / sizeof(uint32_t));
             const BufferRegion region(0, buffer->size());
             this->enqueue_read_buffer(*buffer, read_data.data(), region, true);
             TT_FATAL(
-                program.get_program_transfer_info().binary_data == read_data,
+                program.impl().get_program_transfer_info().binary_data == read_data,
                 "Binary for program to be executed is corrupted. Another program likely corrupted this binary");
         }
     }
@@ -479,12 +479,12 @@ void HWCommandQueue::enqueue_program(Program& program, bool blocking) {
 #ifdef DEBUG
     if (tt::tt_metal::MetalContext::instance().rtoptions().get_validate_kernel_binaries()) {
         TT_FATAL(!this->manager_.get_bypass_mode(), "Tracing cannot be used while validating program binaries");
-        if (const auto buffer = program.get_kernels_buffer(device_)) {
+        if (const auto buffer = program.impl().get_kernels_buffer(device_)) {
             std::vector<uint32_t> read_data(buffer->page_size() * buffer->num_pages() / sizeof(uint32_t));
             const BufferRegion region(0, buffer->size());
             this->enqueue_read_buffer(*buffer, read_data.data(), region, true);
             TT_FATAL(
-                program.get_program_transfer_info().binary_data == read_data,
+                program.impl().get_program_transfer_info().binary_data == read_data,
                 "Binary for program that executed is corrupted. This program likely corrupted its own binary.");
         }
     }
@@ -493,7 +493,7 @@ void HWCommandQueue::enqueue_program(Program& program, bool blocking) {
     log_trace(
         tt::LogMetal,
         "Created EnqueueProgramCommand (active_cores: {} bypass_mode: {} expected_workers_completed: {})",
-        program.get_program_transfer_info().num_active_cores,
+        program.impl().get_program_transfer_info().num_active_cores,
         this->manager_.get_bypass_mode(),
         expected_workers_completed);
 }
