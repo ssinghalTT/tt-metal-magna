@@ -24,7 +24,7 @@
 #include "hal_types.hpp"
 #include "hostdevcommon/profiler_common.h"
 #include "llrt.hpp"
-#include "logger.hpp"
+#include <tt-logger/tt-logger.hpp>
 #include "metal_soc_descriptor.h"
 #include "profiler.hpp"
 #include "profiler_paths.hpp"
@@ -244,7 +244,7 @@ void DeviceProfiler::readRiscProfilerResults(
                     tracy::riscName[riscEndIndex],
                     bufferEndIndex);
                 TracyMessageC(warningMsg.c_str(), warningMsg.size(), tracy::Color::Tomato3);
-                log_warning(warningMsg.c_str());
+                log_warning("{}", warningMsg);
             }
 
             uint32_t riscNumRead = 0;

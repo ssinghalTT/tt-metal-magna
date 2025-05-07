@@ -17,6 +17,7 @@ SKIP_FILES = {
 
 ALLOWED_PREFIXES = {
     "hostdevcommon",
+    "tt-logger",
     "tt-metalium",
     "tt_stl",
     "umd",
@@ -24,7 +25,6 @@ ALLOWED_PREFIXES = {
     "fmt",
     "magic_enum",
     "nlohmann",
-    "pybind11",
 }
 
 STD_HEADERS = {
