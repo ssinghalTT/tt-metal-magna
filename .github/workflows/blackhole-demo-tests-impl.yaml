@@ -23,21 +23,27 @@ jobs:
       fail-fast: false
       matrix:
         test-group: [
+          # {
+          #   name: "whisper_performance",
+          #   arch: blackhole,
+          #   cmd: pytest models/demos/whisper/demo/demo.py --input-path="models/demos/whisper/demo/dataset/conditional_generation" -k "conditional_generation",
+          #   owner_id: U05RWH3QUPM #Salar Hosseini
+          # },
+          # {
+          #   name: "Llama3-8B_performance",
+          #   arch: blackhole,
+          #   cmd: LLAMA_DIR=/proj_sw/user_dev/hf_data/Llama3/Llama3.1-8B-Instruct pytest models/tt_transformers/demo/simple_text_demo.py -k performance-batch-1,
+          #   owner_id: U03PUAKE719 # Miguel Tairum
+          # },
           {
-            name: "whisper_performance",
+            name: "ttnn-stress",
             arch: blackhole,
-            cmd: pytest models/demos/whisper/demo/demo.py --input-path="models/demos/whisper/demo/dataset/conditional_generation" -k "conditional_generation",
-            owner_id: U05RWH3QUPM #Salar Hosseini
-          },
-          {
-            name: "Llama3-8B_performance",
-            arch: blackhole,
-            cmd: LLAMA_DIR=/proj_sw/user_dev/hf_data/Llama3/Llama3.1-8B-Instruct pytest models/tt_transformers/demo/simple_text_demo.py -k performance-batch-1,
-            owner_id: U03PUAKE719 # Miguel Tairum
+            cmd: pytest tests/ttnn/stress_tests/,
+            owner_id: U0883RN6CRE # William Ly
           }
         ]
     name: ${{ matrix.test-group.name }}
-    runs-on: ["in-service", "${{ inputs.runner-label }}", "pipeline-perf"]
+    runs-on: ["in-service", "${{ inputs.runner-label }}", "BH"]
     steps:
       - name: ⬇️ Checkout
         uses: actions/checkout@v4
