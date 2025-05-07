@@ -1401,7 +1401,7 @@ def export_results_to_markdown(output_entries, stdscr):
     if perf_entries:
         markdown_lines.extend(
             [
-                "## LlamaOptimizations.performance",
+                "## Performance",
                 "",
                 "This configuration uses bfp4 MLP FF1+FF3 for all models.",
                 "",
@@ -1419,7 +1419,7 @@ def export_results_to_markdown(output_entries, stdscr):
         markdown_lines.extend(
             [
                 "",
-                "## LlamaOptimizations.accuracy",
+                "## Accuracy",
                 "",
                 "This configuration uses bfp4 MLP FF1+FF3 only for the 3.1-70B model.",
                 "",
