@@ -332,6 +332,15 @@ void ElfFile::Impl::LoadImage() {
                 TT_THROW("{}: {} section has contents (namespace-scope constructor present?)", path_, name);
             }
         }
+        if (std::strcmp(GetName(section)), ".data") {
+            // Verify this is at the start of segment 1 -- we had a
+            // linker script bug at one point.
+            auto const &seg = GetSegments()[1];
+            if (section.sh_addr != seg.address) {
+                TT_THROW("{}: .data section at [{},+{}) not at start of data segment at [{},+{})",
+                         section.sh_addr, section.sh_size, seg.address, seg.membytes);
+            }
+        }
     }
     if (haveStack) {
         // Remove the stack segment, now we used it for checking the sections.
