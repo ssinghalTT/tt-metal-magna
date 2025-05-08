@@ -8,7 +8,7 @@ Run the following command to generate the perf shee. FPS = (Batch_size * 10^9)/ 
 `python -m tracy -p -r -v -m pytest models/experimental/mv2like/test/test_ttnn_mv2_like.py::test_mv2_like[1-device_params0]`<br>
 `python -m tracy -p -r -v -m pytest models/experimental/mv2like/test/test_ttnn_mv2_like.py::test_mv2_like[2-device_params0]`<br>
 `python -m tracy -p -r -v -m pytest models/experimental/mv2like/test/test_ttnn_mv2_like.py::test_mv2_like[4-device_params0]`<br>
-`python -m tracy -p -r -v -m pytest  models/experimental/mv2like/test/test_ttnn_mv2_like.py::test_mv2_like[8-device_params0]`<br>
+`python -m tracy -p -r -v -m pytest  models/experimental/mv2like/test/test_ttnn_mv2_like.py::test_mv2_like[8-device_params0]`
 
 
 # To test and evaluate the end to end perf (including IO) for batch sizes 1, 2, 4, and 8 run:
@@ -18,4 +18,4 @@ Running each of the pytests bellow will report the FPS and inference time per di
 `pytest models/experimental/mv2like/test/test_mv2like_e2e_performant.py::test_run_mv2like_trace_2cq_inference[1-device_params0]`<br>
 `pytest models/experimental/mv2like/test/test_mv2like_e2e_performant.py::test_run_mv2like_trace_2cq_inference[2-device_params0]`<br>
 `pytest models/experimental/mv2like/test/test_mv2like_e2e_performant.py::test_run_mv2like_trace_2cq_inference[4-device_params0]`<br>
-`pytest models/experimental/mv2like/test/test_mv2like_e2e_performant.py::test_run_mv2like_trace_2cq_inference[8-device_params0]`<br>
+`pytest models/experimental/mv2like/test/test_mv2like_e2e_performant.py::test_run_mv2like_trace_2cq_inference[8-device_params0]`
