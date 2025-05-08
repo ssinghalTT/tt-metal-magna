@@ -385,8 +385,15 @@ def run_test_tusimple(
             with torch.no_grad():
                 out, pred = net(imgs)
         else:
-            imgs = imgs.permute(0, 2, 3, 1)
+            n, c, h, w = imgs.shape
+            # imgs = imgs.permute(0, 2, 3, 1)
+            input_mem_config = ttnn.create_sharded_memory_config(
+                [n, c, h, w],
+                ttnn.CoreGrid(x=8, y=8),
+                ttnn.ShardStrategy.HEIGHT,
+                )
             imgs = ttnn.from_torch(imgs, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT, device=device)
+            imgs = imgs.to(device, input_mem_config)
             out = net(imgs, batch_size=batch_size)
             out = ttnn.to_torch(out).squeeze(dim=0).squeeze(dim=0)
             pred = {
@@ -508,8 +515,15 @@ def run_inference_tusimple(
             with torch.no_grad():
                 out, pred = net(imgs)
         else:
-            imgs = imgs.permute(0, 2, 3, 1)
+            n, c, h, w = imgs.shape
+            # imgs = imgs.permute(0, 2, 3, 1)
+            input_mem_config = ttnn.create_sharded_memory_config(
+                [n, c, h, w],
+                ttnn.CoreGrid(x=8, y=8),
+                ttnn.ShardStrategy.HEIGHT,
+    )
             imgs = ttnn.from_torch(imgs, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT, device=device)
+            imgs = imgs.to(device, input_mem_config)
             out = net(imgs, batch_size=batch_size)
             out = ttnn.to_torch(out).squeeze(dim=0).squeeze(dim=0)
             pred = {

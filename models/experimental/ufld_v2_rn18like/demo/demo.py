@@ -27,9 +27,9 @@ from tests.ttnn.integration_tests.ufld_v2_rn18like.test_ttnn_ufld_v2_rn18like im
 @pytest.mark.parametrize(
     "batch_size,input_channels,height,width",
     [
-        # (1, 3, 320, 800),
+        (1, 3, 320, 800),
         # (2, 3, 320, 800),
-        (4, 3, 320, 800),
+        # (4, 3, 320, 800),
     ],
 )
 @pytest.mark.parametrize(
