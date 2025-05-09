@@ -246,8 +246,8 @@ def custom_preprocessor_whole_model(model, name):
     "batch_size,input_channels,height,width",
     [
         (1, 3, 320, 800),
-        # (2, 3, 320, 800),
-        # (4, 3, 320, 800),
+        (2, 3, 320, 800),
+        (4, 3, 320, 800),
     ],
 )
 @pytest.mark.parametrize(
@@ -272,14 +272,14 @@ def test_ufld_rn18like_whole_model(device, batch_size, input_channels, height, w
         torch_model.load_state_dict(wts)
     torch_output = torch_model(torch_input_tensor)
     n, c, h, w = torch_input_tensor.shape
-    if c == 3:
-        c = 16
     input_mem_config = ttnn.create_sharded_memory_config(
         [n, c, h, w],
         ttnn.CoreGrid(x=8, y=8),
         ttnn.ShardStrategy.HEIGHT,
     )
-    ttnn_input_tensor = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
+    ttnn_input_tensor = ttnn.from_torch(
+        torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT, device=device
+    )
     ttnn_input_tensor = ttnn_input_tensor.to(device, input_mem_config)
     # ttnn_input_tensor pass sharded tensor and check
     parameters = preprocess_model_parameters(
