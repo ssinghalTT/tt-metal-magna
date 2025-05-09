@@ -19,3 +19,7 @@ Running each of the pytests bellow will report the FPS and inference time per di
 `pytest models/experimental/mv2like/test/test_mv2like_e2e_performant.py::test_run_mv2like_trace_2cq_inference[2-device_params0]`<br>
 `pytest models/experimental/mv2like/test/test_mv2like_e2e_performant.py::test_run_mv2like_trace_2cq_inference[4-device_params0]`<br>
 `pytest models/experimental/mv2like/test/test_mv2like_e2e_performant.py::test_run_mv2like_trace_2cq_inference[8-device_params0]`
+
+# GStreamer flow
+Note: GStreamer currently only supports batch=1. Also if you export ttnn_visualizer recommended configs, it might conflict with GStreamer and generate errors. to test the GStreamer for this model with batch=1, run:<br>
+`python python mbv2.py`
