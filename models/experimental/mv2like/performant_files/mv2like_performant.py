@@ -76,16 +76,16 @@ def run_mv2like_trace_inference(
     spec = test_infra.input_tensor.spec
     test_infra.run()
     test_infra.validate()
-    test_infra.dealloc_output()
 
     # Optimized run
     test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
+    test_infra.dealloc_output()
     test_infra.run()
     test_infra.validate()
-    test_infra.dealloc_output()
 
     # Capture
     test_infra.input_tensor = tt_inputs_host.to(device, input_mem_config)
+    test_infra.dealloc_output()
     trace_input_addr = ttnn.buffer_address(test_infra.input_tensor)
     tid = ttnn.begin_trace_capture(device, cq_id=0)
     test_infra.run()

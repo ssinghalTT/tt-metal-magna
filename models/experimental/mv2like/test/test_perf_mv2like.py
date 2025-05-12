@@ -109,7 +109,7 @@ def test_mv2like(device, batch_size, reset_seeds):
 @pytest.mark.parametrize(
     "batch_size, expected_perf",
     [
-        [1, 433],
+        [1, 93],
     ],
 )
 @pytest.mark.models_device_performance_bare_metal
