@@ -4,11 +4,10 @@
 
 import torch
 import ttnn
-from models.experimental.mv2like.reference.mv2_like import (
-    Mv2Like,
+from models.experimental.mv2like.reference.lraspp import (
     Conv2dNormActivation,
     InvertedResidual,
-)  # Import Conv2dNormActivation
+)
 import torch.nn as nn
 
 

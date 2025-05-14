@@ -6,7 +6,7 @@ import torch
 import pytest
 import ttnn
 
-from models.experimental.mv2like.reference.mv2_like import Mv2Like
+from models.experimental.mv2like.reference.lraspp import LRASPP
 from models.experimental.mv2like.tt.model_preprocessing import (
     create_mv2_like_input_tensors,
     create_mv2_like_model_parameters,
@@ -28,7 +28,7 @@ def test_mv2_like(device, batch_size, reset_seeds):
     state_dict = torch.load(weights_path)
     ds_state_dict = {k: v for k, v in state_dict.items()}
 
-    torch_model = Mv2Like()
+    torch_model = LRASPP()
     new_state_dict = {
         name1: parameter2
         for (name1, parameter2), (name2, parameter1) in zip(torch_model.state_dict().items(), ds_state_dict.items())

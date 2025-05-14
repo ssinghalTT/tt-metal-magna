@@ -92,7 +92,7 @@ class InvertedResidual(nn.Module):
             return self.conv(x)
 
 
-class Mv2Like(nn.Module):
+class LRASPP(nn.Module):
     def __init__(
         self,
         num_classes: int = 1000,
