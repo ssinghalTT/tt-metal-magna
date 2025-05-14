@@ -16,7 +16,7 @@ fi
 
 # Set Python environment directory
 if [ -z "$PYTHON_ENV_DIR" ]; then
-    PYTHON_ENV_DIR=$(pwd)/python_env
+    PYTHON_ENV_DIR=$(pwd)/python_env_gstreamer
 fi
 echo "Creating virtual env in: $PYTHON_ENV_DIR"
 
