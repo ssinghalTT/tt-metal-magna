@@ -50,5 +50,5 @@ def test_mv2_like(device, batch_size, reset_seeds):
 
     output_tensor = model(ttnn_input_tensor)
 
-    output_tensor = ttnn.to_torch(output_tensor)[:,:,:,0:1].permute(0, 3, 1, 2)
+    output_tensor = ttnn.to_torch(output_tensor)[:, :, :, 0:1].permute(0, 3, 1, 2)
     assert_with_pcc(torch_output_tensor, output_tensor, 0.99)
