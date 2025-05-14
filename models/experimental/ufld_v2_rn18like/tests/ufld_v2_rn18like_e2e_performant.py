@@ -92,5 +92,9 @@ class UFLDv2Trace2CQ:
 
         return outputs
 
+    def run_traced_inference(self, torch_input_tensor):
+        tt_inputs_host, _ = self.test_infra.setup_l1_sharded_input(self.device, torch_input_tensor)
+        return self.execute_ufldv2_trace_2cqs_inference(tt_inputs_host)
+
     def release_ufldv2_trace_2cqs_inference(self):
         ttnn.release_trace(self.device, self.tid)
