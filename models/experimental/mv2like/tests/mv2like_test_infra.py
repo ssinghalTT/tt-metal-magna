@@ -122,7 +122,7 @@ class mv2likeTestInfra:
 
     def validate(self, output_tensor=None):
         output_tensor = self.output_tensor if output_tensor is None else output_tensor
-        output_tensor = ttnn.to_torch(self.output_tensor)[:,:,:,0:1].permute(0, 3, 1, 2)
+        output_tensor = ttnn.to_torch(self.output_tensor)[:, :, :, 0:1].permute(0, 3, 1, 2)
 
         valid_pcc = 0.98
         self.pcc_passed, self.pcc_message = assert_with_pcc(self.torch_output_tensor, output_tensor, pcc=valid_pcc)
