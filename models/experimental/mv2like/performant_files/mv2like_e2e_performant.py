@@ -105,8 +105,9 @@ class Mv2LikeTrace2CQ:
         ttnn.release_trace(self.device, self.tid)
 
     def run_traced_inference(self, torch_input_tensor):
-        n, h, w, c = torch_input_tensor.shape
-        torch_input_tensor = torch_input_tensor.reshape(1, 1, h * w * n, c)
-        tt_inputs_host = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
-        tt_inputs_host = ttnn.pad(tt_inputs_host, [1, 1, n * h * w, 16], [0, 0, 0, 0], 0)
+        # n, h, w, c = torch_input_tensor.shape
+        # torch_input_tensor = torch_input_tensor.reshape(1, 1, h * w * n, c)
+        # tt_inputs_host = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
+        # tt_inputs_host = ttnn.pad(tt_inputs_host, [1, 1, n * h * w, 16], [0, 0, 0, 0], 0)
+        tt_inputs_host, _ = self.test_infra.setup_l1_sharded_input(self.device, torch_input_tensor)
         return self.execute_mv2like_trace_2cqs_inference(tt_inputs_host)
