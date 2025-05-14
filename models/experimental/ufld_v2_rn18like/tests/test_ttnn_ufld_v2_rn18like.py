@@ -3,10 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import ttnn
-import os
 import pytest
 import torch
-import torch.nn as nn
 from ttnn.model_preprocessing import (
     preprocess_model_parameters,
     fold_batch_norm2d_into_conv2d,
@@ -15,8 +13,8 @@ from ttnn.model_preprocessing import (
     preprocess_linear_bias,
 )
 from models.experimental.ufld_v2_rn18like.reference.ufld_v2_rn18like_model import TuSimple18like, BasicBlock
-from models.experimental.ufld_v2_rn18like.ttnn.ttnn_ufld_v2_rn18like import TtnnUFLDV2RN18like
-from models.experimental.ufld_v2_rn18like.ttnn.ttnn_basic_block import TtnnBasicBlock
+from models.experimental.ufld_v2_rn18like.tt.ttnn_ufld_v2_rn18like import TtnnUFLDV2RN18like
+from models.experimental.ufld_v2_rn18like.tt.ttnn_basic_block import TtnnBasicBlock
 from tests.ttnn.utils_for_testing import assert_with_pcc
 
 
