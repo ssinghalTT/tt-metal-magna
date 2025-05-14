@@ -290,7 +290,7 @@ class TtMv2Like:
         output_tensor = ttnn.pad(output_tensor, [(0, 7)], value=0.0)
         resize = shard_upsample(output_tensor, scale=8)
         return resize
-        #output_tensor = ttnn.sharded_to_interleaved(resize, memory_config=ttnn.L1_MEMORY_CONFIG)
-        #output_tensor = output_tensor[:, :, :, 0:1]
+        # output_tensor = ttnn.sharded_to_interleaved(resize, memory_config=ttnn.L1_MEMORY_CONFIG)
+        # output_tensor = output_tensor[:, :, :, 0:1]
 
-        #return output_tensor
+        # return output_tensor
