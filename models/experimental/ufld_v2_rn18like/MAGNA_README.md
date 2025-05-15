@@ -16,10 +16,8 @@ Run the following command to generate the perf sheet. FPS = (Batch_size * 10^9)/
 `python -m tracy -p -r -v -m pytest models/experimental/ufld_v2_rn18like/tests/test_ttnn_ufld_v2_rn18like.py::test_ufld_rn18like[device_params0-pretrained_weight_false-2-3-320-800]`<br>
 `python -m tracy -p -r -v -m pytest models/experimental/ufld_v2_rn18like/tests/test_ttnn_ufld_v2_rn18like.py::test_ufld_rn18like[device_params0-pretrained_weight_false-4-3-320-800]`
 
-
-
 ### end to end perf
-To test and evaluate the end to end perf (including IO) for batch sizes 1, 2, and 4 run:<br>
+To test and evaluate the end to end perf (including IO) for batch size 1 run: (batch sizes 2 and 4 currently not supported for end to end perf test)<br>
 `pytest models/experimental/ufld_v2_rn18like/tests/test_ufld_v2_rn18like_e2e_performant.py`<br>
 
 ### Demo
@@ -43,14 +41,6 @@ Labels:
 ```bash
     models/experimental/ufld_v2_rn18like/demo/GT_test_labels.json
 ```
-
-Use the following command to run the e2e perf with trace:
-
-`pytest models/experimental/ufld_v2_rn18like/tests/test_ufld_v2_rn18like_e2e_performant.py`
-
-Use the following command to run the whole model:
-
-`pytest tests/ttnn/integration_tests/ufld_v2_rn18like/test_ttnn_ufld_v2_rn18like.py::test_ufld_rn18like_whole_model`
 
 Use the following command to run inference and see the predicted image overlayed with the detected lanes.
 

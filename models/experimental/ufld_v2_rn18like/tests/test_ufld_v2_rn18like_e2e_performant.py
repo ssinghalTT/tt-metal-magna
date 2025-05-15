@@ -18,6 +18,7 @@ from models.experimental.ufld_v2_rn18like.tests.ufld_v2_rn18like_e2e_performant 
 )
 @pytest.mark.parametrize(
     "batch_size",
+    # ((1),(2), (4)),
     ((1),),
 )
 def test_run_ufldv2_trace_2cqs_inference(
