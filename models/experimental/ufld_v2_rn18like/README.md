@@ -6,9 +6,21 @@ The Ultra-Fast-Lane-Detection-v2 is a PyTorch-based implementation designed for 
 
 Resource link - [source](https://github.com/cfzd/Ultra-Fast-Lane-Detection-v2)
 
-### Model Details
+## Ensure to build with profiler enabled:
+`build_metal.sh -p`
 
-- The entry point to the UFLD_v2 is located at:`models/experimental/ufld_v2_rn18like/ttnn/ttnn_ufld_v2_rn18like.py`
+### Device perf
+Run the following command to generate the perf sheet. FPS = (Batch_size * 10^9)/ Sum(Device kernel Duration in ns column).<br>
+
+`python -m tracy -p -r -v -m pytest models/experimental/ufld_v2_rn18like/tests/test_ttnn_ufld_v2_rn18like.py::test_ufld_rn18like[device_params0-pretrained_weight_false-1-3-320-800]`<br>
+`python -m tracy -p -r -v -m pytest models/experimental/ufld_v2_rn18like/tests/test_ttnn_ufld_v2_rn18like.py::test_ufld_rn18like[device_params0-pretrained_weight_false-2-3-320-800]`<br>
+`python -m tracy -p -r -v -m pytest models/experimental/ufld_v2_rn18like/tests/test_ttnn_ufld_v2_rn18like.py::test_ufld_rn18like[device_params0-pretrained_weight_false-4-3-320-800]`
+
+
+
+### end to end perf
+To test and evaluate the end to end perf (including IO) for batch sizes 1, 2, and 4 run:<br>
+`pytest models/experimental/ufld_v2_rn18like/tests/test_ufld_v2_rn18like_e2e_performant.py`<br>
 
 ### Demo
 
@@ -18,7 +30,7 @@ Resource link - [source](https://github.com/cfzd/Ultra-Fast-Lane-Detection-v2)
 ```
 
 - Results will be saved in .txt files for both Reference, ttnn Models
-- If you want to run the model on Custom dataset, Make sure to add input images and its corresponding truth labels here, before running the demo:
+- If you want to run the model on Custom dataset, Make sure to add input images and its corresponding truth labels in the following paths, before running the demo:
 
 Images:
 

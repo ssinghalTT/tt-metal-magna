@@ -74,7 +74,7 @@ def test_ufld_v2_rn18_basic_block(device, batch_size, input_channels, height, wi
     assert_with_pcc(ttnn_output, torch_out, 0.99)
 
 
-def custom_preprocessor_whole_model(model, name):
+def custom_preprocessor(model, name):
     parameters = {}
     if isinstance(model, TuSimple18like):
         # conv1,bn1
@@ -260,7 +260,7 @@ def custom_preprocessor_whole_model(model, name):
     ],
 )
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 79104}], indirect=True)
-def test_ufld_rn18like_whole_model(device, batch_size, input_channels, height, width, use_pretrained_weight):
+def test_ufld_rn18like(device, batch_size, input_channels, height, width, use_pretrained_weight):
     torch_model = TuSimple18like(input_height=height, input_width=width)
     torch_model.to(torch.bfloat16)
     torch_model.eval()
@@ -282,7 +282,7 @@ def test_ufld_rn18like_whole_model(device, batch_size, input_channels, height, w
     # ttnn_input_tensor pass sharded tensor and check
     parameters = preprocess_model_parameters(
         initialize_model=lambda: torch_model,
-        custom_preprocessor=custom_preprocessor_whole_model,
+        custom_preprocessor=custom_preprocessor,
         device=device,
     )
     parameters.conv_args = {}
