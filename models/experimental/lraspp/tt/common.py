@@ -216,10 +216,11 @@ class TtInvertedResidual:
     def __call__(self, x):
         identity = x
         if self.conv1 is not None:
-            out, h, w = self.conv1(x)
-            out = ttnn.relu6(out)
-            x = out
+            x, h, w = self.conv1(x)
+            x = ttnn.relu6(x)
+            # x = out
         out, h, w = self.conv2(x)
+        ttnn.deallocate(x)
         out = ttnn.relu6(out)
         out, h, w = self.conv3(out)
         if self.use_res_connect:

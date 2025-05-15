@@ -30,15 +30,15 @@ import ttnn
 
 
 class device:
-    def __init__(self):
+    def __init__(self, batch_size=1):
         # --- Device Configuration ---
         device_id = 0
         self.device = ttnn.CreateDevice(device_id, l1_small_size=24576, trace_region_size=6397952, num_command_queues=2)
         ttnn.enable_program_cache(self.device)
-        batch_size = 1
+        self.batch_size = batch_size
         self.test_infra = create_test_infra(
             self.device,
-            batch_size,
+            self.batch_size,
         )
         ttnn.synchronize_device(self.device)
 
@@ -104,6 +104,9 @@ class device:
             img = torch.from_numpy(img.transpose(0, 3, 1, 2)).float().div(255.0)
         else:
             exit()
+        if self.batch_size > 1:
+            n, c, h, w = img.shape
+            img = img.expand(self.batch_size, c, h, w)
 
         # n,c, h, w = img.shape
         ##n, h, w ,c = torch_input_tensor.shape
@@ -128,7 +131,10 @@ class device:
         ttnn.release_trace(self.device, self.tid)
 
 
-ttnn_device = device()
+batch_size = 1
+if len(sys.argv) == 2:
+    batch_size = int(sys.argv[1])
+ttnn_device = device(batch_size)
 
 ################ GST Code ################
 VIDEO_CAPS_STR = "video/x-raw,format=RGB,width=224,height=224,framerate=500/1"
@@ -137,7 +143,7 @@ FPS_UPDATE_INTERVAL_SEC = 5  # How often to print FPS average
 
 # --- Pipeline Definitions ---
 pipeline1_desc = (
-    f"videotestsrc num-buffers=10000 pattern=ball is-live=true ! videoconvert ! {VIDEO_CAPS_STR} ! "
+    f"videotestsrc num-buffers=10000 pattern=ball is-live=true ! videoconvert ! {VIDEO_CAPS_STR} ! queue ! "
     f"appsink name=appsink emit-signals=true max-buffers=5 drop=false"
 )
 pipeline2_desc = (
@@ -215,7 +221,7 @@ def on_new_sample_from_appsink(appsink, user_data):
 def sink_pad_probe_cb(pad, info, user_data):
     """Callback function for the sink pad probe to calculate FPS."""
     # Access global variables needed
-    global frame_count, start_time, last_update_time, FPS_UPDATE_INTERVAL_SEC, shutting_down, inference_time_wo_io, inference_time
+    global frame_count, start_time, last_update_time, FPS_UPDATE_INTERVAL_SEC, shutting_down, inference_time_wo_io, inference_time, batch_size
 
     # Optional: check shutting_down flag
     if shutting_down:
@@ -235,9 +241,9 @@ def sink_pad_probe_cb(pad, info, user_data):
         if elapsed_since_update >= FPS_UPDATE_INTERVAL_SEC:
             elapsed_total = current_time - start_time
             if elapsed_total > 0:  # Avoid division by zero
-                avg_fps = frame_count / elapsed_total
-                avg_inference_time = inference_time / frame_count
-                avg_inference_time_wo_io = inference_time_wo_io / frame_count
+                avg_fps = frame_count * batch_size / elapsed_total
+                avg_inference_time = inference_time / (batch_size * frame_count)
+                avg_inference_time_wo_io = inference_time_wo_io / (batch_size * frame_count)
                 # This FPS measures the rate buffers arrive at fakesink (sync=false)
                 # It should reflect the bottleneck rate (Python processing).
                 print(

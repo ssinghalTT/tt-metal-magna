@@ -37,17 +37,17 @@ def test_run_lraspp_trace_2cq_inference(
     input_shape = (batch_size, 3, 224, 224)
     torch_input_tensor = torch.randn(input_shape, dtype=torch.float32)
     n, c, h, w = torch_input_tensor.shape
-    torch_input_tensor = torch_input_tensor.permute(0, 2, 3, 1)
-    torch_input_tensor = torch_input_tensor.reshape(1, 1, h * w * n, c)
+    # torch_input_tensor = torch_input_tensor.permute(0, 2, 3, 1)
+    # torch_input_tensor = torch_input_tensor.reshape(1, 1, h * w * n, c)
     # tt_inputs_host = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
     # tt_inputs_host = ttnn.pad(tt_inputs_host, [1, 1, n * h * w, 16], [0, 0, 0, 0], 0)
     inference_iter_count = 100
     inference_time_iter = []
     for iter in range(0, inference_iter_count):
         t0 = time.time()
-        tt_inputs_host = torch.nn.functional.pad(torch_input_tensor, (0, 13), "constant", 0)
-        tt_inputs_host = ttnn.from_torch(tt_inputs_host, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
-        output = lraspp_trac2_2cq.execute_lraspp_trace_2cqs_inference(tt_inputs_host)
+        # tt_inputs_host = torch.nn.functional.pad(torch_input_tensor, (0, 13), "constant", 0)
+        tt_inputs_host = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
+        output = mv2like_trac2_2cq.execute_mv2like_trace_2cqs_inference(tt_inputs_host)
         t1 = time.time()
         inference_time_iter.append(t1 - t0)
     lraspp_trac2_2cq.release_lraspp_trace_2cqs_inference()
