@@ -8,10 +8,10 @@ import ttnn
 
 from models.experimental.lraspp.reference.lraspp import LRASPP
 from models.experimental.lraspp.tt.model_preprocessing import (
-    create_lraspp_like_input_tensors,
-    create_lraspp_like_model_parameters,
+    create_lraspp_input_tensors,
+    create_lraspp_model_parameters,
 )
-from models.experimental.lraspp.tt.ttnn_lraspp_like import TtLRASPP
+from models.experimental.lraspp.tt.ttnn_lraspp import TtLRASPP
 from tests.ttnn.utils_for_testing import assert_with_pcc
 
 
@@ -38,13 +38,13 @@ def test_lraspp(device, batch_size, reset_seeds):
 
     torch_model = torch_model.eval()
     # SS
-    torch_input_tensor, ttnn_input_tensor = create_lraspp_like_input_tensors(
+    torch_input_tensor, ttnn_input_tensor = create_lraspp_input_tensors(
         batch=batch_size, input_height=224, input_width=224
     )
 
     torch_output_tensor = torch_model(torch_input_tensor)
 
-    model_parameters = create_lraspp_like_model_parameters(torch_model, device=device)
+    model_parameters = create_lraspp_model_parameters(torch_model, device=device)
 
     model = TtLRASPP(model_parameters, device, batchsize=batch_size)
 
