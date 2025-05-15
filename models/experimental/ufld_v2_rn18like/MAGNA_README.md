@@ -20,11 +20,11 @@ Run the following command to generate the perf sheet. FPS = (Batch_size * 10^9)/
 To test and evaluate the end to end perf (including IO) for batch size 1 run: (batch sizes 2 and 4 currently not supported for end to end perf test)<br>
 `pytest models/experimental/ufld_v2_rn18like/tests/test_ufld_v2_rn18like_e2e_performant.py`<br>
 
-### Demo
+### Inference
 
 - To run the demo for UFLD_v2 RN18 Model:(BS-4,Height-320,Width-800)
 ```bash
-    pytest models/experimental/ufld_v2_rn18like/demo/demo.py
+    pytest models/experimental/ufld_v2_rn18like/demo/inference.py
 ```
 
 - Results will be saved in .txt files for both Reference, ttnn Models
@@ -47,4 +47,4 @@ Use the following command to run inference and see the predicted image overlayed
 Input images to be predicted should go under : models/experimental/ufld_v2_rn18like/demo/predict
 Predicted output images are generated under : models/experimental/ufld_v2_rn18like/demo/predict_results
 
-`pytest models/experimental/ufld_v2_rn18like/demo/inference.py`
+`pytest models/experimental/ufld_v2_rn18like/demo/demo.py`
