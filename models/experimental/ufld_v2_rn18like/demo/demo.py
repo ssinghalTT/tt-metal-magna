@@ -14,14 +14,14 @@ from models.experimental.ufld_v2_rn18like.demo.demo_utils import (
     run_test_tusimple,
     LaneEval,
 )
-from models.experimental.ufld_v2_rn18like.ttnn.ttnn_ufld_v2_rn18like import (
+from models.experimental.ufld_v2_rn18like.tt.ttnn_ufld_v2_rn18like import (
     TtnnUFLDV2RN18like,
 )
 from ttnn.model_preprocessing import (
     preprocess_model_parameters,
     infer_ttnn_module_args,
 )
-from tests.ttnn.integration_tests.ufld_v2_rn18like.test_ttnn_ufld_v2_rn18like import custom_preprocessor_whole_model
+from models.experimental.ufld_v2_rn18like.tests.test_ttnn_ufld_v2_rn18like import custom_preprocessor
 
 
 @pytest.mark.parametrize(
@@ -73,7 +73,7 @@ def test_ufld_v2_res18like_inference(batch_size, input_channels, height, width, 
 
     parameters = preprocess_model_parameters(
         initialize_model=lambda: reference_model,
-        custom_preprocessor=custom_preprocessor_whole_model,
+        custom_preprocessor=custom_preprocessor,
         device=device,
     )
     parameters.conv_args = {}
