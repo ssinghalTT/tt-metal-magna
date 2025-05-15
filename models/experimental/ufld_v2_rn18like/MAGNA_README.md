@@ -47,4 +47,6 @@ Use the following command to run inference and see the predicted image overlayed
 Input images to be predicted should go under : models/experimental/ufld_v2_rn18like/demo/predict
 Predicted output images are generated under : models/experimental/ufld_v2_rn18like/demo/predict_results
 
-`pytest models/experimental/ufld_v2_rn18like/demo/demo.py`
+```bash
+    pytest models/experimental/ufld_v2_rn18like/demo/demo.py
+```
