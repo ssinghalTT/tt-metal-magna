@@ -18,7 +18,7 @@ from tests.ttnn.utils_for_testing import assert_with_pcc
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 32768}], indirect=True)
 @pytest.mark.parametrize(
     "batch_size",
-    [8],
+    [1, 2, 4, 8],
 )
 def test_lraspp(device, batch_size, reset_seeds):
     weights_path = (
