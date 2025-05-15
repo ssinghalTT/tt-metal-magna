@@ -82,20 +82,29 @@ class mv2likeTestInfra:
         torch_input_tensor = self.torch_input_tensor if torch_input_tensor is None else torch_input_tensor
 
         n, c, h, w = torch_input_tensor.shape
-        # sharded mem config for fold input
-        num_cores = core_grid.x * core_grid.y
-        shard_h = (n * w * h + num_cores - 1) // num_cores
-        grid_size = core_grid
-        grid_coord = ttnn.CoreCoord(grid_size.x - 1, grid_size.y - 1)
-        shard_grid = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), grid_coord)})
-        shard_spec = ttnn.ShardSpec(shard_grid, (shard_h, 16), ttnn.ShardOrientation.ROW_MAJOR)
-        input_mem_config = ttnn.MemoryConfig(
-            ttnn.types.TensorMemoryLayout.HEIGHT_SHARDED, ttnn.types.BufferType.L1, shard_spec
+        if c == 3:
+            c = 16
+        input_mem_config = ttnn.create_sharded_memory_config(
+            [n, c, h, w],
+            ttnn.CoreGrid(x=8, y=7),
+            ttnn.ShardStrategy.HEIGHT,
         )
-        torch_input_tensor = torch_input_tensor.permute(0, 2, 3, 1)
-        torch_input_tensor = torch_input_tensor.reshape(1, 1, h * w * n, c)
-        tt_inputs_host = torch.nn.functional.pad(torch_input_tensor, (0, 13), "constant", 0)
-        tt_inputs_host = ttnn.from_torch(tt_inputs_host, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
+
+        # sharded mem config for fold input
+        # num_cores = core_grid.x * core_grid.y
+        # shard_h = (n * w * h + num_cores - 1) // num_cores
+        # grid_size = core_grid
+        # grid_coord = ttnn.CoreCoord(grid_size.x - 1, grid_size.y - 1)
+        # shard_grid = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), grid_coord)})
+        # shard_spec = ttnn.ShardSpec(shard_grid, (shard_h, 16), ttnn.ShardOrientation.ROW_MAJOR)
+        # input_mem_config = ttnn.MemoryConfig(
+        #    ttnn.types.TensorMemoryLayout.HEIGHT_SHARDED, ttnn.types.BufferType.L1, shard_spec
+        # )
+        # torch_input_tensor = torch_input_tensor.permute(0, 2, 3, 1)
+        # torch_input_tensor = torch_input_tensor.reshape(1, 1, h * w * n, c)
+        # tt_inputs_host = torch.nn.functional.pad(torch_input_tensor, (0, 13), "constant", 0)
+
+        tt_inputs_host = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
         # tt_inputs_host = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
         # tt_inputs_host = ttnn.pad(tt_inputs_host, [1, 1, n * h * w, 16], [0, 0, 0, 0], 0)
 
@@ -110,7 +119,7 @@ class mv2likeTestInfra:
             ),
             [
                 divup(tt_inputs_host.volume() // tt_inputs_host.shape[-1], (dram_grid_size.x * dram_grid_size.y)),
-                16,
+                tt_inputs_host.shape[-1],
             ],
             ttnn.ShardOrientation.ROW_MAJOR,
         )
@@ -122,7 +131,7 @@ class mv2likeTestInfra:
 
     def validate(self, output_tensor=None):
         output_tensor = self.output_tensor if output_tensor is None else output_tensor
-        output_tensor = ttnn.to_torch(self.output_tensor)[:,:,:,0:1].permute(0, 3, 1, 2)
+        output_tensor = ttnn.to_torch(self.output_tensor)[:, :, :, 0:1].permute(0, 3, 1, 2)
 
         valid_pcc = 0.98
         self.pcc_passed, self.pcc_message = assert_with_pcc(self.torch_output_tensor, output_tensor, pcc=valid_pcc)

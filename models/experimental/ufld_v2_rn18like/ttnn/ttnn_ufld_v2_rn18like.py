@@ -38,14 +38,14 @@ class TtnnUFLDV2RN18like:
         if C < min_channels:
             channel_padding_needed = min_channels - C
             nchw = ttnn.pad(input, ((0, 0), (0, channel_padding_needed), (0, 0), (0, 0)), value=0.0)
-            ttnn.deallocate(input)
         else:
             nchw = input
         nhwc = ttnn.permute(nchw, (0, 2, 3, 1))  # NCHW -> NHWC
         ttnn.deallocate(nchw)
+        ttnn.deallocate(input)
         nhwc = ttnn.reallocate(nhwc)
         input = ttnn.reshape(nhwc, [1, 1, nhwc.shape[0] * nhwc.shape[1] * nhwc.shape[2], nhwc.shape[-1]])
-        ttnn.deallocate(nchw)
+        # ttnn.deallocate(nhwc)
 
         # ResNet mode
         fea = self.res_model(input, batch_size=batch_size)

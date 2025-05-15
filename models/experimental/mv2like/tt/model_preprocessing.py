@@ -14,14 +14,14 @@ import torch.nn as nn
 
 def create_mv2_like_input_tensors(batch=1, input_channels=3, input_height=224, input_width=224):
     torch_input_tensor = torch.randn(batch, input_channels, input_height, input_width)
-    ttnn_input_tensor = torch.permute(torch_input_tensor, (0, 2, 3, 1))
-    ttnn_input_tensor = ttnn_input_tensor.reshape(
-        1,
-        1,
-        ttnn_input_tensor.shape[0] * ttnn_input_tensor.shape[1] * ttnn_input_tensor.shape[2],
-        ttnn_input_tensor.shape[3],
-    )
-    ttnn_input_tensor = ttnn.from_torch(ttnn_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
+    # ttnn_input_tensor = torch.permute(torch_input_tensor, (0, 2, 3, 1))
+    # ttnn_input_tensor = ttnn_input_tensor.reshape(
+    #    1,
+    #    1,
+    #    ttnn_input_tensor.shape[0] * ttnn_input_tensor.shape[1] * ttnn_input_tensor.shape[2],
+    #    ttnn_input_tensor.shape[3],
+    # )
+    ttnn_input_tensor = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
 
     return torch_input_tensor, ttnn_input_tensor
 

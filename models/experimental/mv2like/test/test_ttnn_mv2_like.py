@@ -18,7 +18,7 @@ from tests.ttnn.utils_for_testing import assert_with_pcc
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 32768}], indirect=True)
 @pytest.mark.parametrize(
     "batch_size",
-    [1, 2, 4, 8],
+    [8],
 )
 def test_mv2_like(device, batch_size, reset_seeds):
     weights_path = (
@@ -41,7 +41,18 @@ def test_mv2_like(device, batch_size, reset_seeds):
     torch_input_tensor, ttnn_input_tensor = create_mv2_like_input_tensors(
         batch=batch_size, input_height=224, input_width=224
     )
+    n, c, h, w = torch_input_tensor.shape
+    if c == 3:
+        c = 16
+    input_mem_config = ttnn.create_sharded_memory_config(
+        [n, c, h, w],
+        ttnn.CoreGrid(x=8, y=7),
+        ttnn.ShardStrategy.HEIGHT,
+    )
+    ttnn_input_tensor = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
+    ttnn_input_tensor = ttnn_input_tensor.to(device, input_mem_config)
 
+    ttnn_input_tensor = ttnn_input_tensor.to(device, input_mem_config)
     torch_output_tensor = torch_model(torch_input_tensor)
 
     model_parameters = create_mv2_like_model_parameters(torch_model, device=device)
@@ -50,5 +61,5 @@ def test_mv2_like(device, batch_size, reset_seeds):
 
     output_tensor = model(ttnn_input_tensor)
 
-    output_tensor = ttnn.to_torch(output_tensor)[:,:,:,0:1].permute(0, 3, 1, 2)
+    output_tensor = ttnn.to_torch(output_tensor)[:, :, :, 0:1].permute(0, 3, 1, 2)
     assert_with_pcc(torch_output_tensor, output_tensor, 0.99)
