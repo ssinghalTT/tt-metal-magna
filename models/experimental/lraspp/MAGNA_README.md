@@ -22,6 +22,6 @@ Running each of the pytests bellow will report the FPS and inference time per di
 
 # GStreamer flow
 Note: GStreamer via the python script currently only supports batch=1. Also if you export ttnn_visualizer recommended configs, it might conflict with GStreamer and generate errors. to test the GStreamer for this model with batch=1, run:<br>
-`python mbv2.py`
+`python lraspp.py`
 
 The recommended way to test GStreamer is via plug-in command line flow which also supports batch_size>1 as follows:
