@@ -110,4 +110,4 @@ class LRASPPTrace2CQ:
         # tt_inputs_host = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
         # tt_inputs_host = ttnn.pad(tt_inputs_host, [1, 1, n * h * w, 16], [0, 0, 0, 0], 0)
         tt_inputs_host, _ = self.test_infra.setup_l1_sharded_input(self.device, torch_input_tensor)
-        return self.execute_mv2like_trace_2cqs_inference(tt_inputs_host)
+        return self.execute_lraspp_trace_2cqs_inference(tt_inputs_host)

@@ -47,7 +47,7 @@ def test_run_lraspp_trace_2cq_inference(
         t0 = time.time()
         # tt_inputs_host = torch.nn.functional.pad(torch_input_tensor, (0, 13), "constant", 0)
         tt_inputs_host = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
-        output = mv2like_trac2_2cq.execute_mv2like_trace_2cqs_inference(tt_inputs_host)
+        output = lraspp_trac2_2cq.execute_lraspp_trace_2cqs_inference(tt_inputs_host)
         t1 = time.time()
         inference_time_iter.append(t1 - t0)
     lraspp_trac2_2cq.release_lraspp_trace_2cqs_inference()
