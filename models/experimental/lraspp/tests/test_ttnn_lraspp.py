@@ -6,12 +6,12 @@ import torch
 import pytest
 import ttnn
 
-from models.experimental.mv2like.reference.lraspp import LRASPP
-from models.experimental.mv2like.tt.model_preprocessing import (
-    create_mv2_like_input_tensors,
-    create_mv2_like_model_parameters,
+from models.experimental.lraspp.reference.lraspp import LRASPP
+from models.experimental.lraspp.tt.model_preprocessing import (
+    create_lraspp_like_input_tensors,
+    create_lraspp_like_model_parameters,
 )
-from models.experimental.mv2like.tt.ttnn_mv2_like import TtMv2Like
+from models.experimental.lraspp.tt.ttnn_lraspp_like import TtLRASPP
 from tests.ttnn.utils_for_testing import assert_with_pcc
 
 
@@ -20,9 +20,9 @@ from tests.ttnn.utils_for_testing import assert_with_pcc
     "batch_size",
     [1, 2, 4, 8],
 )
-def test_mv2_like(device, batch_size, reset_seeds):
+def test_lraspp(device, batch_size, reset_seeds):
     weights_path = (
-        "models/experimental/mv2like/lraspp_mobilenet_v2_trained_statedict.pth"  # specify your weights path here
+        "models/experimental/lraspp/lraspp_mobilenet_v2_trained_statedict.pth"  # specify your weights path here
     )
 
     state_dict = torch.load(weights_path)
@@ -38,15 +38,15 @@ def test_mv2_like(device, batch_size, reset_seeds):
 
     torch_model = torch_model.eval()
     # SS
-    torch_input_tensor, ttnn_input_tensor = create_mv2_like_input_tensors(
+    torch_input_tensor, ttnn_input_tensor = create_lraspp_like_input_tensors(
         batch=batch_size, input_height=224, input_width=224
     )
 
     torch_output_tensor = torch_model(torch_input_tensor)
 
-    model_parameters = create_mv2_like_model_parameters(torch_model, device=device)
+    model_parameters = create_lraspp_like_model_parameters(torch_model, device=device)
 
-    model = TtMv2Like(model_parameters, device, batchsize=batch_size)
+    model = TtLRASPP(model_parameters, device, batchsize=batch_size)
 
     output_tensor = model(ttnn_input_tensor)
 

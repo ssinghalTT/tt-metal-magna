@@ -5,12 +5,12 @@
 import torch
 import ttnn
 
-from models.experimental.mv2like.reference.mv2_like import Mv2Like
-from models.experimental.mv2like.tt.model_preprocessing import (
-    create_mv2_like_model_parameters,
+from models.experimental.lraspp.reference.lraspp import LRASPP
+from models.experimental.lraspp.tt.model_preprocessing import (
+    create_lraspp_model_parameters,
 )
 from loguru import logger
-from models.experimental.mv2like.tt.ttnn_mv2_like import TtMv2Like
+from models.experimental.lraspp.tt.ttnn_lraspp import TtLRASPP
 from tests.ttnn.utils_for_testing import assert_with_pcc
 from models.utility_functions import (
     is_wormhole_b0,
@@ -20,13 +20,13 @@ from models.utility_functions import (
 
 def load_torch_model():
     weights_path = (
-        "models/experimental/mv2like/lraspp_mobilenet_v2_trained_statedict.pth"  # specify your weights path here
+        "models/experimental/lraspp/lraspp_mobilenet_v2_trained_statedict.pth"  # specify your weights path here
     )
 
     state_dict = torch.load(weights_path)
     ds_state_dict = {k: v for k, v in state_dict.items()}
 
-    torch_model = Mv2Like()
+    torch_model = LRASPP()
     new_state_dict = {
         name1: parameter2
         for (name1, parameter1), (name2, parameter2) in zip(torch_model.state_dict().items(), ds_state_dict.items())
@@ -40,13 +40,13 @@ def load_torch_model():
 
 
 def load_ttnn_model(device, torch_model, batch_size):
-    model_parameters = create_mv2_like_model_parameters(torch_model, device=device)
-    model = TtMv2Like(model_parameters, device, batchsize=batch_size)
+    model_parameters = create_lraspp_model_parameters(torch_model, device=device)
+    model = TtLRASPP(model_parameters, device, batchsize=batch_size)
 
     return model
 
 
-class mv2likeTestInfra:
+class lrasppTestInfra:
     def __init__(
         self,
         device,
@@ -61,7 +61,7 @@ class mv2likeTestInfra:
         self.batch_size = batch_size
         self.model_location_generator = model_location_generator
         torch_model = load_torch_model()
-        self.ttnn_mv2like_model = load_ttnn_model(
+        self.ttnn_lraspp_model = load_ttnn_model(
             device=self.device, torch_model=torch_model, batch_size=self.batch_size
         )
         input_shape = (batch_size, 224, 224, 3)
@@ -71,7 +71,7 @@ class mv2likeTestInfra:
         self.torch_output_tensor = torch_model(self.torch_input_tensor)
 
     def run(self):
-        self.output_tensor = self.ttnn_mv2like_model(self.input_tensor)
+        self.output_tensor = self.ttnn_lraspp_model(self.input_tensor)
 
     def setup_l1_sharded_input(self, device, torch_input_tensor=None):
         if is_wormhole_b0():
@@ -127,7 +127,7 @@ class mv2likeTestInfra:
         valid_pcc = 0.98
         self.pcc_passed, self.pcc_message = assert_with_pcc(self.torch_output_tensor, output_tensor, pcc=valid_pcc)
 
-        logger.info(f"mv2like batch_size={self.batch_size}, PCC={self.pcc_message}")
+        logger.info(f"lraspp batch_size={self.batch_size}, PCC={self.pcc_message}")
 
     def dealloc_output(self):
         ttnn.deallocate(self.output_tensor)
@@ -137,7 +137,7 @@ def create_test_infra(
     device,
     batch_size,
 ):
-    return mv2likeTestInfra(
+    return lrasppTestInfra(
         device,
         batch_size,
     )

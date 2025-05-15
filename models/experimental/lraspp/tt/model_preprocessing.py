@@ -4,14 +4,14 @@
 
 import torch
 import ttnn
-from models.experimental.mv2like.reference.lraspp import (
+from models.experimental.lraspp.reference.lraspp import (
     Conv2dNormActivation,
     InvertedResidual,
 )
 import torch.nn as nn
 
 
-def create_mv2_like_input_tensors(batch=1, input_channels=3, input_height=224, input_width=224):
+def create_lraspp_input_tensors(batch=1, input_channels=3, input_height=224, input_width=224):
     torch_input_tensor = torch.randn(batch, input_channels, input_height, input_width)
     ttnn_input_tensor = torch.permute(torch_input_tensor, (0, 2, 3, 1))
     ttnn_input_tensor = ttnn_input_tensor.reshape(
@@ -65,7 +65,7 @@ def preprocess_conv_parameters(conv, bias=True, bfloat8_b=True):
     return weight, bias
 
 
-def create_mv2_like_model_parameters(model, device):
+def create_lraspp_model_parameters(model, device):
     model_parameters = {}
     conv_bn_counter = 0
     counter = 0
