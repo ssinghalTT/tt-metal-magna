@@ -15,10 +15,9 @@ from gi.repository import Gst, GLib
 ################### TTNN Imports ##################
 import ttnn
 
-# from models.experimental.Mv2Like.performant_files.mv2like_e2e_performant import Mv2LikeTrace2CQ
+from models.experimental.mv2like.performant_files.mv2like_e2e_performant import Mv2LikeTrace2CQ
 from ttnn.model_preprocessing import preprocess_model_parameters
 from models.utility_functions import is_wormhole_b0, torch2tt_tensor, is_blackhole
-from models.experimental.mv2like.performant_files.mv2like_test_infra import create_test_infra
 from models.utility_functions import (
     is_wormhole_b0,
     enable_persistent_kernel_cache,
@@ -30,121 +29,15 @@ from models.perf.perf_utils import prep_perf_report
 import ttnn
 
 
-class device:
-    def __init__(self, batch_size=1):
-        # --- Device Configuration ---
-        device_id = 0
-        self.device = ttnn.CreateDevice(device_id, l1_small_size=24576, trace_region_size=6397952, num_command_queues=2)
-        ttnn.enable_program_cache(self.device)
-        self.batch_size = batch_size
-        self.test_infra = create_test_infra(
-            self.device,
-            self.batch_size,
-        )
-        ttnn.synchronize_device(self.device)
-
-        #### WARM UP ####
-        self.tt_inputs_host, sharded_mem_config_DRAM, self.input_mem_config = self.test_infra.setup_dram_sharded_input(
-            self.device
-        )
-        self.tt_image_res = self.tt_inputs_host.to(self.device, sharded_mem_config_DRAM)
-        # Initialize the op event so we can write
-        self.op_event = ttnn.record_event(self.device, 0)
-
-        # First run configures convs JIT
-        ttnn.wait_for_event(1, self.op_event)
-        ttnn.copy_host_to_device_tensor(self.tt_inputs_host, self.tt_image_res, 1)
-        self.write_event = ttnn.record_event(self.device, 1)
-        ttnn.wait_for_event(0, self.write_event)
-        self.test_infra.input_tensor = ttnn.to_memory_config(self.tt_image_res, self.input_mem_config)
-        spec = self.test_infra.input_tensor.spec
-        self.op_event = ttnn.record_event(self.device, 0)
-        self.test_infra.run()
-        self.test_infra.validate()
-        self.test_infra.dealloc_output()
-        # Optimized run
-        ttnn.wait_for_event(1, self.op_event)
-        ttnn.copy_host_to_device_tensor(self.tt_inputs_host, self.tt_image_res, 1)
-        self.write_event = ttnn.record_event(self.device, 1)
-        ttnn.wait_for_event(0, self.write_event)
-        self.test_infra.input_tensor = ttnn.to_memory_config(self.tt_image_res, self.input_mem_config)
-        self.op_event = ttnn.record_event(self.device, 0)
-        self.test_infra.run()
-        self.test_infra.validate()
-        # Capture
-        ttnn.wait_for_event(1, self.op_event)
-        ttnn.copy_host_to_device_tensor(self.tt_inputs_host, self.tt_image_res, 1)
-        self.write_event = ttnn.record_event(self.device, 1)
-        ttnn.wait_for_event(0, self.write_event)
-        self.test_infra.input_tensor = ttnn.to_memory_config(self.tt_image_res, self.input_mem_config)
-        self.op_event = ttnn.record_event(self.device, 0)
-        self.test_infra.output_tensor.deallocate(force=True)
-        trace_input_addr = self.test_infra.input_tensor.buffer_address()
-        self.tid = ttnn.begin_trace_capture(self.device, cq_id=0)
-        self.test_infra.run()
-        self.input_tensor = ttnn.allocate_tensor_on_device(spec, self.device)
-        ttnn.end_trace_capture(self.device, self.tid, cq_id=0)
-        # assert trace_input_addr == self.test_infra.input_tensor.buffer_address()
-
-        print("######################## START WARMUP ##########################")
-        # More optimized run with caching
-        for iter in range(0, 2):
-            ttnn.wait_for_event(1, self.op_event)
-            ttnn.copy_host_to_device_tensor(self.tt_inputs_host, self.tt_image_res, 1)
-            self.write_event = ttnn.record_event(self.device, 1)
-            ttnn.wait_for_event(0, self.write_event)
-            # TODO: Add in place support to ttnn to_memory_config
-            self.input_tensor = ttnn.reshard(self.tt_image_res, self.input_mem_config, self.input_tensor)
-            self.op_event = ttnn.record_event(self.device, 0)
-            ttnn.execute_trace(self.device, self.tid, cq_id=0, blocking=False)
-
-    def run(self, img):
-        if type(img) == np.ndarray and len(img.shape) == 3:  # cv2 image
-            img = torch.from_numpy(img.transpose(2, 0, 1)).float().div(255.0).unsqueeze(0)
-        elif type(img) == np.ndarray and len(img.shape) == 4:
-            img = torch.from_numpy(img.transpose(0, 3, 1, 2)).float().div(255.0)
-        else:
-            exit()
-        if self.batch_size > 1:
-            n, c, h, w = img.shape
-            img = img.expand(self.batch_size, c, h, w)
-
-        # n,c, h, w = img.shape
-        ##n, h, w ,c = torch_input_tensor.shape
-        # torch_input_tensor = img.reshape(1, 1, h * w * n, c)
-        # self.tt_inputs_host = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
-        # self.tt_inputs_host = ttnn.pad(self.tt_inputs_host, [1, 1, n * h * w, 16], [0, 0, 0, 0], 0)
-        self.tt_inputs_host, _ = self.test_infra.setup_l1_sharded_input(self.device, img)
-        ################ INFERENCE #############
-        ts = time.time()
-        ttnn.wait_for_event(1, self.op_event)
-        ttnn.copy_host_to_device_tensor(self.tt_inputs_host, self.tt_image_res, 1)
-        self.write_event = ttnn.record_event(self.device, 1)
-        ttnn.wait_for_event(0, self.write_event)
-        self.input_tensor = ttnn.reshard(self.tt_image_res, self.input_mem_config, self.input_tensor)
-        self.op_event = ttnn.record_event(self.device, 0)
-        output_tensor = ttnn.execute_trace(self.device, self.tid, cq_id=0, blocking=False)
-        ttnn.synchronize_device(self.device)
-        te = time.time()
-        return output_tensor, te - ts
-
-    def release(self):
-        ttnn.release_trace(self.device, self.tid)
-
-
 batch_size = 1
 if len(sys.argv) == 2:
     batch_size = int(sys.argv[1])
-ttnn_device = device(batch_size)
 
-#
-#
-# device_id = 0
-# device = ttnn.CreateDevice(device_id, l1_small_size=24576, trace_region_size=3211264, num_command_queues=2)
-# ttnn.enable_program_cache(device)
-# model = Mv2LikeTrace2CQ()
-##self.model = Yolov4Trace2CQ()
-# model.initialize_mv2like_trace_2cqs_inference(device)
+device_id = 0
+device = ttnn.CreateDevice(device_id, l1_small_size=24576, trace_region_size=3211264, num_command_queues=2)
+ttnn.enable_program_cache(device)
+model = Mv2LikeTrace2CQ()
+model.initialize_mv2like_trace_2cqs_inference(device, device_batch_size=batch_size)
 #
 ################ GST Code ################
 VIDEO_CAPS_STR = "video/x-raw,format=RGB,width=224,height=224,framerate=500/1"
@@ -199,7 +92,7 @@ def process_frame(sample):
 # --- Appsink "new-sample" Callback ---
 def on_new_sample_from_appsink(appsink, user_data):
     """Callback triggered by appsink. Includes user processing."""
-    global shutting_down, ttnn_device, inference_time_wo_io, inference_time  # Access the global flag
+    global shutting_down, model, inference_time_wo_io, inference_time, batch_size  # Access the global flag
 
     sample = appsink.emit("pull-sample")
     if sample is None:
@@ -210,7 +103,17 @@ def on_new_sample_from_appsink(appsink, user_data):
     img = frame
     ts = time.time()
     ########################## TTNN call to model #######################
-    out, time_without_io = ttnn_device.run(img)  # Can do further processing on output of the model.
+    # out, time_without_io = ttnn_device.run(img)  # Can do further processing on output of the model.
+    if type(img) == np.ndarray and len(img.shape) == 3:  # cv2 image
+        img = torch.from_numpy(img.transpose(2, 0, 1)).float().div(255.0).unsqueeze(0)
+    elif type(img) == np.ndarray and len(img.shape) == 4:
+        img = torch.from_numpy(img.transpose(0, 3, 1, 2)).float().div(255.0)
+    else:
+        exit()
+    if batch_size > 1:
+        n, c, h, w = img.shape
+        img = img.expand(batch_size, c, h, w)
+    out, time_without_io = model.run_traced_inference(img)
     te = time.time()
     inference_time = inference_time + te - ts
     inference_time_wo_io = inference_time_wo_io + time_without_io
@@ -252,12 +155,12 @@ def sink_pad_probe_cb(pad, info, user_data):
             elapsed_total = current_time - start_time
             if elapsed_total > 0:  # Avoid division by zero
                 avg_fps = frame_count * batch_size / elapsed_total
-                avg_inference_time = inference_time / (batch_size * frame_count)
-                avg_inference_time_wo_io = inference_time_wo_io / (batch_size * frame_count)
+                avg_inference_time = inference_time / (frame_count)
+                avg_inference_time_wo_io = inference_time_wo_io / (frame_count)
                 # This FPS measures the rate buffers arrive at fakesink (sync=false)
                 # It should reflect the bottleneck rate (Python processing).
                 print(
-                    f"--- Pipeline Output FPS @ {elapsed_total:.1f}s: Average={avg_fps:.2f} , Average Inference time:{avg_inference_time:.4f}, Average Inference time without IO:{avg_inference_time_wo_io:.4f} (Frames={frame_count})  ---",
+                    f"--- Pipeline Output FPS for batch {batch_size}@ {elapsed_total:.1f}s: Average={avg_fps:.2f} , Average Inference time per batch:{avg_inference_time:.4f}, Average Inference time without IO per batch:{avg_inference_time_wo_io:.4f} (Frames={frame_count})  ---",
                     flush=True,
                 )
             last_update_time = current_time  # Reset timer for next interval
@@ -454,4 +357,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    ttnn_device.release()
