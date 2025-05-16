@@ -46,7 +46,7 @@ tt-smi # To check if tt-smi is installed correctly
 ### install metal from the branch:  ssinghal/gstreamer-demo 
 
 ```
-git clone https://github.com/ssinghalTT/tt-metal-magna.git --recurse-submodules -b ssinghal/gstreamer-flow
+git clone https://github.com/tenstorrent/tt-metal.git --recurse-submodules -b ssinghal/gstreamer-flow
 cd tt-metal-magna
 ./create_venv.sh
 export ARCH_NAME=wormhole_b0
@@ -155,6 +155,7 @@ rm ~/.cache/gstreamer-1.0/registry.x86_64.bin
 ### If still intested in using GStremear as a script and not as a plug-in, you may install GStreamer dependcies within the oringial python_env via: 
 
 ```
+source python_env/bin/activate
 sudo apt install libcairo2-dev libxt-dev libgirepository1.0-dev
 pip install pycairo PyGObject    # Might show some error but eventaully finds the correct pygobject version # (3.50.0 for me)
 sudo apt-get install gstreamer-1.0
