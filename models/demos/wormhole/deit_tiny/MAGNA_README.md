@@ -34,6 +34,14 @@ pytest models/demos/wormhole/deit_tiny/demo/demo_deit_ttnn_inference_perf_e2e_2c
 ```
 pytest models/demos/wormhole/deit_tiny/demo/demo_deit_ttnn_inference_perf_e2e_2cq_trace.py::test_run_deit_trace_2cq_inference[8-device_params0]
 ```
+# cifar-10 Demo
+```
+pytest models/demos/wormhole/deit_tiny/demo/demo_deit_ttnn_cifar10_inference.py
+```
+# visual demo on few samples
+```
+pytest models/demos/wormhole/deit_tiny/demo/demo_deit_ttnn_predict.py
+```
 
 # GStreamer flow
 Note: GStreamer via the python script currently supports batch=1,2,4,8. Also if you export ttnn_visualizer recommended configs, it might conflict with GStreamer and generate errors. to test the GStreamer for this model with batch-size, run:<br>
