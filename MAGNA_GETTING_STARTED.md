@@ -96,7 +96,7 @@ tar -xvf deit.tar
 ./models/experimental/lraspp/MAGNA_README.md
 ```
 
-## GStreamer PLUGIN:
+## GStreamer PLUGIN: (NOTE: we are observing some instablilites with GStreamer at the moment and we are activily working on resolving them. please stay tuned.)
 ### Please note, there is some conflict between python_env to run Gstreamer plugin. You need to install new virtual environment to run gstreamer plugin.
 
 ## Build python enviroment for GStreamer with --site-packages option.
