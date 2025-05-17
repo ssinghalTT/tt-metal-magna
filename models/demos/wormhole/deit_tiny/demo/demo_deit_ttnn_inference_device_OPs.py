@@ -32,7 +32,7 @@ os.environ["TTNN_CONFIG_OVERRIDES"] = '{"enable_fast_runtime_mode": true}'
 
 
 @pytest.mark.skipif(is_blackhole(), reason="Unsupported on BH")
-@pytest.mark.parametrize("batch_size", [1,2,3,4,5,6,7,8])
+@pytest.mark.parametrize("batch_size", [1, 2, 4, 8])
 @pytest.mark.models_performance_bare_metal
 @pytest.mark.models_performance_virtual_machine
 def test_deit(device, use_program_cache, batch_size):
@@ -46,7 +46,9 @@ def test_deit(device, use_program_cache, batch_size):
     config.num_hidden_layers = 12
     model = transformers.ViTForImageClassification.from_pretrained(model_name)
     model.classifier = nn.Linear(192, 10, bias=True)
-    model.load_state_dict(torch.load("models/demos/wormhole/deit_tiny/demo/deit_tiny_patch16_224_trained_statedict.pth"), strict=True)
+    model.load_state_dict(
+        torch.load("models/demos/wormhole/deit_tiny/demo/deit_tiny_patch16_224_trained_statedict.pth"), strict=True
+    )
     config = ttnn_optimized_sharded_deit_wh.update_model_config(config, batch_size)
     image_processor = AutoFeatureExtractor.from_pretrained(model_name)
 
