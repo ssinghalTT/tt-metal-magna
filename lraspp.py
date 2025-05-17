@@ -15,10 +15,9 @@ from gi.repository import Gst, GLib
 ################### TTNN Imports ##################
 import ttnn
 
-# from models.experimental.Mv2Like.performant_files.mv2like_e2e_performant import Mv2LikeTrace2CQ
 from ttnn.model_preprocessing import preprocess_model_parameters
 from models.utility_functions import is_wormhole_b0, torch2tt_tensor, is_blackhole
-from models.experimental.mv2like.performant_files.mv2like_test_infra import create_test_infra
+from models.experimental.lraspp.tests.lraspp_test_infra import create_test_infra
 from models.utility_functions import (
     is_wormhole_b0,
     enable_persistent_kernel_cache,
@@ -137,15 +136,6 @@ if len(sys.argv) == 2:
     batch_size = int(sys.argv[1])
 ttnn_device = device(batch_size)
 
-#
-#
-# device_id = 0
-# device = ttnn.CreateDevice(device_id, l1_small_size=24576, trace_region_size=3211264, num_command_queues=2)
-# ttnn.enable_program_cache(device)
-# model = Mv2LikeTrace2CQ()
-##self.model = Yolov4Trace2CQ()
-# model.initialize_mv2like_trace_2cqs_inference(device)
-#
 ################ GST Code ################
 VIDEO_CAPS_STR = "video/x-raw,format=RGB,width=224,height=224,framerate=500/1"
 # VIDEO_CAPS object created inside main() after Gst.init()

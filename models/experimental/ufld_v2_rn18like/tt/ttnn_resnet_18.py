@@ -3,8 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import ttnn
-from models.experimental.ufld_v2_rn18like.ttnn.common import TtnnUFLDv2RN18Conv2D
-from models.experimental.ufld_v2_rn18like.ttnn.ttnn_basic_block import TtnnBasicBlock
+from models.experimental.ufld_v2_rn18like.tt.common import TtnnUFLDv2RN18Conv2D
+from models.experimental.ufld_v2_rn18like.tt.ttnn_basic_block import TtnnBasicBlock
 
 
 def p(x, b="x"):

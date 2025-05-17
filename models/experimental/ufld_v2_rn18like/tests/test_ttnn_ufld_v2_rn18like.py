@@ -3,10 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import ttnn
-import os
 import pytest
 import torch
-import torch.nn as nn
 from ttnn.model_preprocessing import (
     preprocess_model_parameters,
     fold_batch_norm2d_into_conv2d,
@@ -15,8 +13,8 @@ from ttnn.model_preprocessing import (
     preprocess_linear_bias,
 )
 from models.experimental.ufld_v2_rn18like.reference.ufld_v2_rn18like_model import TuSimple18like, BasicBlock
-from models.experimental.ufld_v2_rn18like.ttnn.ttnn_ufld_v2_rn18like import TtnnUFLDV2RN18like
-from models.experimental.ufld_v2_rn18like.ttnn.ttnn_basic_block import TtnnBasicBlock
+from models.experimental.ufld_v2_rn18like.tt.ttnn_ufld_v2_rn18like import TtnnUFLDV2RN18like
+from models.experimental.ufld_v2_rn18like.tt.ttnn_basic_block import TtnnBasicBlock
 from tests.ttnn.utils_for_testing import assert_with_pcc
 
 
@@ -76,7 +74,7 @@ def test_ufld_v2_rn18_basic_block(device, batch_size, input_channels, height, wi
     assert_with_pcc(ttnn_output, torch_out, 0.99)
 
 
-def custom_preprocessor_whole_model(model, name):
+def custom_preprocessor(model, name):
     parameters = {}
     if isinstance(model, TuSimple18like):
         # conv1,bn1
@@ -246,8 +244,8 @@ def custom_preprocessor_whole_model(model, name):
     "batch_size,input_channels,height,width",
     [
         (1, 3, 320, 800),
-        # (2, 3, 320, 800),
-        # (4, 3, 320, 800),
+        (2, 3, 320, 800),
+        (4, 3, 320, 800),
     ],
 )
 @pytest.mark.parametrize(
@@ -262,7 +260,7 @@ def custom_preprocessor_whole_model(model, name):
     ],
 )
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 79104}], indirect=True)
-def test_ufld_rn18like_whole_model(device, batch_size, input_channels, height, width, use_pretrained_weight):
+def test_ufld_rn18like(device, batch_size, input_channels, height, width, use_pretrained_weight):
     torch_model = TuSimple18like(input_height=height, input_width=width)
     torch_model.to(torch.bfloat16)
     torch_model.eval()
@@ -279,12 +277,14 @@ def test_ufld_rn18like_whole_model(device, batch_size, input_channels, height, w
         ttnn.CoreGrid(x=8, y=8),
         ttnn.ShardStrategy.HEIGHT,
     )
-    ttnn_input_tensor = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
+    ttnn_input_tensor = ttnn.from_torch(
+        torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT  # , device=device
+    )
     ttnn_input_tensor = ttnn_input_tensor.to(device, input_mem_config)
     # ttnn_input_tensor pass sharded tensor and check
     parameters = preprocess_model_parameters(
         initialize_model=lambda: torch_model,
-        custom_preprocessor=custom_preprocessor_whole_model,
+        custom_preprocessor=custom_preprocessor,
         device=device,
     )
     parameters.conv_args = {}

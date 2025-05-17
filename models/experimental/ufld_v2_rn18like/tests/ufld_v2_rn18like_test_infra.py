@@ -8,9 +8,11 @@ from loguru import logger
 from tests.ttnn.utils_for_testing import assert_with_pcc
 from models.utility_functions import is_wormhole_b0, divup
 from models.experimental.ufld_v2_rn18like.reference.ufld_v2_rn18like_model import TuSimple18like
-from models.experimental.ufld_v2_rn18like.ttnn.ttnn_ufld_v2_rn18like import TtnnUFLDV2RN18like
+from models.experimental.ufld_v2_rn18like.tt.ttnn_ufld_v2_rn18like import TtnnUFLDV2RN18like
 from ttnn.model_preprocessing import preprocess_model_parameters, infer_ttnn_module_args
-from tests.ttnn.integration_tests.ufld_v2_rn18like.test_ttnn_ufld_v2_rn18like import custom_preprocessor_whole_model
+
+# from tests.ttnn.integration_tests.ufld_v2_rn18like.test_ttnn_ufld_v2_rn18like import custom_preprocessor_whole_model
+from models.experimental.ufld_v2_rn18like.tests.test_ttnn_ufld_v2_rn18like import custom_preprocessor
 
 
 def load_torch_model():
@@ -22,7 +24,7 @@ def load_torch_model():
 def load_ttnn_model(device, torch_model, torch_input_tensor):
     parameters = preprocess_model_parameters(
         initialize_model=lambda: torch_model,
-        custom_preprocessor=custom_preprocessor_whole_model,
+        custom_preprocessor=custom_preprocessor,
         device=device,
     )
     parameters.conv_args = {}

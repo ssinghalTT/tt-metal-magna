@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import ttnn
-from models.experimental.mv2like.performant_files.mv2like_test_infra import create_test_infra
+from models.experimental.lraspp.tests.lraspp_test_infra import create_test_infra
 
 try:
     pass
@@ -24,11 +24,11 @@ def buffer_address(tensor):
 ttnn.buffer_address = buffer_address
 
 
-class Mv2LikeTrace2CQ:
+class LRASPPTrace2CQ:
     def __init__(self):
         ...
 
-    def initialize_mv2like_trace_2cqs_inference(
+    def initialize_lraspp_trace_2cqs_inference(
         self,
         device,
         device_batch_size=1,
@@ -85,7 +85,7 @@ class Mv2LikeTrace2CQ:
 
         self.device = device
 
-    def execute_mv2like_trace_2cqs_inference(self, tt_inputs_host=None):
+    def execute_lraspp_trace_2cqs_inference(self, tt_inputs_host=None):
         tt_inputs_host = self.tt_inputs_host if tt_inputs_host is None else tt_inputs_host
         ttnn.wait_for_event(1, self.op_event)
         ttnn.copy_host_to_device_tensor(tt_inputs_host, self.tt_image_res, 1)
@@ -101,7 +101,7 @@ class Mv2LikeTrace2CQ:
 
         return ttnn_output_tensor
 
-    def release_mv2like_trace_2cqs_inference(self):
+    def release_lraspp_trace_2cqs_inference(self):
         ttnn.release_trace(self.device, self.tid)
 
     def run_traced_inference(self, torch_input_tensor):
@@ -110,4 +110,4 @@ class Mv2LikeTrace2CQ:
         # tt_inputs_host = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
         # tt_inputs_host = ttnn.pad(tt_inputs_host, [1, 1, n * h * w, 16], [0, 0, 0, 0], 0)
         tt_inputs_host, _ = self.test_infra.setup_l1_sharded_input(self.device, torch_input_tensor)
-        return self.execute_mv2like_trace_2cqs_inference(tt_inputs_host)
+        return self.execute_lraspp_trace_2cqs_inference(tt_inputs_host)

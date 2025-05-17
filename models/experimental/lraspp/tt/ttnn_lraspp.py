@@ -3,10 +3,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import ttnn
-from models.experimental.mv2like.tt.common import TtConv2D, TtInvertedResidual, shard_upsample
+from models.experimental.lraspp.tt.common import TtConv2D, TtInvertedResidual, shard_upsample
 
 
-class TtMv2Like:
+class TtLRASPP:
     def __init__(self, model_params, device, batchsize) -> None:
         self.device = device
         self.model_parameters = model_params
