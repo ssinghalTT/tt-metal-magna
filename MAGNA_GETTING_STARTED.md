@@ -1,6 +1,6 @@
 # Steps for Ubuntu 22.04:
 
-# If you already have metal dependencies installed, you may skip the dependencies installation and start from [install metal](https://github.com/ssinghalTT/tt-metal-magna/new/ssinghal/gstreamer-flow#install-metal)
+# If you already have metal dependencies installed, you may skip the dependencies installation and start from [install metal](###install-metal)
 
 ## Install dependencies
 ```
