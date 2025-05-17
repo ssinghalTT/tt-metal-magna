@@ -7,17 +7,23 @@ The Ultra-Fast-Lane-Detection-v2 is a PyTorch-based implementation designed for 
 Resource link - [source](https://github.com/cfzd/Ultra-Fast-Lane-Detection-v2)
 
 ## Ensure to build with profiler enabled:
-`build_metal.sh -p`
+```
+build_metal.sh -p
+```
 
 We currently support batch = 1 only for this model.
 
 ### Device perf
 Run the following command to generate the perf sheet. FPS = (Batch_size * 10^9)/ Sum(Device kernel Duration in ns column).<br>
 
-`python -m tracy -p -r -v -m pytest models/experimental/ufld_v2_rn18like/tests/test_ttnn_ufld_v2_rn18like.py::test_ufld_rn18like[device_params0-pretrained_weight_false-1-3-320-800]`<br>
+```
+python -m tracy -p -r -v -m pytest models/experimental/ufld_v2_rn18like/tests/test_ttnn_ufld_v2_rn18like.py::test_ufld_rn18like[device_params0-pretrained_weight_false-1-3-320-800]
+```
 
 ### end to end perf
-`pytest models/experimental/ufld_v2_rn18like/tests/test_ufld_v2_rn18like_e2e_performant.py`<br>
+```
+pytest models/experimental/ufld_v2_rn18like/tests/test_ufld_v2_rn18like_e2e_performant.py
+```
 
 ### Inference
 
