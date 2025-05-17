@@ -57,25 +57,27 @@ Note: GStreamer via the python script currently supports batch=1. Also if you ex
 The recommended way to test GStreamer is via plug-in command line flow which supports batch_size=1 for UFLD as follows. The gstreamer plugin environment conflicts with python gstreamer. Thus need to create a different virtual env: (If you have already created the env for gstreamer simply activate it and jump to running the plug-in command.
 
 NOTE: The FPS displayed is for 1 pipeline. Thus the overall FPS = Gstreamer FPS * batch-size
-
+```
 deactivate		## Deactivate other environment.
 ./create_venv_gstreamer.sh
 source python_env_gstreamer/bin/activate
-
-
+```
+```
 sudo apt install python3-gi python3-gi-cairo
 sudo apt install python3-gst-1.0 gstreamer1.0-python3-plugin-loader
 sudo apt install gstreamer1.0-tools
 pip install graphviz numpy_ringbuffer
 sudo apt install ubuntu-restricted-extras
 sudo apt-get install -y gstreamer1.0-plugins-ugly gstreamer1.0-plugins-bad gstreamer1.0-libav
-
-
+```
+```
 export GST_PLUGIN_PATH=$PWD/plugin:$PWD/plugins
-
+```
+```
 rm ~/.cache/gstreamer-1.0/registry.x86_64.bin
 gst-inspect-1.0 python
-
+```
+```
 OUTPUT:
 Plugin Details:
   Name                     python
@@ -99,8 +101,10 @@ Plugin Details:
 
   9 features:
   +-- 9 elements
-
+```
 
 command to run the GStreamer plug-in: (please note: UFLD currently runs for batch=1 only)
 NOTE: The FPS displayed is for 1 pipeline. Thus the overall FPS = Gstreamer FPS * batch-size
-`gst-launch-1.0 videotestsrc num-buffers=10000 pattern=black is-live=true ! videoconvert ! video/x-raw,format=RGB,width=800,height=320,framerate=500/1 ! queue ! ufld batch-size=1 !  fpsdisplaysink video-sink=fakesink -v`
+```
+gst-launch-1.0 videotestsrc num-buffers=10000 pattern=black is-live=true ! videoconvert ! video/x-raw,format=RGB,width=800,height=320,framerate=500/1 ! queue ! ufld batch-size=1 !  fpsdisplaysink video-sink=fakesink -v
+```
