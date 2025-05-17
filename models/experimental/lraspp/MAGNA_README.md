@@ -15,10 +15,18 @@ Run the following command to generate the perf sheet. FPS = (Batch_size * 10^9)/
 Note: this is the trace + 2cq implementation and it runs 100 iterations to reports the average end 2 end FPS.<br>
 We do NOT recommend running profiler with trace implmentation as trace implementation runs for 100 interations.<br>
 Running each of the pytests bellow will report the FPS and inference time per different batch sizes.<br>
-`pytest models/experimental/lraspp/tests/test_lraspp_e2e_performant.py::test_run_lraspp_trace_2cq_inference[1-device_params0]`<br>
-`pytest models/experimental/lraspp/tests/test_lraspp_e2e_performant.py::test_run_lraspp_trace_2cq_inference[2-device_params0]`<br>
-`pytest models/experimental/lraspp/tests/test_lraspp_e2e_performant.py::test_run_lraspp_trace_2cq_inference[4-device_params0]`<br>
-`pytest models/experimental/lraspp/tests/test_lraspp_e2e_performant.py::test_run_lraspp_trace_2cq_inference[8-device_params0]`
+```
+pytest models/experimental/lraspp/tests/test_lraspp_e2e_performant.py::test_run_lraspp_trace_2cq_inference[1-device_params0]
+```
+```
+pytest models/experimental/lraspp/tests/test_lraspp_e2e_performant.py::test_run_lraspp_trace_2cq_inference[2-device_params0]
+```
+```
+pytest models/experimental/lraspp/tests/test_lraspp_e2e_performant.py::test_run_lraspp_trace_2cq_inference[4-device_params0]
+```
+```
+pytest models/experimental/lraspp/tests/test_lraspp_e2e_performant.py::test_run_lraspp_trace_2cq_inference[8-device_params0]
+```
 
 # GStreamer flow
 Note: GStreamer via the python script currently supports batch=1,2,4,8. Also if you export ttnn_visualizer recommended configs, it might conflict with GStreamer and generate errors. to test the GStreamer for this model with batch-size, run:<br>
@@ -27,25 +35,27 @@ Note: GStreamer via the python script currently supports batch=1,2,4,8. Also if 
 The recommended way to test GStreamer is via plug-in command line flow which also supports batch_size>1 as follows. The gstreamer plugin environment conflicts with python gstreamer. Thus need to create a different virtual env: (If you have already created the env for gstreamer simply activate it and jump to running the plug-in command.
 
 NOTE: The FPS displayed is for 1 pipeline. Thus the overall FPS = Gstreamer FPS * batch-size
-
+```
 deactivate		## Deactivate other environment.
 ./create_venv_gstreamer.sh
 source python_env_gstreamer/bin/activate
-
-
+```
+```
 sudo apt install python3-gi python3-gi-cairo
 sudo apt install python3-gst-1.0 gstreamer1.0-python3-plugin-loader
 sudo apt install gstreamer1.0-tools
 pip install graphviz numpy_ringbuffer
 sudo apt install ubuntu-restricted-extras
 sudo apt-get install -y gstreamer1.0-plugins-ugly gstreamer1.0-plugins-bad gstreamer1.0-libav
-
-
+```
+```
 export GST_PLUGIN_PATH=$PWD/plugin:$PWD/plugins
-
+```
+```
 rm ~/.cache/gstreamer-1.0/registry.x86_64.bin
 gst-inspect-1.0 python
-
+```
+```
 OUTPUT:
 Plugin Details:
   Name                     python
@@ -69,7 +79,9 @@ Plugin Details:
 
   9 features:
   +-- 9 elements
-
+```
 To test the plug-in execute the following command replacing <batch-size> with 1,2, 4 or 8.
 NOTE: The FPS displayed is for 1 pipeline. Thus the overall FPS = Gstreamer FPS * batch-size
-`gst-launch-1.0 videotestsrc num-buffers=10000 pattern=black is-live=true ! videoconvert ! video/x-raw,format=RGB,width=224,height=224,framerate=500/1 ! queue ! lraspp batch-size=<batch-size> !  fpsdisplaysink video-sink=fakesink -v`
+```
+gst-launch-1.0 videotestsrc num-buffers=10000 pattern=black is-live=true ! videoconvert ! video/x-raw,format=RGB,width=224,height=224,framerate=500/1 ! queue ! lraspp batch-size=<batch-size> !  fpsdisplaysink video-sink=fakesink -v
+```
