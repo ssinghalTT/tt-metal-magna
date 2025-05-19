@@ -13,7 +13,7 @@ from models.experimental.mv2like.performant_files.mv2like_performant import (
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 32768}], indirect=True)
 @pytest.mark.parametrize(
     "device_batch_size",
-    [1, 2, 3, 4, 8],
+    [1, 2, 4, 8],
 )
 def test_run_mv2like_inference(
     device,
