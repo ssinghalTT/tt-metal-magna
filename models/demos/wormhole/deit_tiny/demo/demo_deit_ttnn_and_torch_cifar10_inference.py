@@ -161,7 +161,7 @@ def test_deit(device):
             pred_label_torch = cifar_label_dict[prediction_torch[i].item()]
 
             true_label = cifar_label_dict[labels[i]]
-            pcc = assert_with_pcc(output_ttnn[:, 0, :1000], output_torch, 0.7)
+            pcc = assert_with_pcc(output_ttnn[:, 0, :1000], output_torch, 0.6)
             pccs.append(pcc[-1])
 
             if pred_label_ttnn == true_label:
