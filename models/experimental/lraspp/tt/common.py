@@ -6,7 +6,8 @@ import ttnn
 import math
 
 
-def determine_num_cores_for_upsample(nhw: int, width: int, max_cores=64) -> int:
+# def determine_num_cores_for_upsample(nhw: int, width: int, max_cores=64) -> int:
+def determine_num_cores_for_upsample(nhw: int, width: int, max_cores=16) -> int:
     gcd_nhw_width = math.gcd(nhw, width)
     cores = nhw // gcd_nhw_width
     if cores > max_cores:
