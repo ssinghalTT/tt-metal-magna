@@ -36,7 +36,7 @@ pytest models/demos/wormhole/deit_tiny/demo/demo_deit_ttnn_inference_perf_e2e_2c
 ```
 # cifar-10 Demo
 ```
-pytest models/demos/wormhole/deit_tiny/demo/demo_deit_ttnn_cifar10_inference.py
+pytest models/demos/wormhole/deit_tiny/demo/demo_deit_ttnn_and_torch_cifar10_inference.py
 ```
 # visual demo on few samples
 ```
