@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
+import statistics
 
 import torch
 import transformers
@@ -19,6 +20,8 @@ from models.demos.wormhole.deit_tiny.demo.deit_helper_funcs import (
     get_cifar10_label_dict,
     get_data_loader_cifar10,
 )
+
+from tests.ttnn.utils_for_testing import assert_with_pcc
 
 import ast
 
@@ -97,6 +100,7 @@ def test_deit(device):
 
     correct_ttnn = 0
     correct_torch = 0
+    pccs = []
 
     for iter in range(iterations):
         predictions_ttnn = []
@@ -155,18 +159,28 @@ def test_deit(device):
         for i in range(batch_size):
             pred_label_ttnn = cifar_label_dict[prediction_ttnn[i].item()]
             pred_label_torch = cifar_label_dict[prediction_torch[i].item()]
-            true_label = cifar_label_dict[labels[i]]
 
-            logger.info(
-                f"Iter: {iter} Sample: {i} - Expected Label: {true_label} -- TTNN: {pred_label_ttnn} | Torch: {pred_label_torch}"
-            )
+            true_label = cifar_label_dict[labels[i]]
+            pcc = assert_with_pcc(output_ttnn[:, 0, :1000], output_torch, 0.7)
+            pccs.append(pcc[-1])
 
             if pred_label_ttnn == true_label:
                 correct_ttnn += 1
             if pred_label_torch == true_label:
                 correct_torch += 1
 
+            if (
+                (true_label != pred_label_torch)
+                or (true_label != pred_label_ttnn)
+                or (pred_label_ttnn != pred_label_torch)
+            ):
+                logger.warning("some mimatch!")
+                logger.warning(
+                    f"true_label: {true_label} - pred_label_ttnn: {pred_label_ttnn} - pred_label_torch: {pred_label_torch}"
+                )
+
     accuracy_ttnn = correct_ttnn / (batch_size * iterations)
     accuracy_torch = correct_torch / (batch_size * iterations)
     print(f"CIFAR-10 TTNN Accuracy:  {accuracy_ttnn:.4f}")
     print(f"CIFAR-10 Torch Accuracy: {accuracy_torch:.4f}")
+    print("average pcc: ", statistics.mean(pccs))
