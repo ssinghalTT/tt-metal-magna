@@ -84,9 +84,14 @@ class lrasppTestInfra:
         n, c, h, w = torch_input_tensor.shape
         if c == 3:
             c = 16
+        #        input_mem_config = ttnn.create_sharded_memory_config(
+        #            [n, c, h, w],
+        #            ttnn.CoreGrid(x=8, y=7),
+        #            ttnn.ShardStrategy.HEIGHT,
+        #        )
         input_mem_config = ttnn.create_sharded_memory_config(
             [n, c, h, w],
-            ttnn.CoreGrid(x=8, y=7),
+            ttnn.CoreGrid(x=4, y=4),
             ttnn.ShardStrategy.HEIGHT,
         )
 

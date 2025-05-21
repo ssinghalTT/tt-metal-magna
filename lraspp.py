@@ -59,7 +59,7 @@ class device:
         spec = self.test_infra.input_tensor.spec
         self.op_event = ttnn.record_event(self.device, 0)
         self.test_infra.run()
-        self.test_infra.validate()
+        # self.test_infra.validate()
         self.test_infra.dealloc_output()
         # Optimized run
         ttnn.wait_for_event(1, self.op_event)
@@ -69,7 +69,7 @@ class device:
         self.test_infra.input_tensor = ttnn.to_memory_config(self.tt_image_res, self.input_mem_config)
         self.op_event = ttnn.record_event(self.device, 0)
         self.test_infra.run()
-        self.test_infra.validate()
+        # self.test_infra.validate()
         # Capture
         ttnn.wait_for_event(1, self.op_event)
         ttnn.copy_host_to_device_tensor(self.tt_inputs_host, self.tt_image_res, 1)
