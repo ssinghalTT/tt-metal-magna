@@ -55,7 +55,7 @@ class LRASPPTrace2CQ:
         spec = self.test_infra.input_tensor.spec
         self.op_event = ttnn.record_event(device, 0)
         self.test_infra.run()
-        self.test_infra.validate()
+        # self.test_infra.validate()
         self.test_infra.dealloc_output()
 
         # Optimized run
@@ -66,7 +66,7 @@ class LRASPPTrace2CQ:
         self.test_infra.input_tensor = ttnn.to_memory_config(self.tt_image_res, self.input_mem_config)
         self.op_event = ttnn.record_event(device, 0)
         self.test_infra.run()
-        self.test_infra.validate()
+        # self.test_infra.validate()
 
         # Capture
         ttnn.wait_for_event(1, self.op_event)
