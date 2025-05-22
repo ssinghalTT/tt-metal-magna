@@ -32,6 +32,7 @@ inline std::string get_core_descriptor_file(
     const tt::ARCH& arch, const tt::tt_metal::DispatchCoreConfig& dispatch_core_config) {
     // Ability to skip this runtime opt, since trimmed SOC desc limits which DRAM channels are available.
     string core_desc_dir;
+    string base_file;
     if (getenv("TT_METAL_HOME")) {
         core_desc_dir = getenv("TT_METAL_HOME");
     } else {
@@ -49,7 +50,13 @@ inline std::string get_core_descriptor_file(
                 throw std::runtime_error(
                     "Invalid arch not supported");  // will be overwritten in tt_global_state constructor
             case tt::ARCH::GRAYSKULL: return core_desc_dir + "grayskull_versim_1x1_arch.yaml";
-            case tt::ARCH::WORMHOLE_B0: return core_desc_dir + "wormhole_b0_versim_1x1_arch.yaml";
+            case tt::ARCH::WORMHOLE_B0:
+                base_file = "wormhole_b0_versim_1x1_arch.yaml";
+                if (auto* env = getenv("TT_METAL_SIMULATE_BOS")) {
+                    log_info(tt::LogDevice, "using simulated 24 core descriptor!");
+                    base_file = "wormhole_b0_24_arch.yaml";
+                }
+                return core_desc_dir + base_file;
             case tt::ARCH::BLACKHOLE: return core_desc_dir + "blackhole_simulation_1x2_arch.yaml";
             case tt::ARCH::QUASAR: TT_THROW("No core descriptor for Quasar"); break;
         };
