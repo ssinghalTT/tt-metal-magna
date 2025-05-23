@@ -10,6 +10,23 @@ from models.experimental.lraspp.reference.lraspp import (
 )
 import torch.nn as nn
 
+from models.experimental.lraspp.tt.seg_transforms import Compose, RandomResize, Normalize, DeNormalize
+from models.experimental.lraspp.tt.segmentation import BinarySegmentationData
+import numpy as np
+from pdb import set_trace as bp
+
+def get_fire_dataset_transform():
+    train_transform = Compose(
+        [
+            RandomResize(max_size=224,min_size=224),
+            Normalize(mean=[0.485,0.456,0.406],std=[0.229,0.224,0.225])
+        ]
+    )
+    return train_transform
+    
+def get_fire_dataset_inverse_transform():
+    transform = DeNormalize(mean=[0.485,0.456,0.406],std=[0.229,0.224,0.225])
+    return transform
 
 def create_lraspp_input_tensors(batch=1, input_channels=3, input_height=224, input_width=224):
     torch_input_tensor = torch.randn(batch, input_channels, input_height, input_width)
@@ -24,6 +41,29 @@ def create_lraspp_input_tensors(batch=1, input_channels=3, input_height=224, inp
 
     return torch_input_tensor, ttnn_input_tensor
 
+def create_lraspp_input_tensors_fire(batch=1, input_channels=3, input_height=224, input_width=224):
+    train_transform = get_fire_dataset_transform()
+    # bp()
+
+    dataset_path    = ["./models/experimental/lraspp/tests/images/Image/Fire"]
+    mask_path       = ["./models/experimental/lraspp/tests/images/Segmentation_Mask/Fire"]
+    sim_data = BinarySegmentationData(train_dir=dataset_path,
+                                      mask_dir=mask_path,
+                                      train_transform=train_transform)
+    _, val_set = sim_data.split()
+    indices = np.random.permutation(len(val_set))[:batch]
+
+    torch_input_tensor = torch.randn(batch, input_channels, input_height, input_width)
+    torch_output_tensor = torch.randn(batch, 1, input_height, input_width)
+    for i, idx in enumerate(indices):
+        img, mask = val_set[idx]
+        torch_input_tensor[i] = img
+        torch_output_tensor[i] = mask
+
+    ttnn_input_tensor = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
+    ttnn_output_tensor = ttnn.from_torch(torch_output_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
+
+    return torch_input_tensor, ttnn_input_tensor, torch_output_tensor, ttnn_output_tensor
 
 def fold_batch_norm2d_into_conv2d(conv, bn, bfloat8_b=True):
     if not bn.track_running_stats:

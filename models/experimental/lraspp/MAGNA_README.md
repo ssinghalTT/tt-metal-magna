@@ -28,6 +28,16 @@ pytest models/experimental/lraspp/tests/test_lraspp_e2e_performant.py::test_run_
 pytest models/experimental/lraspp/tests/test_lraspp_e2e_performant.py::test_run_lraspp_trace_2cq_inference[8-device_params0]
 ```
 
+## Demo
+
+To run a quick demo of the LRASPP model, use the provided script:
+
+```
+pytest models/experimental/lraspp/demo/demo.py
+```
+
+The script will automatically process images from the `images` directory and save the prediction outputs to the `ttnn_results` directory. Accuracy is reported using mean IoU (intersection over union) between the TTNN model predictions and the label masks. The script also reports the average Pearson correlation coefficient (PCC) for the predictions.
+
 # GStreamer flow
 Note: GStreamer via the python script currently supports batch=1,2,4,8. Also if you export ttnn_visualizer recommended configs, it might conflict with GStreamer and generate errors. to test the GStreamer for this model with batch-size, run:<br>
 `python lraspp.py <batch-size>`
