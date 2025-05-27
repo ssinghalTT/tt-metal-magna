@@ -8,12 +8,13 @@ import numpy as np
 import torch
 import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset, random_split
-#from torchvision.transforms import v2
 from models.experimental.lraspp.tt.seg_transforms import Compose
 
 
 class BinarySegmentationSet(Dataset):
-    def __init__(self, data_dir: Path, mask_dir: Path, transform: Optional[Compose] = None, image_ext: str = 'jpg') -> None:
+    def __init__(
+        self, data_dir: Path, mask_dir: Path, transform: Optional[Compose] = None, image_ext: str = "jpg"
+    ) -> None:
         super().__init__()
         self._images = []
         self._masks = []
@@ -23,7 +24,7 @@ class BinarySegmentationSet(Dataset):
             sys.exit()
 
         # cnt = 0
-        for image, mask in zip(data_dir.glob(f'*.{image_ext.lower()}'), mask_dir.glob(f'*.{image_ext.lower()}')):
+        for image, mask in zip(data_dir.glob(f"*.{image_ext.lower()}"), mask_dir.glob(f"*.{image_ext.lower()}")):
             image = cv2.imread(str(image))
             mask = cv2.imread(str(mask), cv2.IMREAD_GRAYSCALE)
             self._images.append(TF.to_tensor(image))
@@ -61,12 +62,8 @@ class BinarySegmentationData:
         mask_dir = [Path(dd) for dd in mask_dir]
 
         if not val_dir:
-            self.dataset = BinarySegmentationSet(
-                data_dir=train_dir[0],
-                mask_dir=mask_dir[0],
-                transform=train_transform)
-            self.train_dataset, self.val_dataset = random_split(
-                self.dataset, [0.8, 0.2])
+            self.dataset = BinarySegmentationSet(data_dir=train_dir[0], mask_dir=mask_dir[0], transform=train_transform)
+            self.train_dataset, self.val_dataset = random_split(self.dataset, [0.8, 0.2])
         else:
             val_dirs = Path(val_dir)
             # TODO: setup val_dir
@@ -84,7 +81,6 @@ class BinarySegmentationData:
 
 if __name__ == "__main__":
     from seg_transforms import (
-        CenterCrop,
         ColorJitter,
         RandomCrop,
         RandomHorizontalFlip,
@@ -95,8 +91,7 @@ if __name__ == "__main__":
 
     train_transform = Compose(
         [
-            ColorJitter(brightness=0.25, contrast=0.1,
-                        saturation=0.1, hue=0.1),
+            ColorJitter(brightness=0.25, contrast=0.1, saturation=0.1, hue=0.1),
             RandomScaledResize((0.9, 1.1)),
             RandomRotation((0, 90)),
             RandomCrop((256, 160)),
@@ -107,14 +102,14 @@ if __name__ == "__main__":
     # val_transform = Compose([CenterCrop(size=(256, 160))])
 
     # change this to your local path where you stored the fire dataset downloaded from e.g. kaggle!
-    #dataset_path = "/home/vivepat4/datasets/fire_dataset/Fire"
-    #mask_path = "/home/vivepat4/datasets/fire_dataset/Segmentation_Mask/Fire"
-    dataset_path    = ["/home/martgro1/.kaggle/datasets/diversisai/fire-segmentation-image-dataset/versions/1/Image/Fire"]
-    mask_path       = ["/home/martgro1/.kaggle/datasets/diversisai/fire-segmentation-image-dataset/versions/1/Segmentation_Mask/Fire"]
+    # dataset_path = "/home/vivepat4/datasets/fire_dataset/Fire"
+    # mask_path = "/home/vivepat4/datasets/fire_dataset/Segmentation_Mask/Fire"
+    dataset_path = ["/home/martgro1/.kaggle/datasets/diversisai/fire-segmentation-image-dataset/versions/1/Image/Fire"]
+    mask_path = [
+        "/home/martgro1/.kaggle/datasets/diversisai/fire-segmentation-image-dataset/versions/1/Segmentation_Mask/Fire"
+    ]
 
-    sim_data = BinarySegmentationData(train_dir=dataset_path,
-                                      mask_dir=mask_path,
-                                      train_transform=train_transform)
+    sim_data = BinarySegmentationData(train_dir=dataset_path, mask_dir=mask_path, train_transform=train_transform)
 
     train_set, val_set = sim_data.split()
     print(len(train_set))
