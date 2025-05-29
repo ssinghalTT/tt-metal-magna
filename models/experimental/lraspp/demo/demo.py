@@ -123,7 +123,7 @@ def test_demo_semantic_segmentation(device):
         magna_upsampled_logits = torch.nn.functional.interpolate(
             magna_logits, size=mask.shape[-2:], mode="bilinear", align_corners=False
         )
-        # bp()
+        
         thres = 0.5
         ref_pred_mask = (ref_upsampled_logits > thres).squeeze().cpu().numpy()
         ttnn_pred_mask = (ttnn_upsampled_logits2 > thres).squeeze().cpu().numpy()
@@ -143,12 +143,20 @@ def test_demo_semantic_segmentation(device):
         # Load the original image
         orig_image = cv2.imread(path[0])
         orig_image = cv2.cvtColor(orig_image, cv2.COLOR_BGR2RGB)
+        orig_h, orig_w = orig_image.shape[:2]
+
+        # Resize masks to original image size
+        ref_pred_mask_resized = cv2.resize(ref_pred_mask_np, (orig_w, orig_h), interpolation=cv2.INTER_NEAREST)
+        ttnn_pred_mask_resized = cv2.resize(ttnn_pred_mask_np, (orig_w, orig_h), interpolation=cv2.INTER_NEAREST)
+        magna_pred_mask_resized = cv2.resize(magna_pred_mask_np, (orig_w, orig_h), interpolation=cv2.INTER_NEAREST)
+        mask_np = np.array(mask)
+        mask_resized = cv2.resize(mask_np, (orig_w, orig_h), interpolation=cv2.INTER_NEAREST)
 
         # Prepare overlays: only overlay where mask==1 (fire)
-        mask_fire = mask == 255  # Assuming 255 is the fire label in the mask
-        ref_fire = ref_pred_mask == 1
-        ttnn_fire = ttnn_pred_mask == 1
-        magna_fire = magna_pred_mask == 1
+        mask_fire = mask_resized == 255  # Assuming 255 is the fire label in the mask
+        ref_fire = ref_pred_mask_resized == 1
+        ttnn_fire = ttnn_pred_mask_resized == 1
+        magna_fire = magna_pred_mask_resized == 1
 
         # Create overlay images (copy to avoid modifying original)
         overlay_mask = orig_image.copy()
@@ -183,19 +191,19 @@ def test_demo_semantic_segmentation(device):
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         Image.fromarray(combined).save(save_path)
 
-        mask = np.array(mask)
-        ref_metric.add(predictions=ref_pred_mask, references=mask)
-        ttnn_metric.add(predictions=ttnn_pred_mask, references=mask)
-        magna_metric.add(predictions=magna_pred_mask, references=mask)
+        mask = mask_resized
+        ref_metric.add(predictions=ref_pred_mask_resized, references=mask)
+        ttnn_metric.add(predictions=ttnn_pred_mask_resized, references=mask)
+        magna_metric.add(predictions=magna_pred_mask_resized, references=mask)
 
-    ref_results = ref_metric.compute(num_labels=2, ignore_index=255, reduce_labels=False)
-    ttnn_results = ttnn_metric.compute(num_labels=2, ignore_index=255, reduce_labels=False)
-    magna_results = magna_metric.compute(num_labels=2, ignore_index=255, reduce_labels=False)
+        ref_results = ref_metric.compute(num_labels=2, ignore_index=255, reduce_labels=False)
+        ttnn_results = ttnn_metric.compute(num_labels=2, ignore_index=255, reduce_labels=False)
+        magna_results = magna_metric.compute(num_labels=2, ignore_index=255, reduce_labels=False)
 
-    logger.info(
+        logger.info(
         f"mean IoU values for Reference and ttnn model and Magna reference are {ref_results['mean_iou']}, {ttnn_results['mean_iou']}, {magna_results['mean_iou']} respectively"
-    )
-    logger.info(f"mean PCC values between Reference and ttnn model are {np.mean(pccs)}")
+        )
+        logger.info(f"mean PCC values between Reference and ttnn model are {np.mean(pccs)}")
 
 
 class CustomImageProcessor:
