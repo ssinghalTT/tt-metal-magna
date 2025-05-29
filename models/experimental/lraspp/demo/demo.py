@@ -123,7 +123,7 @@ def test_demo_semantic_segmentation(device):
         magna_upsampled_logits = torch.nn.functional.interpolate(
             magna_logits, size=mask.shape[-2:], mode="bilinear", align_corners=False
         )
-        
+
         thres = 0.5
         ref_pred_mask = (ref_upsampled_logits > thres).squeeze().cpu().numpy()
         ttnn_pred_mask = (ttnn_upsampled_logits2 > thres).squeeze().cpu().numpy()
@@ -201,7 +201,7 @@ def test_demo_semantic_segmentation(device):
         magna_results = magna_metric.compute(num_labels=2, ignore_index=255, reduce_labels=False)
 
         logger.info(
-        f"mean IoU values for Reference and ttnn model and Magna reference are {ref_results['mean_iou']}, {ttnn_results['mean_iou']}, {magna_results['mean_iou']} respectively"
+            f"mean IoU values for Reference and ttnn model and Magna reference are {ref_results['mean_iou']}, {ttnn_results['mean_iou']}, {magna_results['mean_iou']} respectively"
         )
         logger.info(f"mean PCC values between Reference and ttnn model are {np.mean(pccs)}")
 
